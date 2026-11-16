@@ -1,0 +1,44 @@
+{
+  "name": "electron-shell-spike",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Spike: Electron with an in-process Hono server and better-sqlite3, packaged",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "smoke:dev": "electron . --smoke",
+    "pack": "electron-builder --dir",
+    "smoke:packed": "node run-packed.js --smoke",
+    "rebuild": "electron-rebuild -f -w better-sqlite3"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.8",
+    "better-sqlite3": "^13.1.1",
+    "hono": "^4.13.18"
+  },
+  "devDependencies": {
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "dev.aiwriter.spike",
+    "productName": "AiWriterSpike",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "npmRebuild": true,
+    "mac": {
+      "identity": null,
+      "target": "dir"
+    },
+    "electronDist": "node_modules/electron/dist"
+  }
+}

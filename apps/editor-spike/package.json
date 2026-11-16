@@ -1,0 +1,23 @@
+{
+  "name": "@stetpad/editor-spike",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5183 --strictPort",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@stetpad/crdt": "workspace:*",
+    "@tiptap/core": "^3.34.0",
+    "@tiptap/extension-collaboration": "^3.34.0",
+    "@tiptap/pm": "^3.34.0",
+    "@tiptap/starter-kit": "^3.34.0",
+    "@tiptap/y-tiptap": "^3.3.0",
+    "yjs": "^13.6.33"
+  },
+  "devDependencies": {
+    "vite": "^7.0.0"
+  }
+}

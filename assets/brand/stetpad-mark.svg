@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="92 68 392 408" role="img" aria-labelledby="t">
+  <title id="t">Stetpad</title>
+  <!-- 无底板版本：星芒周围用遮罩挖出空隙，放在任何背景上都成立 -->
+  <style>
+    .page { fill: #FBF6EC; stroke: #2A251F; stroke-width: 20 }
+    .ink { fill: #2A251F }
+    .ring { fill: #8F8576 }
+    .small { fill: #D63F2A }
+    @media (prefers-color-scheme: dark) { .page { stroke: #FBF6EC } }
+  </style>
+  <defs>
+    <mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <rect width="512" height="512" fill="#fff"/>
+      <path d="M368 256 Q368 360 472 360 Q368 360 368 464 Q368 360 264 360 Q368 360 368 256Z" fill="#000" stroke="#000" stroke-width="44" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  <g mask="url(#cut)">
+    <rect class="page" x="114" y="118" width="244" height="296" rx="34"/>
+    <rect class="ring" x="156" y="80" width="28" height="60" rx="14"/>
+    <rect class="ring" x="222" y="80" width="28" height="60" rx="14"/>
+    <rect class="ring" x="288" y="80" width="28" height="60" rx="14"/>
+    <rect class="ink" x="156" y="200" width="160" height="24" rx="12"/>
+    <rect x="156" y="256" width="160" height="24" rx="12" fill="#D63F2A"/>
+    <rect class="ink" x="156" y="312" width="96" height="24" rx="12"/>
+  </g>
+  <path d="M368 256 Q368 360 472 360 Q368 360 368 464 Q368 360 264 360 Q368 360 368 256Z" fill="#D63F2A"/>
+  <path class="small" d="M432 150 Q432 188 470 188 Q432 188 432 226 Q432 188 394 188 Q432 188 432 150Z"/>
+</svg>

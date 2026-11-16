@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>修订渲染验证</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>修订渲染验证</h1>
+      <p>两个编辑器各自持有一份文档，经由中间的"服务端"文档同步。修订存为字符身份集合，用装饰渲染。</p>
+    </header>
+    <main>
+      <section class="peer" id="ann"></section>
+      <section class="peer" id="bob"></section>
+    </main>
+    <section class="agent">
+      <h2>模拟 AI（在服务端文档上操作）</h2>
+      <div class="row">
+        <button id="ai-read">读取 Ann 光标所在段落</button>
+        <span id="ai-base" class="muted">尚未读取</span>
+      </div>
+      <textarea id="ai-text" rows="3" placeholder="读取后，在这里改成 AI 想要的新内容"></textarea>
+      <div class="row">
+        <button id="ai-propose">提议</button>
+        <span id="ai-result" class="muted"></span>
+      </div>
+    </section>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

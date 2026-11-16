@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; connect-src http://127.0.0.1:*" />
+<title>Electron shell spike</title>
+<pre id="out">running…</pre>
+<script>
+  const { baseUrl, token } = window.svc
+  const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json' }
+  ;(async () => {
+    const value = new Date().toISOString()
+    await fetch(`${baseUrl}/kv`, { method: 'POST', headers, body: JSON.stringify({ key: 'hello', value }) })
+    const read = await (await fetch(`${baseUrl}/kv/hello`, { headers })).json()
+    document.getElementById('out').textContent = JSON.stringify({ wrote: value, read }, null, 2)
+  })().catch((e) => { document.getElementById('out').textContent = String(e) })
+</script>

@@ -1,0 +1,27 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "editor-spike",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "apps/editor-spike",
+        "dev"
+      ],
+      "port": 5183
+    },
+    {
+      "name": "stetpad-web",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "PORT=8788",
+        "pnpm",
+        "--dir",
+        "packages/server",
+        "start"
+      ],
+      "port": 8788
+    }
+  ]
+}

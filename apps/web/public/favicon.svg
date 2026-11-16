@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="t">
+  <title id="t">Stetpad</title>
+  <!-- 墨色底板上一本笔记本（线圈 + 文字行），其中朱红的一行是 AI 写下、等你审阅的修改；
+       右下角的大星芒代表 AI，小星芒是点缀 -->
+  <rect width="512" height="512" rx="112" fill="#2A251F"/>
+  <g>
+    <rect x="156" y="80" width="28" height="60" rx="14" fill="#B9AE9C"/>
+    <rect x="222" y="80" width="28" height="60" rx="14" fill="#B9AE9C"/>
+    <rect x="288" y="80" width="28" height="60" rx="14" fill="#B9AE9C"/>
+    <rect x="104" y="108" width="264" height="316" rx="40" fill="#FBF6EC"/>
+    <rect x="156" y="200" width="160" height="24" rx="12" fill="#2A251F"/>
+    <rect x="156" y="256" width="160" height="24" rx="12" fill="#D63F2A"/>
+    <rect x="156" y="312" width="96" height="24" rx="12" fill="#2A251F"/>
+  </g>
+  <path d="M368 256 Q368 360 472 360 Q368 360 368 464 Q368 360 264 360 Q368 360 368 256Z" fill="#D63F2A" stroke="#2A251F" stroke-width="22" stroke-linejoin="round" paint-order="stroke"/>
+  <path d="M432 150 Q432 188 470 188 Q432 188 432 226 Q432 188 394 188 Q432 188 432 150Z" fill="#FBF6EC"/>
+</svg>

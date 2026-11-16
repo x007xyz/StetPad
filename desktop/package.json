@@ -1,0 +1,49 @@
+{
+  "name": "stetpad-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "description": "Stetpad desktop app",
+  "author": "Stetpad",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "npm run build && electron .",
+    "smoke:dev": "npm run build && electron . --smoke",
+    "pack": "npm run build && electron-builder --dir",
+    "smoke:packed": "node run-packed.cjs --smoke",
+    "pack:win": "npm run build && electron-builder --win --x64 --dir"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.1.1",
+    "pdfjs-dist": "^6.5.438",
+    "@napi-rs/canvas": "^1.1.1",
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "app.stetpad.desktop",
+    "productName": "Stetpad",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "web/**"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "electronDist": "node_modules/electron/dist",
+    "mac": {
+      "identity": null,
+      "target": "dir"
+    },
+    "win": {
+      "target": "nsis"
+    }
+  }
+}

@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { go } from './App'
 import { SearchDialog } from './SearchDialog'
+import { deferred } from './lib/deferred.test-utils'
 
 vi.mock('./App', () => ({ go: vi.fn() }))
 
@@ -31,8 +32,7 @@ function typeQuery(input: HTMLInputElement, value: string) {
 }
 
 it('keeps cleared search results empty when an earlier request finishes', async () => {
-  let resolve!: (response: Response) => void
-  const promise = new Promise<Response>((done) => { resolve = done })
+  const { promise, resolve } = deferred<Response>()
   const fetchSearch = vi.fn(() => promise)
   vi.stubGlobal('fetch', fetchSearch)
   const onClose = vi.fn()

@@ -348,6 +348,17 @@ describe('export', () => {
     expect(back.filter((b) => b.type === 'codeBlock').map((b) => b.attrs.language)).toEqual(['mermaid', 'math'])
   })
 
+  it('imports escaped table pipes without splitting cells', async () => {
+    const back = await fileToBlocks('table.md', enc('| A\\|B | tail |\n| --- | --- |\n| C\\|D | tail |\n'))
+    expect(back).toEqual([{ type: 'table', attrs: { rows: JSON.stringify([['A|B', 'tail'], ['C|D', 'tail']]) }, delta: [] }])
+  })
+
+  it.each(['A|B', 'A\\|B', '', 'plain'])('round-trips table cells containing %j through Markdown', async (cell) => {
+    const table: Block = { type: 'table', attrs: { rows: JSON.stringify([[cell, 'tail'], [cell, 'tail']]) }, delta: [] }
+    const back = await fileToBlocks('table.md', enc(blocksToMarkdown([table])))
+    expect(back).toEqual([table])
+  })
+
   it('html writes figures, video, iframe and escapes attributes', () => {
     const html = blocksToHtml(
       [image, file, embed, { type: 'image', attrs: { src: '/files/x"><script>', alt: '"', caption: '<b>' }, delta: [] }],

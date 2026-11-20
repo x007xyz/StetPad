@@ -714,7 +714,7 @@ export function blocksToMarkdown(input: Block[]): string {
         break
       }
       case 'table': {
-        const rows = tableRows(b)
+        const rows = tableRows(b).map((r) => r.map((c) => String(c ?? '').replace(/([\\|])/g, '\\$1')))
         if (rows[0]) {
           out.push('| ' + rows[0].join(' | ') + ' |', '| ' + rows[0].map(() => '---').join(' | ') + ' |', ...rows.slice(1).map((r) => '| ' + r.join(' | ') + ' |'))
         }

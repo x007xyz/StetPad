@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { startServer, type RunningServer } from '../src'
 import { Store, sqliteSql, type Sql } from '../src/db'
+import { nonAsciiFixtures } from './non-ascii'
 
 const until = async (check: () => boolean | Promise<boolean>, what: string, ms = 8000) => {
   const t = Date.now()
@@ -81,6 +82,48 @@ describe('search', () => {
       await store.deleteDoc(doc.id)
     }
     expect(await search('écolière', me.token)).toEqual([])
+  })
+
+  for (const fixture of nonAsciiFixtures) {
+    it.each(fixture.queries)(`finds ${fixture.name} titles for %s`, async (query) => {
+      const doc = await store.createDoc(me.id, fixture.title, stateWith('Unrelated body'))
+      try {
+        expect(await search(query, me.token)).toContainEqual(expect.objectContaining({ id: doc.id, title: fixture.title, titleMatch: true, snippet: '' }))
+      } finally {
+        await store.deleteDoc(doc.id)
+      }
+    })
+
+    it(`finds unchanged ${fixture.name} body text`, async () => {
+      const doc = await store.createDoc(me.id, 'Unrelated title', stateWith(fixture.content))
+      try {
+        expect(await search(fixture.bodyQuery, me.token)).toContainEqual(expect.objectContaining({ id: doc.id, titleMatch: false, snippet: fixture.content }))
+      } finally {
+        await store.deleteDoc(doc.id)
+      }
+    })
+
+    // Store.searchDocs uses SQLite lower for bodies, and JS lower is not full case folding.
+    const bodyCase = fixture.bodyCaseFails ? it.fails : it
+    bodyCase(`finds case-insensitive ${fixture.name} body text`, async () => {
+      const doc = await store.createDoc(me.id, 'Unrelated title', stateWith(fixture.content.toUpperCase()))
+      try {
+        expect(await search(fixture.content.toLowerCase(), me.token)).toContainEqual(expect.objectContaining({ id: doc.id, titleMatch: false }))
+      } finally {
+        await store.deleteDoc(doc.id)
+      }
+    })
+  }
+
+  // JS toLowerCase is not full case folding: Straße and STRASSE remain different.
+  it.fails('finds German sharp s titles when searching their uppercase spelling', async () => {
+    const fixture = nonAsciiFixtures.find((f) => f.name === 'German sharp s')!
+    const doc = await store.createDoc(me.id, fixture.title, stateWith('Unrelated body'))
+    try {
+      expect(await search(fixture.title.toUpperCase(), me.token)).toContainEqual(expect.objectContaining({ id: doc.id, titleMatch: true }))
+    } finally {
+      await store.deleteDoc(doc.id)
+    }
   })
 
   it('returns nothing for a blank query', async () => {

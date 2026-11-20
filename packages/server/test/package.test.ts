@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { startServer, type RunningServer, type ServerConfig } from '../src'
+import { nonAsciiFixtures } from './non-ascii'
 
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0))
 /** Stands in for an mp4. The server never parses media, so ten known bytes are enough. */
@@ -93,6 +94,45 @@ describe('document package', () => {
   afterAll(async () => {
     await h.server.close()
     rmSync(h.dir, { recursive: true, force: true })
+  })
+
+  describe.each(nonAsciiFixtures)('$name round trips', (fixture) => {
+    for (const format of ['package', 'json', 'md', 'html', 'docx'] as const) {
+      // fileToBlocks adds the HTML title as a heading to paragraph-only documents.
+      const roundTrip = format === 'html' ? it.fails : it
+      roundTrip(`preserves the title and UTF-8 content via ${format}`, async () => {
+        const created = await send(h, '/import/create', {
+          method: 'POST',
+          json: { title: fixture.title, blocks: [{ type: 'paragraph', attrs: {}, delta: [{ insert: fixture.content }] }] },
+        })
+        expect(created.status).toBe(200)
+        const source = await created.json()
+        const exported = await send(h, format === 'package' ? `/docs/${source.id}/package` : `/docs/${source.id}/export?format=${format}`)
+        expect(exported.status).toBe(200)
+        let restored: Response
+        if (format === 'package' || format === 'json') {
+          if (format === 'package') {
+            expect(exported.headers.get('content-disposition')).toBe(`attachment; filename*=UTF-8''${encodeURIComponent(fixture.title + '.stetpad')}`)
+          }
+          restored = await send(h, '/import/package', { method: 'POST', body: await exported.arrayBuffer(), type: format === 'package' ? 'application/octet-stream' : 'application/json' })
+        } else {
+          const form = new FormData()
+          form.append('file', new File([await exported.arrayBuffer()], `${fixture.title}.${format}`))
+          const preview = await send(h, '/import/preview', { method: 'POST', body: form })
+          expect(preview.status).toBe(200)
+          const parsed = await preview.json()
+          expect(parsed.title).toBe(fixture.title)
+          restored = await send(h, '/import/create', { method: 'POST', json: parsed })
+        }
+        expect(restored.status).toBe(200)
+        const copy = await restored.json()
+        expect(copy.id).not.toBe(source.id)
+        expect(copy.title).toBe(fixture.title)
+        const expected = Buffer.from(fixture.content + '\n', 'utf8')
+        expect(Buffer.from(await md(h, source.id), 'utf8')).toEqual(expected)
+        expect(Buffer.from(await md(h, copy.id), 'utf8')).toEqual(expected)
+      })
+    }
   })
 
   it('counts the images and videos a package would hold', async () => {

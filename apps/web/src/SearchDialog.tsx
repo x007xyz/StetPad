@@ -23,6 +23,11 @@ export function SearchDialog({ onClose }: { onClose: () => void }) {
   const [searched, setSearched] = useState('') // the query the current results belong to
   const [active, setActive] = useState(0)
   const seq = useRef(0)
+  const activeResult = useRef<HTMLLIElement>(null)
+
+  useEffect(() => {
+    activeResult.current?.scrollIntoView({ block: 'nearest' })
+  }, [active, results])
 
   useEffect(() => {
     const q = query.trim()
@@ -106,6 +111,7 @@ export function SearchDialog({ onClose }: { onClose: () => void }) {
             {currentResults.map((r, i) => (
               <li
                 key={r.id}
+                ref={i === active ? activeResult : undefined}
                 id={`search-r-${r.id}`}
                 role="option"
                 aria-selected={i === active}

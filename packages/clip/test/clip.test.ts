@@ -107,6 +107,17 @@ describe('@stetpad/clip domToBlocks', () => {
   })
 })
 
+describe('@stetpad/clip table Markdown', () => {
+  it('escapes pipes and backslashes in header and body cells', () => {
+    const blocks = parse('<table><tr><th>A|B</th><th>tail</th></tr><tr><td>A\\|B</td><td>tail</td></tr></table>')
+    expect(blocksToMarkdown(blocks)).toBe('| A\\|B | tail |\n| --- | --- |\n| A\\\\\\|B | tail |\n')
+  })
+
+  it.each(['[]', 'invalid JSON'])('omits empty or invalid table rows: %s', (rows) => {
+    expect(blocksToMarkdown([{ type: 'table', attrs: { rows }, delta: [] }])).toBe('\n')
+  })
+})
+
 describe('@stetpad/clip embedPlayerUrl', () => {
   it('maps YouTube links to the privacy-enhanced embed player', () => {
     expect(embedPlayerUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toBe('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ')

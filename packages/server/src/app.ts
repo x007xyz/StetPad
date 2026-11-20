@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { isEmbedUrl, safeHref, safeImageSrc, safeVideoSrc } from '@stetpad/clip'
-import { BLOCK_TYPES, blocks as yBlocks, type CommentView, insertBlock, listComments, newBlockId, newChangeId, projectBlocks, trackedInsertBlock } from '@stetpad/crdt'
+import { BLOCK_TYPES, blocks as yBlocks, type CommentView, footnoteAttr, insertBlock, listComments, newBlockId, newChangeId, projectBlocks, trackedInsertBlock } from '@stetpad/crdt'
 import { Hono, type Context } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import { createHash, randomBytes } from 'node:crypto'
@@ -183,7 +183,7 @@ const kindLabel = (mime: string): string => {
 }
 
 const ALLOWED_BLOCK_TYPES: ReadonlySet<string> = new Set(BLOCK_TYPES)
-const ALLOWED_MARKS = new Set(['bold', 'italic', 'underline', 'strike', 'code', 'highlight', 'link', 'math'])
+const ALLOWED_MARKS = new Set(['bold', 'italic', 'underline', 'strike', 'code', 'highlight', 'link', 'math', 'footnote'])
 function sanitizeBlocks(raw: unknown[]): Block[] {
   const out: Block[] = []
   for (const item of raw.slice(0, 2000)) {
@@ -265,6 +265,9 @@ function sanitizeBlocks(raw: unknown[]): Block[] {
             if (k === 'link') {
               const href = v && typeof v === 'object' ? safeHref(String((v as { href?: unknown }).href ?? '')) : null
               if (href) (cleanMarks ??= {}).link = { href }
+            } else if (k === 'footnote') {
+              const footnote = footnoteAttr(rawMarks)
+              if (footnote) (cleanMarks ??= {}).footnote = footnote
             } else {
               // Inline math is `math: true`, as the importers write it; the other marks carry no attributes.
               (cleanMarks ??= {})[k] = k === 'math' ? true : {}

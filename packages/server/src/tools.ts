@@ -61,8 +61,7 @@ const FENCE = /^```([\w+#.-]*)[ \t]*\n?([\s\S]*?)\n?```$/
 const MATH = /^\$\$\n?([\s\S]*?)\n?\$\$$/
 
 /** One line of the block notation agents read and write. */
-export function parseBlock(content: string): ParsedBlock {
-  const s = content.replace(/^\[[\w-]+\]\s*/, '')
+export function parseBlock(s: string): ParsedBlock {
   const t = s.trim()
   let m: RegExpMatchArray | null
   if ((m = s.match(/^(#{1,3})\s+(.*)$/s))) return { type: 'heading', attrs: { level: m[1]!.length }, text: m[2]! }
@@ -311,6 +310,12 @@ export class DocTools {
     private meta: Meta,
   ) {}
 
+  /** Agents may echo the `[blockId]` prefix they read; drop it only when it names a block of this document. */
+  private parse(content: string): ParsedBlock {
+    const m = content.match(/^\[([\w-]+)\]\s*/)
+    return parseBlock(m && findBlock(this.doc, m[1]!) ? content.slice(m[0].length) : content)
+  }
+
   private revised(): RichBlock[] {
     return projectBlocks(this.doc, 'revised')
   }
@@ -552,7 +557,7 @@ export class DocTools {
   replaceBlock(blockId: string, content: string, reason?: string) {
     const el = findBlock(this.doc, blockId)
     if (!el) return { ok: false as const, error: `block ${blockId} does not exist` }
-    const next = parseBlock(content)
+    const next = this.parse(content)
     const conv = plainOf(next.type, next.text)
     if (next.type !== el.nodeName) {
       // The node type cannot change in place: propose a new block and the removal of the old one.
@@ -615,7 +620,7 @@ export class DocTools {
     const maths: Array<Array<[number, number]>> = []
     this.doc.transact(() => {
       contents.forEach((c, i) => {
-        const b = parseBlock(c)
+        const b = this.parse(c)
         const conv = plainOf(b.type, b.text)
         const id = newBlockId()
         ids.push(id)

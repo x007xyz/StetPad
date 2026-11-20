@@ -12,6 +12,7 @@ import {
   replyToComment,
   resolveComment,
   decide,
+  diffWords,
   findBlock,
   listChanges,
   newBlockId,
@@ -170,6 +171,26 @@ export function formatBlock(b: { type: string; attrs: Record<string, unknown>; t
 export const TEXT_TYPES = new Set(['paragraph', 'heading', 'bulletItem', 'orderedItem', 'taskItem', 'quote', 'callout'])
 
 type Run = { insert: string; attributes?: Record<string, unknown> }
+
+/** Carry inline marks from unchanged words into replacement text. */
+function carryMarks(oldText: string, oldDelta: Run[], newText: string): Run[] {
+  const delta: Run[] = []
+  let offset = 0
+  for (const op of diffWords(oldText, newText)) {
+    if (op.type === 'insert') delta.push({ insert: op.text })
+    if (op.type === 'equal') {
+      let at = 0
+      for (const run of oldDelta) {
+        const start = Math.max(0, offset - at)
+        const end = Math.min(run.insert.length, offset + op.text.length - at)
+        if (end > start) delta.push({ ...run, insert: run.insert.slice(start, end) })
+        at += run.insert.length
+      }
+    }
+    if (op.type !== 'insert') offset += op.text.length
+  }
+  return delta
+}
 
 /** A literal `$` is `\$`; a backslash is doubled only where it would otherwise join the next `$` or `\`. */
 const encodePlain = (s: string): string => {
@@ -499,12 +520,14 @@ export class DocTools {
     math: Array<[number, number]> = [],
   ) {
     const oldId = blockIdOf(el)
-    if (!this.revised().some((b) => b.blockId === oldId)) return { ok: false as const, error: `block ${oldId} is pending deletion` }
+    const old = projectBlocks(this.doc, 'revised').find((b) => b.blockId === oldId)
+    if (!old) return { ok: false as const, error: `block ${oldId} is pending deletion` }
+    const delta = carryMarks(old.text, old.delta, text)
     const changeId = newChangeId()
     const id = newBlockId()
     const meta = { ...this.meta, reason }
     this.doc.transact(() => {
-      trackedInsertBlock(this.doc, blockIndex(this.doc, el) + 1, id, text, meta, { changeId, type, attrs })
+      trackedInsertBlock(this.doc, blockIndex(this.doc, el) + 1, id, text, meta, { changeId, type, attrs, delta })
       trackedDeleteBlock(this.doc, el, meta, { changeId })
     })
     this.markMath(id, text, math)
@@ -618,7 +641,7 @@ export class DocTools {
         index = blockIndex(this.doc, target) + 1
       }
       const meta = { ...this.meta, reason }
-      trackedInsertBlock(this.doc, index, id, b.text, meta, { changeId, type: b.type, attrs: b.attrs })
+      trackedInsertBlock(this.doc, index, id, b.text, meta, { changeId, type: b.type, attrs: b.attrs, delta: b.delta })
       trackedDeleteBlock(this.doc, el, meta, { changeId })
     })
     if (failed) return { ok: false as const, error: failed }

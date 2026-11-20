@@ -281,7 +281,7 @@ function SidebarBody({ ctx, activeId, activeFolderId, trashActive, onNavigate }:
         <button className="flex w-full items-center gap-2 rounded-md border border-border px-2 py-1 text-left text-[13px] text-muted-foreground hover:bg-accent" onClick={() => { onNavigate(); openSearch() }}>
           <Search className="size-3.5 shrink-0" />
           <span className="min-w-0 flex-1 truncate">搜索文档</span>
-          <kbd className="shrink-0 rounded border border-border px-1 font-sans text-[11px]">⌘K</kbd>
+          <kbd className="shrink-0 rounded border border-border px-1 font-sans text-[11px]">{/Mac|iPhone|iPad|iPod/.test(navigator.platform) ? '⌘K' : 'Ctrl K'}</kbd>
         </button>
       </div>
 

@@ -396,7 +396,7 @@ export class DocTools {
 
   /**
    * Attach a footnote to an exact phrase in one block. The phrase must occur
-   * once in the text the user sees. Footnotes are formatting, not suggestions.
+   * once in the text the user sees. Propose the formatting as a replacement block.
    */
   addFootnote(blockId: string, phrase: string, note: string) {
     const el = findBlock(this.doc, blockId)
@@ -410,20 +410,24 @@ export class DocTools {
     if (shown.indexOf(phrase, first + 1) >= 0) {
       return { ok: false as const, error: 'phrase occurs more than once; use a longer phrase' }
     }
-    // Characters of the phrase, grouped into runs of one Y.Text. A character pending
-    // deletion between two of them breaks the run, so it is not formatted.
-    const runs: { text: (typeof visible)[number]['text']; index: number; len: number }[] = []
-    for (const c of visible.slice(first, first + phrase.length)) {
-      const last = runs[runs.length - 1]
-      if (last && last.text === c.text && last.index + last.len === c.index) last.len++
-      else runs.push({ text: c.text, index: c.index, len: 1 })
-    }
+    const current = this.revised().find((b) => b.blockId === blockId)
+    if (!current) return { ok: false as const, error: `block ${blockId} is pending deletion` }
+    if (changesInBlock(this.doc, el).length) return { ok: false as const, error: 'block has pending changes; resolve them before changing its footnotes' }
     const id = 'fn_' + Math.random().toString(36).slice(2, 10)
-    this.doc.transact(() => {
-      for (const r of runs) r.text.format(r.index, r.len, { footnote: { id, note: note.trim() } })
-    })
-    this.remember(blockId)
-    return { ok: true as const, footnote_id: id }
+    const delta: RichBlock['delta'] = []
+    let offset = 0
+    for (const run of current.delta) {
+      const start = Math.max(0, first - offset)
+      const end = Math.min(run.insert.length, first + phrase.length - offset)
+      if (start < end) {
+        if (start) delta.push({ ...run, insert: run.insert.slice(0, start) })
+        delta.push({ insert: run.insert.slice(start, end), attributes: { ...run.attributes, footnote: { id, note: note.trim() } } })
+        if (end < run.insert.length) delta.push({ ...run, insert: run.insert.slice(end) })
+      } else delta.push(run)
+      offset += run.insert.length
+    }
+    const result = this.replaceWithNew(el, el.nodeName, this.attrsOf(el), current.text, undefined, [], { ...current, delta })
+    return { ...result, footnote_id: id }
   }
 
   readAll(): string {

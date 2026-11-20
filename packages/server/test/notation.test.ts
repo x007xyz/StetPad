@@ -136,6 +136,52 @@ function docWith(blocks: { id: string; type: string; text?: string; attrs?: Reco
 describe('DocTools on the new block types', () => {
   const meta = { author: AI, runId: 'r1' }
 
+  it.each(['accept', 'reject'] as const)('footnote replacement requires approval: %s', (decision) => {
+    const doc = docWith([{ id: 'b1', type: 'paragraph', text: 'A human claim.' }])
+    const human = { id: 'human', note: 'Human source' }
+    blockText(findBlock(doc, 'b1')!).format(2, 5, { footnote: human })
+    const original = projectBlocks(doc, 'original')[0]!.delta
+    const result = new DocTools(doc, meta).addFootnote('b1', 'human', 'AI source')
+    expect(result.ok).toBe(true)
+    expect(projectBlocks(doc, 'original')[0]!.delta).toEqual(original)
+    const pending = listChanges(doc)
+    expect(pending).toHaveLength(1)
+    expect(projectBlocks(doc, 'revised')[0]!.delta[1]!.attributes?.footnote).toMatchObject({ note: 'AI source' })
+    decide(doc, pending[0]!.id, decision)
+    compact(doc)
+    expect(listChanges(doc)).toHaveLength(0)
+    expect(projectBlocks(doc, 'original')).toHaveLength(1)
+    if (decision === 'accept') {
+      expect(projectBlocks(doc, 'original')[0]!.delta[1]!.attributes?.footnote).toMatchObject({ note: 'AI source' })
+    } else {
+      expect(projectBlocks(doc, 'original')[0]!.delta).toEqual(original)
+    }
+  })
+
+  it('footnote replacement preserves other marks and comment anchors', () => {
+    const doc = docWith([{ id: 'b1', type: 'heading', attrs: { level: 2 }, text: 'A human claim.' }])
+    const text = blockText(findBlock(doc, 'b1')!)
+    text.format(2, 3, { link: { href: 'https://example.com' }, math: true })
+    const tools = new DocTools(doc, meta)
+    tools.addComment('b1', 'human', 'Keep this')
+    const result = tools.addFootnote('b1', 'human', 'Source')
+    if (!result.ok) throw new Error(result.error)
+    decide(doc, result.change_ids[0]!, 'accept')
+    compact(doc)
+    const block = projectBlocks(doc, 'original')[0]!
+    expect(block).toMatchObject({ type: 'heading', attrs: { level: 2 }, text: 'A human claim.' })
+    expect(block.delta[1]).toMatchObject({ insert: 'hum', attributes: { link: { href: 'https://example.com' }, math: true, footnote: { note: 'Source' } } })
+    expect(listComments(doc)[0]).toMatchObject({ quote: 'human', orphaned: false, blockId: result.new_block_id })
+  })
+
+  it('footnote replacement refuses pending revisions without changing the document', () => {
+    const doc = docWith([{ id: 'b1', type: 'paragraph', text: 'A human claim.' }])
+    trackedInsert(doc, blockText(findBlock(doc, 'b1')!), 14, ' pending', meta)
+    const before = Y.encodeStateAsUpdate(doc)
+    expect(new DocTools(doc, meta).addFootnote('b1', 'human', 'Source')).toEqual({ ok: false, error: 'block has pending changes; resolve them before changing its footnotes' })
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before)
+  })
+
   it('refuses attribute changes while another text revision is pending', () => {
     const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Title' }])
     const tools = new DocTools(doc, meta)

@@ -127,7 +127,5 @@ test('refreshes trash when deleting from the sidebar while trash is open', async
   await page.getByRole('button', { name: '删除 Live trash draft', exact: true }).click()
   await page.getByRole('dialog').getByRole('button', { name: '移到回收站', exact: true }).click()
   await expect(sidebar(page).getByRole('button', { name: 'Live trash draft', exact: true })).toHaveCount(0)
-  // Bug: TrashPage loads only on mount; sidebar deletions do not refresh its list.
-  test.fail()
   await expect(page.getByRole('listitem').filter({ hasText: 'Live trash draft' })).toBeVisible()
 })

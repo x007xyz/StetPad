@@ -1,20 +1,7 @@
 import { changesInBlock, decideAndLog, findBlock, listChanges, listDecided, projectBlocks, type DecidedChange, type PendingChange } from '@stetpad/crdt'
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import { Editor } from '@tiptap/core'
-import Bold from '@tiptap/extension-bold'
-import Code from '@tiptap/extension-code'
-import Collaboration from '@tiptap/extension-collaboration'
-import CollaborationCaret from '@tiptap/extension-collaboration-caret'
-import Document from '@tiptap/extension-document'
-import Heading from '@tiptap/extension-heading'
-import Highlight from '@tiptap/extension-highlight'
-import Italic from '@tiptap/extension-italic'
-import Link from '@tiptap/extension-link'
-import Paragraph from '@tiptap/extension-paragraph'
-import Strike from '@tiptap/extension-strike'
-import Text from '@tiptap/extension-text'
-import Underline from '@tiptap/extension-underline'
-import { Dropcursor, Gapcursor, Placeholder } from '@tiptap/extensions'
+import { editorExtensions } from './editor/extensions'
 import { ExternalLink, ListChecks, Sparkles } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { IndexeddbPersistence } from 'y-indexeddb'
@@ -26,8 +13,6 @@ import { Dialog, SheetContent } from './components/ui/dialog'
 import { Select } from './components/ui/select'
 import { Switch } from './components/ui/switch'
 import { Tip, TooltipProvider } from './components/ui/tooltip'
-import { BlockId, BlockKeys, BulletItem, Callout, CodeBlock, Divider, Image, OrderedItem, Quote, Table, TaskItem } from './editor/schema'
-import { Tracked } from './editor/tracked'
 import { getLang } from './i18n'
 import { useMedia } from './lib/useMedia'
 import { cn } from './lib/utils'
@@ -290,19 +275,12 @@ function DocSection({ doc, first, author, trackingRef, force, onState, onRenamed
     if (!ready || !visible || !mount.current) return
     const editor = new Editor({
       element: mount.current,
-      extensions: [
-        Document, Text, Paragraph,
-        Heading.configure({ levels: [1, 2, 3] }),
-        BulletItem, OrderedItem, TaskItem, Quote, Callout, CodeBlock, Divider, Image, Table,
-        Bold, Italic, Underline, Strike, Code, Highlight,
-        Link.configure({ openOnClick: false, autolink: true }),
-        Dropcursor, Gapcursor,
-        Placeholder.configure({ placeholder: getLang() === 'en' ? 'Type something' : '输入内容' }),
-        Collaboration.configure({ document: ydoc, field: 'content' }),
-        ...(providerRef.current ? [CollaborationCaret.configure({ provider: providerRef.current, user: { name: author, color: COLORS[Math.floor(Math.random() * COLORS.length)]! } })] : []),
-        BlockId, BlockKeys,
-        Tracked.configure({ doc: ydoc, user: () => ({ author, tracking: trackingRef.current }) }),
-      ],
+      extensions: editorExtensions({
+        ydoc, docId: id,
+        user: () => ({ author, tracking: trackingRef.current }),
+        placeholder: getLang() === 'en' ? 'Type something' : '输入内容',
+        caret: providerRef.current ? { provider: providerRef.current, user: { name: author, color: COLORS[Math.floor(Math.random() * COLORS.length)]! } } : undefined,
+      }),
       editorProps: { attributes: { class: 'prose', spellcheck: 'false' } },
     })
     editorRef.current = editor

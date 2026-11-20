@@ -2,20 +2,7 @@ import { getLang } from './i18n'
 import { addComment, blocks, blockIdOf, changesInBlock, decide, deleteComment, findBlock, footnotesOf, listChanges, listComments, listDecided, decideAndLog, type DecidedChange, projectBlocks, replyToComment, resolveComment, type CommentView, type PendingChange } from '@stetpad/crdt'
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import { Editor } from '@tiptap/core'
-import Bold from '@tiptap/extension-bold'
-import Code from '@tiptap/extension-code'
-import Collaboration from '@tiptap/extension-collaboration'
-import CollaborationCaret from '@tiptap/extension-collaboration-caret'
-import Document from '@tiptap/extension-document'
-import Heading from '@tiptap/extension-heading'
-import Highlight from '@tiptap/extension-highlight'
-import Italic from '@tiptap/extension-italic'
-import Link from '@tiptap/extension-link'
-import Paragraph from '@tiptap/extension-paragraph'
-import Strike from '@tiptap/extension-strike'
-import Text from '@tiptap/extension-text'
-import Underline from '@tiptap/extension-underline'
-import { Dropcursor, Gapcursor, Placeholder } from '@tiptap/extensions'
+import { editorExtensions } from './editor/extensions'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { NodeSelection } from '@tiptap/pm/state'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -31,9 +18,8 @@ import { Tip, TooltipProvider } from './components/ui/tooltip'
 import { useMedia } from './lib/useMedia'
 import { cn } from './lib/utils'
 import { SidebarToggle, useWorkspaceOptional } from './Shell'
-import { addFootnote, Footnote, FootnoteList, FootnotePopover, scrollToFootnote } from './editor/footnotes'
-import { InlineMath } from './editor/inlineMath'
-import { BlockId, BlockKeys, BulletItem, Callout, CodeBlock, Divider, Drawio, Image, moveBlock, OrderedItem, Quote, SLASH_ITEMS, Table, TaskItem, Video } from './editor/schema'
+import { addFootnote, FootnoteList, FootnotePopover, scrollToFootnote } from './editor/footnotes'
+import { moveBlock, SLASH_ITEMS } from './editor/schema'
 import { BlockMenu, type MenuAction, type MenuSection } from './editor/BlockMenu'
 import { AiDiagramDialog, type AiDiagramInitial, type DialogKind } from './editor/AiDiagramDialog'
 import { DrawioEditor } from './editor/DrawioEditor'
@@ -41,13 +27,12 @@ import { commitDrawio, DRAWIO_EDIT_EVENT, findTopBlock } from './editor/drawio'
 import { AiImageDialog } from './editor/AiImageDialog'
 import { VideoEmbedDialog, type VideoEmbed } from './editor/VideoEmbedDialog'
 import { LinkCardDialog } from './editor/LinkCardDialog'
-import { FileBlock } from './editor/file'
-import { LinkCard, unfurlLink, type LinkCardAttrs } from './editor/linkcard'
+import { unfurlLink, type LinkCardAttrs } from './editor/linkcard'
 import { AI_DIAGRAM_EVENT, AI_DIAGRAM_NEW_EVENT, rasterizeSvg, renderMermaid, type AiDiagramNewRequest, type AiDiagramRequest, type Raster } from './editor/diagram'
 import { attachmentFiles, describeInBackground, FILE_ACCEPT, IMAGE_ACCEPT, IMAGE_ACTION_EVENT, VIDEO_ACCEPT, imageFiles, insertAttachment, insertImageAfter, insertImageFiles, insertVideoFile, posAfterBlock, replaceImageSrc, uploadFile, videoFiles, type ImageAction } from './editor/media'
 import { AiImageEditDialog } from './editor/AiImageEditDialog'
 import { ImageEditDialog } from './editor/ImageEditDialog'
-import { anchorBetween, Tracked } from './editor/tracked'
+import { anchorBetween } from './editor/tracked'
 import { AiPanel, makeLabel, useRuns, type ContextItem } from './panels/Ai'
 import { ChangesPanel } from './panels/Changes'
 import { CommentsPanel } from './panels/Comments'
@@ -388,21 +373,13 @@ export function DocPage({ id }: { id: string }) {
     if (!ready || !mount.current) return
     const editor = new Editor({
       element: mount.current,
-      extensions: [
-        Document, Text, Paragraph,
-        Heading.configure({ levels: [1, 2, 3] }),
-        BulletItem, OrderedItem, TaskItem, Quote, Callout, CodeBlock, Divider, Image.configure({ docId: id }), Video.configure({ docId: id }), Drawio.configure({ docId: id }), Table, FileBlock, LinkCard,
-        Bold, Italic, Underline, Strike, Code, Highlight, InlineMath,
-        Link.configure({ openOnClick: false, autolink: true }),
-        Footnote.configure({ onOpen: (id, rect, pinned) => fnOpenRef.current(id, rect, pinned), onLeave: () => fnLeaveRef.current(), onShortcut: () => fnShortcutRef.current() }),
-        Dropcursor, Gapcursor,
-        Placeholder.configure({ placeholder: getLang() === 'en' ? 'Type something, or type / to pick a block type' : '输入内容，或输入 / 选择块类型' }),
-        Collaboration.configure({ document: ydoc, field: 'content' }),
-        // Other people's cursors and selections.
-        ...(providerRef.current ? [CollaborationCaret.configure({ provider: providerRef.current, user: { name: author, color: COLORS[Math.floor(Math.random() * COLORS.length)]! } })] : []),
-        BlockId, BlockKeys,
-        Tracked.configure({ doc: ydoc, user: () => ({ author, tracking: trackingRef.current }) }),
-      ],
+      extensions: editorExtensions({
+        ydoc, docId: id,
+        user: () => ({ author, tracking: trackingRef.current }),
+        placeholder: getLang() === 'en' ? 'Type something, or type / to pick a block type' : '输入内容，或输入 / 选择块类型',
+        footnote: { onOpen: (id, rect, pinned) => fnOpenRef.current(id, rect, pinned), onLeave: () => fnLeaveRef.current(), onShortcut: () => fnShortcutRef.current() },
+        caret: providerRef.current ? { provider: providerRef.current, user: { name: author, color: COLORS[Math.floor(Math.random() * COLORS.length)]! } } : undefined,
+      }),
       editorProps: {
         attributes: { class: 'prose', spellcheck: 'false' },
         // Pasted images go in after the current block; plain paste is left alone.

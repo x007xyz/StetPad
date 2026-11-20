@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { isEmbedUrl, safeHref, safeImageSrc, safeVideoSrc } from '@stetpad/clip'
-import { blocks as yBlocks, type CommentView, insertBlock, listComments, newBlockId, newChangeId, projectBlocks, trackedInsertBlock } from '@stetpad/crdt'
+import { BLOCK_TYPES, blocks as yBlocks, type CommentView, insertBlock, listComments, newBlockId, newChangeId, projectBlocks, trackedInsertBlock } from '@stetpad/crdt'
 import { Hono, type Context } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import { createHash, randomBytes } from 'node:crypto'
@@ -182,10 +182,7 @@ const kindLabel = (mime: string): string => {
   return kind ? KIND_LABEL[kind] : '文件'
 }
 
-const ALLOWED_BLOCK_TYPES = new Set([
-  'paragraph', 'heading', 'bulletItem', 'orderedItem', 'taskItem',
-  'quote', 'callout', 'codeBlock', 'divider', 'image', 'video', 'drawio', 'table', 'file', 'linkCard',
-])
+const ALLOWED_BLOCK_TYPES: ReadonlySet<string> = new Set(BLOCK_TYPES)
 const ALLOWED_MARKS = new Set(['bold', 'italic', 'underline', 'strike', 'code', 'highlight', 'link', 'math'])
 function sanitizeBlocks(raw: unknown[]): Block[] {
   const out: Block[] = []

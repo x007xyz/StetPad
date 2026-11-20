@@ -1,7 +1,7 @@
 import { changesInBlock, decideAndLog, findBlock, listChanges, listDecided, projectBlocks, type DecidedChange, type PendingChange } from '@stetpad/crdt'
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import { Editor } from '@tiptap/core'
-import { editorExtensions } from './editor/extensions'
+import { editorExtensions, type EditorExtensionOptions } from './editor/extensions'
 import { ExternalLink, ListChecks, Sparkles } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { IndexeddbPersistence } from 'y-indexeddb'
@@ -23,6 +23,10 @@ const COLORS = ['#d9480f', '#2b8a3e', '#1971c2', '#9c36b5', '#c2255c', '#087f5b'
 type FolderInfo = Folder & { docs: DocMeta[] }
 interface SectionState { ydoc: Y.Doc; changes: PendingChange[]; decided: DecidedChange[]; status: 'connecting' | 'connected' | 'offline' }
 type Tab = 'changes' | 'ai'
+
+/** The editor extensions for each document shown in a folder page. */
+export const folderEditorExtensions = (opts: Omit<EditorExtensionOptions, 'placeholder'>) =>
+  editorExtensions({ ...opts, placeholder: getLang() === 'en' ? 'Type something' : '输入内容' })
 
 /**
  * One continuous page for all documents of a folder. Each document has its own
@@ -275,10 +279,9 @@ function DocSection({ doc, first, author, trackingRef, force, onState, onRenamed
     if (!ready || !visible || !mount.current) return
     const editor = new Editor({
       element: mount.current,
-      extensions: editorExtensions({
+      extensions: folderEditorExtensions({
         ydoc, docId: id,
         user: () => ({ author, tracking: trackingRef.current }),
-        placeholder: getLang() === 'en' ? 'Type something' : '输入内容',
         caret: providerRef.current ? { provider: providerRef.current, user: { name: author, color: COLORS[Math.floor(Math.random() * COLORS.length)]! } } : undefined,
       }),
       editorProps: { attributes: { class: 'prose', spellcheck: 'false' } },

@@ -1,5 +1,6 @@
 import * as Y from 'yjs'
 import {
+  ATOM_BLOCK_TYPES,
   blockIdOf,
   blocks,
   blockText,
@@ -392,8 +393,6 @@ export function removeText(
     deleteIndices(text, victims)
   })
 }
-
-const ATOM_BLOCK_TYPES = new Set(['divider', 'image', 'video', 'drawio', 'table', 'file', 'linkCard'])
 
 /** Propose a new block. */
 export function trackedInsertBlock(

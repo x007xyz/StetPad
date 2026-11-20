@@ -20,14 +20,16 @@ import { InlineMath } from './inlineMath'
 import { Footnote, type FootnoteOptions } from './footnotes'
 import { Tracked } from './tracked'
 
-export function editorExtensions({ ydoc, docId, user, placeholder, caret, footnote }: {
+export interface EditorExtensionOptions {
   ydoc: Y.Doc
   docId: string
   user: () => { author: string; tracking: boolean }
   placeholder: string
   caret?: Parameters<typeof CollaborationCaret.configure>[0]
   footnote?: Partial<FootnoteOptions>
-}) {
+}
+
+export function editorExtensions({ ydoc, docId, user, placeholder, caret, footnote }: EditorExtensionOptions) {
   return [
     Document, Text, Paragraph,
     Heading.configure({ levels: [1, 2, 3] }),

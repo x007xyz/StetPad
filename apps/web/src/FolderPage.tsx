@@ -64,6 +64,7 @@ export function FolderPage({ id }: { id: string }) {
   // Reload when documents are moved in or out from the sidebar.
   useEffect(() => {
     void load()
+    return () => { ++loadSequence.current }
   }, [load, workspace?.docs])
 
   const onSection = useCallback((docId: string, s: SectionState): void => setSections((cur) => ({ ...cur, [docId]: s })), [])

@@ -8,6 +8,11 @@ const parse = (html: string, baseUrl?: string) => {
 }
 
 describe('@stetpad/clip domToBlocks', () => {
+  it('indents nested ordered Markdown by the parent marker width', () => {
+    const blocks = parse('<ol><li>a<ol><li>a1</li></ol></li><li>b</li></ol>')
+    expect(blocksToMarkdown(blocks)).toBe('1. a\n   1. a1\n2. b\n')
+  })
+
   it('converts headings, inline formatting, nested lists, tasks, and tables', () => {
     const blocks = parse(
       '<h1>Main</h1>' +

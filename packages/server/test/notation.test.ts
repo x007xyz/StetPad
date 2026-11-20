@@ -269,6 +269,39 @@ describe('import', () => {
 })
 
 describe('export', () => {
+  it.each([
+    ['ordered', '1. a\n   1. a1\n2. b', 'ol'],
+    ['bullet', '- a\n  - a1\n- b', 'ul'],
+    ['mixed', '1. a\n   - a1\n2. b', 'ol'],
+  ])('preserves nested %s lists through Markdown round-trip', async (_, md) => {
+    const blocks = await fileToBlocks('list.md', enc(md))
+    expect(blocks.map((b) => b.attrs.indent)).toEqual([0, 1, 0])
+    expect(await fileToBlocks('list.md', enc(blocksToMarkdown(blocks)))).toEqual(blocks)
+  })
+
+  it.each([
+    ['ordered', '1. a\n   1. a1\n2. b', 'ol', 'ol'],
+    ['bullet', '- a\n  - a1\n- b', 'ul', 'ul'],
+    ['mixed', '1. a\n   - a1\n2. b', 'ol', 'ul'],
+  ])('preserves nested %s lists in HTML export', async (_, md, outer, inner) => {
+    const blocks = await fileToBlocks('list.md', enc(md))
+    const html = blocksToHtml(blocks, 'Lists')
+    expect(html.replace(/\n/g, '')).toContain(`<${outer}><li>a<${inner}><li>a1</li></${inner}></li><li>b</li></${outer}>`)
+    expect(htmlToBlocks(html.split('<body>')[1]!.split('</body>')[0]!)).toEqual(blocks)
+  })
+
+  it.each([
+    '',
+    '1. a\n   1. a1\n      - deep\n   - other\n2. b\n\n# End\n\n1. restart',
+    '- [ ] a\n  - [x] child\n- [ ] b',
+    Array.from({ length: 11 }, (_, i) => `${i + 1}. item ${i}${i === 9 ? '\n    1. child' : ''}`).join('\n'),
+  ])('round-trips list boundaries, tasks, and wide markers: %s', async (md) => {
+    const blocks = await fileToBlocks('list.md', enc(md))
+    expect(await fileToBlocks('list.md', enc(blocksToMarkdown(blocks)))).toEqual(blocks)
+    const html = blocksToHtml(blocks, 'Lists')
+    expect(htmlToBlocks(html.split('<body>')[1]!.split('</body>')[0]!)).toEqual(blocks)
+  })
+
   const image: Block = { type: 'image', attrs: { src: '/files/abc', alt: 'cat', caption: 'A cat', width: 60 }, delta: [] }
   const mermaid: Block = { blockId: 'm1', type: 'codeBlock', attrs: { language: 'mermaid' }, delta: [{ insert: 'graph TD' }] }
   const math: Block = { blockId: 'x1', type: 'codeBlock', attrs: { language: 'math' }, delta: [{ insert: 'x^2' }] }

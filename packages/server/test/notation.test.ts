@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas'
-import { compact, decide, findBlock, insertBlock, listChanges, projectBlocks } from '@stetpad/crdt'
+import { blockText, compact, decide, findBlock, insertBlock, listChanges, listComments, projectBlocks } from '@stetpad/crdt'
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import {
@@ -135,6 +135,51 @@ function docWith(blocks: { id: string; type: string; text?: string; attrs?: Reco
 
 describe('DocTools on the new block types', () => {
   const meta = { author: AI, runId: 'r1' }
+
+  it('an attribute replacement preserves links, footnotes and inline math after acceptance', () => {
+    const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Link note x' }])
+    const text = blockText(findBlock(doc, 'h1')!)
+    text.format(0, 4, { link: { href: 'https://example.com' } })
+    text.format(5, 4, { footnote: { id: 'fn1', note: 'Source' } })
+    text.format(10, 1, { math: true })
+    const delta = projectBlocks(doc, 'revised')[0]!.delta
+    const r = new DocTools(doc, meta).replaceBlock('h1', '## Link note $x$')
+    if (!r.ok) throw new Error(r.error)
+    decide(doc, r.change_ids[0]!, 'accept')
+    compact(doc)
+    expect(projectBlocks(doc, 'original')[0]!.delta).toEqual(delta)
+  })
+
+  it('an attribute replacement preserves a user edit made after the agent read', () => {
+    const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Title' }])
+    const tools = new DocTools(doc, meta)
+    tools.readAll()
+    blockText(findBlock(doc, 'h1')!).insert(5, ' updated by user')
+    const r = tools.replaceBlock('h1', '## Title')
+    if (!r.ok) throw new Error(r.error)
+    decide(doc, r.change_ids[0]!, 'accept')
+    compact(doc)
+    expect(projectBlocks(doc, 'original')[0]).toMatchObject({ attrs: { level: 2 }, text: 'Title updated by user' })
+  })
+
+  it('an attribute replacement keeps comment anchors after acceptance and compaction', () => {
+    const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Title' }])
+    const tools = new DocTools(doc, meta)
+    const comment = tools.addComment('h1', 'Title', 'Keep this')
+    const r = tools.replaceBlock('h1', '## Title')
+    if (!r.ok || !('new_block_id' in r)) throw new Error('expected a replacement')
+    decide(doc, r.change_ids[0]!, 'accept')
+    compact(doc)
+    expect(listComments(doc)).toEqual([expect.objectContaining({ id: comment.comment_id, blockId: r.new_block_id, orphaned: false })])
+  })
+
+  it('rejects a combined text and attribute edit without changing the document', () => {
+    const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Title' }])
+    const r = new DocTools(doc, meta).replaceBlock('h1', '## New title')
+    expect(r).toEqual({ ok: false, error: 'make text edits and attribute changes in separate calls' })
+    expect(listChanges(doc)).toHaveLength(0)
+    expect(projectBlocks(doc, 'original')[0]).toMatchObject({ attrs: { level: 1 }, text: 'Title' })
+  })
 
   describe.each([
     { type: 'heading', attrs: { level: 1 }, next: { level: 2 }, content: '## Title', text: 'Title' },

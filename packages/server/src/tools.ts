@@ -6,6 +6,8 @@ import {
   changes,
   changesInBlock,
   commentOnBlock,
+  commentIndex,
+  extendCommentAnchor,
   footnoteAttr,
   footnotesOf,
   listComments,
@@ -13,6 +15,7 @@ import {
   resolveComment,
   decide,
   findBlock,
+  idKey,
   listChanges,
   newBlockId,
   newChangeId,
@@ -497,6 +500,7 @@ export class DocTools {
     text: string,
     reason?: string,
     math: Array<[number, number]> = [],
+    copied?: RichBlock,
   ) {
     const oldId = blockIdOf(el)
     if (!this.revised().some((b) => b.blockId === oldId)) return { ok: false as const, error: `block ${oldId} is pending deletion` }
@@ -504,7 +508,17 @@ export class DocTools {
     const id = newBlockId()
     const meta = { ...this.meta, reason }
     this.doc.transact(() => {
-      trackedInsertBlock(this.doc, blockIndex(this.doc, el) + 1, id, text, meta, { changeId, type, attrs })
+      trackedInsertBlock(this.doc, blockIndex(this.doc, el) + 1, id, text, meta, { changeId, type, attrs, delta: copied?.delta })
+      if (copied) {
+        const anchors = commentIndex(this.doc)
+        const before = viewBlock(this.doc, el).filter((c) => !c.removed && c.del.length === 0)
+        const after = viewBlock(this.doc, findBlock(this.doc, id)!)
+        before.forEach((c, i) => {
+          for (const comment of anchors.get(idKey(c.client, c.clock)) ?? []) {
+            extendCommentAnchor(this.doc, comment, [after[i]!])
+          }
+        })
+      }
       trackedDeleteBlock(this.doc, el, meta, { changeId })
     })
     this.markMath(id, text, math)
@@ -536,7 +550,11 @@ export class DocTools {
       return this.replaceWithNew(el, 'codeBlock', { ...cur, language: String(next.attrs.language ?? '') }, next.text, reason)
     }
     if (Object.entries(next.attrs).some(([k, v]) => cur[k] !== v)) {
-      return this.replaceWithNew(el, el.nodeName, { ...cur, ...next.attrs }, conv.text, reason, conv.math)
+      const base = this.baselines.get(blockId) ?? readBlock(this.doc, blockId)
+      if (conv.text !== base?.text) return { ok: false as const, error: 'make text edits and attribute changes in separate calls' }
+      const current = this.revised().find((b) => b.blockId === blockId)
+      if (!current) return { ok: false as const, error: `block ${blockId} is pending deletion` }
+      return this.replaceWithNew(el, el.nodeName, { ...cur, ...next.attrs }, current.text, reason, [], current)
     }
     return this.proposal(blockId, conv.text, reason, conv.math)
   }

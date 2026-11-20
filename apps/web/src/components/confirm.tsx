@@ -5,6 +5,7 @@ import { Input } from './ui/input'
 
 type ConfirmOptions = { title: string; body?: string; confirmLabel: string; danger?: boolean }
 type Request = ConfirmOptions & { cancelLabel?: string; text?: { defaultValue?: string; placeholder?: string }; resolve: (value: string | boolean | null) => void }
+type ActiveRequest = Request & { opener?: HTMLElement }
 
 let show: ((r: Request) => void) | null = null
 
@@ -25,14 +26,17 @@ export function promptText(opts: { title: string; defaultValue?: string; placeho
 }
 
 export function ConfirmHost() {
-  const [req, setReq] = useState<Request | null>(null)
+  const [req, setReq] = useState<ActiveRequest | null>(null)
   const ok = useRef<HTMLButtonElement>(null)
   const input = useRef<HTMLInputElement>(null)
   useEffect(() => {
-    show = (r) => setReq((cur) => {
-      cur?.resolve(null)
-      return r
-    })
+    show = (r) => {
+      const active = document.activeElement
+      setReq((cur) => {
+        cur?.resolve(null)
+        return { ...r, opener: cur?.opener ?? (active instanceof HTMLElement ? active : undefined) }
+      })
+    }
     return () => {
       show = null
     }
@@ -56,6 +60,10 @@ export function ConfirmHost() {
               input.current?.focus()
               input.current?.select()
             } else ok.current?.focus()
+          }}
+          onCloseAutoFocus={(e) => {
+            e.preventDefault()
+            if (req.opener?.isConnected && document.activeElement === document.body) req.opener.focus()
           }}
         >
           {req.text && <Input key={req.title} ref={input} aria-label={req.title} defaultValue={req.text.defaultValue ?? ''} placeholder={req.text.placeholder} onKeyDown={(e) => {

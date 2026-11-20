@@ -30,3 +30,26 @@ it.each([
     vi.unstubAllGlobals()
   }
 })
+
+it('returns keyboard focus to the opener when a confirmation is cancelled', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<><button onClick={() => void confirmAction({ title: '放弃未保存的修改？', confirmLabel: '放弃修改' })}>关闭</button><ConfirmHost /></>))
+    const opener = container.querySelector('button')!
+    opener.focus()
+    await act(async () => opener.click())
+    const dialog = document.querySelector('[role="dialog"]')!
+    expect(dialog.contains(document.activeElement)).toBe(true)
+    await act(async () => {
+      Array.from(dialog.querySelectorAll('button')).find((button) => button.textContent === '取消')!.click()
+    })
+    await vi.waitFor(() => expect(document.activeElement).toBe(opener))
+  } finally {
+    act(() => root.unmount())
+    container.remove()
+    vi.unstubAllGlobals()
+  }
+})

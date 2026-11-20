@@ -2,7 +2,7 @@ import { getLang } from './i18n'
 import { addComment, blocks, blockIdOf, changesInBlock, decide, deleteComment, findBlock, footnotesOf, listChanges, listComments, listDecided, decideAndLog, type DecidedChange, projectBlocks, replyToComment, resolveComment, type CommentView, type PendingChange } from '@stetpad/crdt'
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import { Editor } from '@tiptap/core'
-import { editorExtensions } from './editor/extensions'
+import { editorExtensions, type EditorExtensionOptions } from './editor/extensions'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { NodeSelection } from '@tiptap/pm/state'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -68,6 +68,10 @@ type Tab = 'changes' | 'comments' | 'ai'
 interface Floating { x: number; y: number }
 
 const AI_ITEM: (typeof SLASH_ITEMS)[number] = { label: 'AI 续写', hint: '接着上文往下写', type: '__ai', keys: 'ai xuxie continue' }
+
+/** The document page's editor extensions. */
+export const docEditorExtensions = (opts: Omit<EditorExtensionOptions, 'placeholder'>) =>
+  editorExtensions({ ...opts, placeholder: getLang() === 'en' ? 'Type something, or type / to pick a block type' : '输入内容，或输入 / 选择块类型' })
 
 export function DocPage({ id }: { id: string }) {
   const [meta, setMeta] = useState<DocMeta | null>(null)
@@ -373,10 +377,9 @@ export function DocPage({ id }: { id: string }) {
     if (!ready || !mount.current) return
     const editor = new Editor({
       element: mount.current,
-      extensions: editorExtensions({
+      extensions: docEditorExtensions({
         ydoc, docId: id,
         user: () => ({ author, tracking: trackingRef.current }),
-        placeholder: getLang() === 'en' ? 'Type something, or type / to pick a block type' : '输入内容，或输入 / 选择块类型',
         footnote: { onOpen: (id, rect, pinned) => fnOpenRef.current(id, rect, pinned), onLeave: () => fnLeaveRef.current(), onShortcut: () => fnShortcutRef.current() },
         caret: providerRef.current ? { provider: providerRef.current, user: { name: author, color: COLORS[Math.floor(Math.random() * COLORS.length)]! } } : undefined,
       }),

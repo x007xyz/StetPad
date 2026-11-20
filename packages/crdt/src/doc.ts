@@ -7,6 +7,14 @@ import * as Y from 'yjs'
  */
 export const content = (doc: Y.Doc): Y.XmlFragment => doc.getXmlFragment('content')
 
+/** Every block type a document may hold. The server keeps only these, and both editors must render each one. */
+export const BLOCK_TYPES = [
+  'paragraph', 'heading', 'bulletItem', 'orderedItem', 'taskItem',
+  'quote', 'callout', 'codeBlock', 'divider', 'image', 'video', 'drawio', 'table', 'file', 'linkCard',
+] as const
+/** Block types without text content. */
+export const ATOM_BLOCK_TYPES: ReadonlySet<string> = new Set(['divider', 'image', 'video', 'drawio', 'table', 'file', 'linkCard'])
+
 export type ChangeRecord = Y.Map<unknown>
 export const changes = (doc: Y.Doc): Y.Map<ChangeRecord> => doc.getMap('changes')
 

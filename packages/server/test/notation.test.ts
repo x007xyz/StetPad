@@ -150,33 +150,60 @@ describe('DocTools on the new block types', () => {
     return doc
   }
 
-  it.each(['move', 'heading', 'language', 'edited heading'])('%s preserves carried inline marks after acceptance', (op) => {
-    const doc = richDoc(op === 'language' ? 'codeBlock' : 'paragraph')
-    const tools = new DocTools(doc, meta)
-    const r = op === 'move' ? tools.moveBlock('p1', null)
-      : tools.replaceBlock('p1', op === 'language' ? '```ts\nbold link note x\n```'
-        : `# bold link note $x$${op === 'edited heading' ? ' added' : ''}`)
+  const expectAcceptedDelta = (
+    doc: Y.Doc,
+    r: ReturnType<DocTools['replaceBlock']> | ReturnType<DocTools['moveBlock']>,
+    expected: Block['delta'] = richDelta,
+  ) => {
     expect(r.ok).toBe(true)
     if (!r.ok || !('new_block_id' in r)) throw new Error('expected a replacement')
-    const expected = op === 'edited heading' ? [...richDelta, { insert: ' added' }] : richDelta
     expect(projectBlocks(doc, 'revised')[0]!.delta).toEqual(expected)
     for (const id of r.change_ids) expect(decide(doc, id, 'accept')).toBe(true)
     expect(projectBlocks(doc, 'revised')[0]!.delta).toEqual(expected)
+  }
+
+  it('moving a block preserves its inline marks after acceptance', () => {
+    const doc = richDoc()
+    const r = new DocTools(doc, meta).moveBlock('p1', null)
+    expectAcceptedDelta(doc, r)
+  })
+
+  it('paragraph to heading conversion preserves inline marks after acceptance', () => {
+    const doc = richDoc()
+    const r = new DocTools(doc, meta).replaceBlock('p1', '# bold link note $x$')
+    expectAcceptedDelta(doc, r)
+  })
+
+  it('a codeBlock language change preserves carried inline marks after acceptance', () => {
+    const doc = richDoc('codeBlock')
+    const r = new DocTools(doc, meta).replaceBlock('p1', '```ts\nbold link note x\n```')
+    expectAcceptedDelta(doc, r)
+  })
+
+  it('heading conversion preserves existing marks and leaves added text plain after acceptance', () => {
+    const doc = richDoc()
+    const r = new DocTools(doc, meta).replaceBlock('p1', '# bold link note $x$ added')
+    expectAcceptedDelta(doc, r, [...richDelta, { insert: ' added' }])
   })
 
   it('conversion treats inline Markdown as literal text, not new marks', () => {
     const doc = richDoc()
-    new DocTools(doc, meta).replaceBlock('p1', '# **new** [label](https://example.org)')
-    expect(projectBlocks(doc, 'revised')[0]!.delta).toEqual([{ insert: '**new** [label](https://example.org)' }])
+    const r = new DocTools(doc, meta).replaceBlock('p1', '# **new** [label](https://example.org)')
+    expectAcceptedDelta(doc, r, [{ insert: '**new** [label](https://example.org)' }])
   })
 
-  it.each(['move', 'convert'])('%s handles empty and missing blocks', (op) => {
+  it('moving handles empty and missing blocks', () => {
     const doc = docWith([{ id: 'p1', type: 'paragraph', text: '' }])
     const tools = new DocTools(doc, meta)
-    const run = (id: string) => op === 'move' ? tools.moveBlock(id, null) : tools.replaceBlock(id, '# ')
-    expect(run('missing')).toMatchObject({ ok: false })
-    expect(run('p1')).toMatchObject({ ok: true })
-    expect(projectBlocks(doc, 'revised')[0]!.delta).toEqual([])
+    expect(tools.moveBlock('missing', null)).toMatchObject({ ok: false })
+    expectAcceptedDelta(doc, tools.moveBlock('p1', null), [])
+  })
+
+  it('conversion handles empty and missing blocks', () => {
+    const doc = docWith([{ id: 'p1', type: 'paragraph', text: '' }])
+    const tools = new DocTools(doc, meta)
+    expect(tools.replaceBlock('missing', '# ')).toMatchObject({ ok: false })
+    expectAcceptedDelta(doc, tools.replaceBlock('p1', '# '), [])
   })
 
   it('a new caption on an image is a pending change, and the image keeps its attributes', () => {

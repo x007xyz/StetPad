@@ -172,6 +172,26 @@ export const TEXT_TYPES = new Set(['paragraph', 'heading', 'bulletItem', 'ordere
 
 type Run = { insert: string; attributes?: Record<string, unknown> }
 
+/** Carry inline marks from unchanged words into replacement text. */
+function carryMarks(oldText: string, oldDelta: Run[], newText: string): Run[] {
+  const delta: Run[] = []
+  let offset = 0
+  for (const op of diffWords(oldText, newText)) {
+    if (op.type === 'insert') delta.push({ insert: op.text })
+    if (op.type === 'equal') {
+      let at = 0
+      for (const run of oldDelta) {
+        const start = Math.max(0, offset - at)
+        const end = Math.min(run.insert.length, offset + op.text.length - at)
+        if (end > start) delta.push({ ...run, insert: run.insert.slice(start, end) })
+        at += run.insert.length
+      }
+    }
+    if (op.type !== 'insert') offset += op.text.length
+  }
+  return delta
+}
+
 /** A literal `$` is `\$`; a backslash is doubled only where it would otherwise join the next `$` or `\`. */
 const encodePlain = (s: string): string => {
   let out = ''
@@ -502,21 +522,7 @@ export class DocTools {
     const oldId = blockIdOf(el)
     const old = projectBlocks(this.doc, 'revised').find((b) => b.blockId === oldId)
     if (!old) return { ok: false as const, error: `block ${oldId} is pending deletion` }
-    const delta: Run[] = []
-    let offset = 0
-    for (const op of diffWords(old.text, text)) {
-      if (op.type === 'insert') delta.push({ insert: op.text })
-      if (op.type === 'equal') {
-        let at = 0
-        for (const run of old.delta) {
-          const start = Math.max(0, offset - at)
-          const end = Math.min(run.insert.length, offset + op.text.length - at)
-          if (end > start) delta.push({ ...run, insert: run.insert.slice(start, end) })
-          at += run.insert.length
-        }
-      }
-      if (op.type !== 'insert') offset += op.text.length
-    }
+    const delta = carryMarks(old.text, old.delta, text)
     const changeId = newChangeId()
     const id = newBlockId()
     const meta = { ...this.meta, reason }

@@ -234,6 +234,25 @@ describe('import', () => {
     expect(blocks.find((b) => b.type === 'paragraph' && b.delta[0]?.insert === 'Before')).toBeTruthy()
   })
 
+  it('display math inside a fenced code block stays code', async () => {
+    const md = '~~~text\n$$NAME$$\n~~~\n\n```\n$$\nx\n$$\n```\n'
+    const blocks = await fileToBlocks('a.md', enc(md))
+    expect(blocks.map((b) => [b.attrs.language, b.delta.map((d) => d.insert).join('')])).toEqual([
+      ['text', '$$NAME$$'],
+      ['', '$$\nx\n$$'],
+    ])
+  })
+
+  it('display math is found in a file with CRLF line endings', async () => {
+    const blocks = await fileToBlocks('a.md', enc('Before\r\n\r\n$$a+b$$\r\n'))
+    expect(blocks.filter((b) => b.type === 'codeBlock').map((b) => [b.attrs.language, b.delta.map((d) => d.insert).join('')])).toEqual([['math', 'a+b']])
+  })
+
+  it('a code span on its own line does not hide later display math', async () => {
+    const blocks = await fileToBlocks('a.md', enc('```foo```\n\n$$a+b$$\n'))
+    expect(blocks.filter((b) => b.type === 'codeBlock').map((b) => [b.attrs.language, b.delta.map((d) => d.insert).join('')])).toEqual([['math', 'a+b']])
+  })
+
   it('a markdown image with a title becomes an image with a caption', async () => {
     const blocks = await fileToBlocks('a.md', enc('![A cat](/files/abc "Asleep")\n'))
     expect(blocks).toEqual([{ type: 'image', attrs: { src: '/files/abc', alt: 'A cat', caption: 'Asleep' }, delta: [] }])

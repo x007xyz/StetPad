@@ -42,14 +42,53 @@ export function htmlToBlocks(html: string, baseUrl?: string): Block[] {
 
 // ---------- files -> blocks ----------
 
+/** For each line, whether it belongs to a fenced code block (fence lines included). */
+function fencedCodeLines(lines: string[]): boolean[] {
+  let fence: string | null = null
+  return lines.map((line) => {
+    if (fence !== null) {
+      const t = line.trim()
+      if (t.length >= fence.length && [...t].every((c) => c === fence![0])) fence = null
+      return true
+    }
+    // A backtick fence's info string has no backticks; ```x``` is a code span.
+    const open = /^\s*(`{3,}(?!.*`)|~{3,})/.exec(line)
+    if (open) fence = open[1]!
+    return open !== null
+  })
+}
+
+const MATH_DELIM = /^[ \t]*\$\$[ \t]*\r?$/
+const MATH_LINE = /^[ \t]*\$\$(.+?)\$\$[ \t]*\r?$/
+
 /**
  * `$$` display formulas on their own lines become ```math fences, so marked
- * emits them as `<pre><code class="language-math">`.
+ * emits them as `<pre><code class="language-math">`. Fenced code is left alone.
  */
 export function mathToFence(md: string): string {
-  return md
-    .replace(/^[ \t]*\$\$[ \t]*\n([\s\S]*?)\n[ \t]*\$\$[ \t]*$/gm, (_m, body: string) => '```math\n' + body.replace(/\n+$/, '') + '\n```')
-    .replace(/^[ \t]*\$\$(.+?)\$\$[ \t]*$/gm, (_m, body: string) => '```math\n' + body.trim() + '\n```')
+  const lines = md.split('\n')
+  const code = fencedCodeLines(lines)
+  const out: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!
+    if (code[i]) {
+      out.push(line)
+      continue
+    }
+    const one = MATH_LINE.exec(line)
+    if (one) {
+      out.push('```math', one[1]!.trim(), '```')
+      continue
+    }
+    const end = MATH_DELIM.test(line) ? lines.findIndex((l, j) => j > i && !code[j] && MATH_DELIM.test(l)) : -1
+    if (end === -1) {
+      out.push(line)
+      continue
+    }
+    out.push('```math', lines.slice(i + 1, end).join('\n').replace(/\n+$/, ''), '```')
+    i = end
+  }
+  return out.join('\n')
 }
 
 export type Ocr = (png: Uint8Array, page: number) => Promise<string>
@@ -278,6 +317,20 @@ export function applyMdFootnotes(list: Block[], defs: Map<string, string>): Bloc
 const INLINE_TEX = /(?<![\\$])\$(?=[^\s$])([^$\n]*?[^\s$\\])\$(?![\d$])/g
 const TOKEN = /(\d+)/g
 
+/** A code span: a run of backticks, then text, then a run of the same length. */
+const CODE_SPAN = /(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)/g
+
+/** Applies `f` to the parts of `line` outside code spans. */
+function outsideCodeSpans(line: string, f: (part: string) => string): string {
+  let out = ''
+  let last = 0
+  for (const m of line.matchAll(CODE_SPAN)) {
+    out += f(line.slice(last, m.index)) + m[0]
+    last = m.index + m[0].length
+  }
+  return out + f(line.slice(last))
+}
+
 /**
  * Replaces inline `$…$` with placeholders before Markdown parsing, so that `*` and `_` inside a
  * formula are not read as emphasis. Code (fenced blocks, code spans), tables and lines with links or
@@ -285,33 +338,18 @@ const TOKEN = /(\d+)/g
  */
 export function protectInlineMath(md: string): { body: string; tex: string[] } {
   const tex: string[] = []
-  let fence: string | null = null
-  const body = md
-    .split('\n')
-    .map((line) => {
-      if (fence !== null) {
-        const t = line.trim()
-        if (t.length >= fence.length && [...t].every((c) => c === fence![0])) fence = null
-        return line
-      }
-      const open = /^\s*(`{3,}|~{3,})/.exec(line)
-      if (open) {
-        fence = open[1]!
-        return line
-      }
+  const lines = md.split('\n')
+  const code = fencedCodeLines(lines)
+  const body = lines
+    .map((line, i) => {
+      if (code[i]) return line
       if (/^\s*\|/.test(line) || line.includes('](') || line.includes('![')) return line
-      // Odd parts of a split on code spans are code; only the others are scanned.
-      return line
-        .split(/(`[^`]*`)/)
-        .map((part, i) =>
-          i % 2
-            ? part
-            : part.replace(INLINE_TEX, (_m, src: string) => {
-                tex.push(src)
-                return `${tex.length - 1}`
-              }),
-        )
-        .join('')
+      return outsideCodeSpans(line, (part) =>
+        part.replace(INLINE_TEX, (_m, src: string) => {
+          tex.push(src)
+          return `${tex.length - 1}`
+        }),
+      )
     })
     .join('\n')
   return { body, tex }

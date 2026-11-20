@@ -166,9 +166,10 @@ export async function pdfPageCount(data: Uint8Array): Promise<number> {
   }
 }
 
-async function pdfToBlocks(data: Uint8Array, ocr?: Ocr): Promise<Block[]> {
+async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count: number) => void): Promise<Block[]> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
   const pdf = await pdfjs.getDocument({ data, useSystemFonts: true }).promise
+  if (pdf.numPages > 500) onOmittedPages?.(pdf.numPages - 500)
   type Line = { y: number; x: number; size: number; text: string; page: number }
   const lines: Line[] = []
   for (let p = 1; p <= Math.min(pdf.numPages, 500); p++) {
@@ -226,14 +227,14 @@ async function pdfToBlocks(data: Uint8Array, ocr?: Ocr): Promise<Block[]> {
   return out
 }
 
-export async function fileToBlocks(name: string, data: Uint8Array, opts: { ocr?: Ocr } = {}): Promise<Block[]> {
+export async function fileToBlocks(name: string, data: Uint8Array, opts: { ocr?: Ocr; onOmittedPages?: (count: number) => void } = {}): Promise<Block[]> {
   const ext = name.toLowerCase().split('.').pop() ?? ''
   if (data.byteLength > 30 * 1024 * 1024) throw new Error('文件超过 30MB')
   if (ext === 'docx') {
     const { value } = await mammoth.convertToHtml({ buffer: Buffer.from(data) })
     return htmlToBlocks(value)
   }
-  if (ext === 'pdf') return pdfToBlocks(data, opts.ocr)
+  if (ext === 'pdf') return pdfToBlocks(data, opts.ocr, opts.onOmittedPages)
   const str = new TextDecoder().decode(data)
   if (ext === 'md' || ext === 'markdown') {
     const { body, defs } = splitMdFootnotes(str)

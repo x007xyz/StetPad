@@ -45,3 +45,11 @@ it('keeps import overflow notices in Chinese or translates them in the English U
   expect(t(warning)).toBe('This import can keep only the first 2000 blocks. Creating the document will omit the last 1 block.')
   expect(t(error)).toBe('The import exceeds 2000 blocks. Split the file and try again.')
 })
+
+it.each([1, 3])('translates omitted PDF pages (%i)', (count) => {
+  const warning = `PDF 导入最多保留前 500 页。继续创建将省略最后 ${count} 页。`
+  localStorage.setItem('aiw.lang', 'zh')
+  expect(t(warning)).toBe(warning)
+  localStorage.setItem('aiw.lang', 'en')
+  expect(t(warning)).toBe(`This PDF import can keep only the first 500 pages. Creating the document will omit the last ${count} ${count === 1 ? 'page' : 'pages'}.`)
+})

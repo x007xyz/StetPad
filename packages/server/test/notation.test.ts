@@ -161,6 +161,19 @@ describe('DocTools on the new block types', () => {
     expect(projectBlocks(doc, 'original')[0]).toMatchObject({ attrs: { level: 2 }, delta: [{ insert: 'Area ' }, { insert: 'x', attributes: { math: true } }] })
   })
 
+  it('refuses baseline math offsets after an untracked user edit', () => {
+    const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Area x' }])
+    const tools = new DocTools(doc, meta)
+    tools.readAll()
+    const text = blockText(findBlock(doc, 'h1')!)
+    text.delete(0, 6)
+    text.insert(0, 'Big area x')
+    expect(tools.replaceBlock('h1', '## Area $x$')).toEqual({ ok: false, error: 'block changed since it was read; read it again before adding math' })
+    expect(listChanges(doc)).toHaveLength(0)
+    expect(projectBlocks(doc, 'physical')).toHaveLength(1)
+    expect(projectBlocks(doc, 'original')[0]).toMatchObject({ attrs: { level: 1 }, delta: [{ insert: 'Big area x' }] })
+  })
+
   it('an attribute replacement preserves links, footnotes and inline math after acceptance', () => {
     const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Link note x' }])
     const text = blockText(findBlock(doc, 'h1')!)

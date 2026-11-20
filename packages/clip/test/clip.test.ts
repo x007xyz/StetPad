@@ -8,6 +8,26 @@ const parse = (html: string, baseUrl?: string) => {
 }
 
 describe('@stetpad/clip domToBlocks', () => {
+  it('drops hidden and executable content from table cells and rows', () => {
+    expect(parse('<table><tr><td>Visible<span hidden>HIDDEN</span><script>SECRET_SCRIPT</script><style>SECRET_STYLE</style></td></tr><tr hidden><td>HIDDEN_ROW</td></tr></table>')).toEqual([
+      { type: 'table', attrs: { rows: JSON.stringify([['Visible']]) }, delta: [] },
+    ])
+    expect(parse('<table><tr hidden><td>Hidden</td></tr></table>')).toEqual([])
+  })
+
+  it('drops hidden and executable content from code while preserving whitespace', () => {
+    expect(parse('<pre><code>  Visible<br><span hidden>HIDDEN</span><script>SECRET_SCRIPT</script><style>SECRET_STYLE</style>tail</code></pre>')).toEqual([
+      { type: 'codeBlock', attrs: { language: '' }, delta: [{ insert: '  Visible\ntail' }] },
+    ])
+    expect(parse('<pre><code hidden>Hidden</code></pre>')).toEqual([])
+  })
+
+  it('drops hidden video and math before extracting blocks or inline text', () => {
+    expect(parse('<video hidden src="https://example.com/hidden.mp4"></video><p><video hidden src="https://example.com/hidden.mp4"></video></p><figure><video hidden src="https://example.com/hidden.mp4"></video></figure><math hidden display="block" alttext="HIDDEN_MATH"></math><p>Visible<span hidden data-math="HIDDEN_INLINE"></span></p>')).toEqual([
+      { type: 'paragraph', attrs: {}, delta: [{ insert: 'Visible' }] },
+    ])
+  })
+
   it('indents nested ordered Markdown by the parent marker width', () => {
     const blocks = parse('<ol><li>a<ol><li>a1</li></ol></li><li>b</li></ol>')
     expect(blocksToMarkdown(blocks)).toBe('1. a\n   1. a1\n2. b\n')

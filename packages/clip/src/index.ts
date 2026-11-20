@@ -238,6 +238,7 @@ function imageBlock(img: any, caption: string, wrapper?: any, baseUrl?: string):
 /** An uploaded or embedded video. Anything else is dropped. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mediaBlock(node: any, caption: string, baseUrl?: string): Block | null {
+  if (isHiddenElement(node)) return null
   const tag = String(node.tagName).toUpperCase()
   const title = collapse(node.getAttribute('title'))
   if (tag === 'VIDEO') {
@@ -262,9 +263,7 @@ function hasClass(el: any, name: string): boolean {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isHiddenElement(el: any): boolean {
   if (!el || el.nodeType !== 1) return false
-  const tag = String(el.tagName).toUpperCase()
-  if (['PICTURE', 'SOURCE', 'MATH', 'SEMANTICS', 'ANNOTATION'].includes(tag)) return false
-  if (hasClass(el, 'katex-mathml') || hasClass(el, 'katex')) return false
+  if (isHiddenElement(el.parentElement)) return true
   if (el.hasAttribute?.('hidden')) return true
   const style = String(el.getAttribute?.('style') ?? '').toLowerCase()
   if (!style) return false
@@ -313,11 +312,13 @@ function extractMathTex(el: any): { tex: string; display: boolean } | null {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function preText(node: any): string {
+  if (isHiddenElement(node)) return ''
   let out = ''
   for (const child of node.childNodes ?? []) {
     if (child.nodeType === 3) {
       out += String(child.textContent ?? '')
     } else if (child.nodeType === 1) {
+      if (isHiddenElement(child)) continue
       const tag = String(child.tagName).toUpperCase()
       if (tag === 'BR') out += '\n'
       else if (['BUTTON', 'STYLE', 'SCRIPT'].includes(tag)) continue
@@ -382,6 +383,7 @@ export function domToBlocks(root: any, opts: { baseUrl?: string } = {}): Block[]
         pushDelta(delta, s, marks)
       } else if (child.nodeType === 1) {
         const tag = String(child.tagName).toUpperCase()
+        if (isHiddenElement(child)) continue
         if (tag === 'BR') {
           pushDelta(delta, ' ', marks)
           continue
@@ -391,7 +393,7 @@ export function domToBlocks(root: any, opts: { baseUrl?: string } = {}): Block[]
           pushDelta(delta, `$${math.tex}$`, marks)
           continue
         }
-        if (tag === 'SCRIPT' || tag === 'STYLE' || isHiddenElement(child)) continue
+        if (tag === 'SCRIPT' || tag === 'STYLE') continue
         if (tag === 'A') {
           const href = safeHref(child.getAttribute('href'), baseUrl)
           inline(child, href ? { ...marks, link: { href } } : marks, delta)
@@ -452,6 +454,7 @@ export function domToBlocks(root: any, opts: { baseUrl?: string } = {}): Block[]
       }
       if (node.nodeType !== 1) continue
       const tag = String(node.tagName).toUpperCase()
+      if (isHiddenElement(node)) continue
 
       const math = extractMathTex(node)
       if (math?.display) {
@@ -464,7 +467,7 @@ export function domToBlocks(root: any, opts: { baseUrl?: string } = {}): Block[]
         if (b) out.push(b)
         continue
       }
-      if (['SCRIPT', 'STYLE', 'NAV', 'NOSCRIPT', 'FORM', 'SVG'].includes(tag) || isHiddenElement(node)) continue
+      if (['SCRIPT', 'STYLE', 'NAV', 'NOSCRIPT', 'FORM', 'SVG'].includes(tag)) continue
       if (/^H[1-6]$/.test(tag)) push('heading', { level: Math.min(Number(tag[1]), 3) }, node)
       else if (tag === 'UL' || tag === 'OL') list(node, tag === 'OL', 0)
       else if (tag === 'ASIDE' || node.hasAttribute?.('data-callout') || hasClass(node, 'callout')) {
@@ -512,8 +515,13 @@ export function domToBlocks(root: any, opts: { baseUrl?: string } = {}): Block[]
       } else if (tag === 'TABLE') {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rows = [...node.querySelectorAll('tr')]
+          .filter((tr: any) => !isHiddenElement(tr))
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .map((tr: any) => [...tr.querySelectorAll('th,td')].map((c: any) => String(c.textContent).replace(/\s+/g, ' ').trim()))
+          .map((tr: any) => [...tr.querySelectorAll('th,td')].filter((c: any) => !isHiddenElement(c)).map((c: any) => {
+            const delta: InlineDelta[] = []
+            inline(c, {}, delta)
+            return trimmed(delta).map((d) => d.insert).join('')
+          }))
           .filter((r) => r.length)
         if (rows.length) out.push({ type: 'table', attrs: { rows: JSON.stringify(rows) }, delta: [] })
       } else if (tag === 'P' || !hasBlockChild(node)) {

@@ -1113,7 +1113,14 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     if (format === 'md') return c.text(blocksToMarkdown(blocks))
     if (format === 'html') {
       const { svg } = await prepareRenders(blocks, clientSvgs, { png: false, cache: renderCache.forDoc(doc.id) })
-      return c.html(blocksToHtml(blocks, doc.title, { renders: svg }))
+      const embedded = await Promise.all(blocks.map(async (block) => {
+        if (block.type !== 'image') return block
+        const asset = await readAsset(String(block.attrs.src ?? ''))
+        if (!asset) return block
+        const src = `data:${asset.mime};base64,${Buffer.from(asset.data).toString('base64')}`
+        return { ...block, attrs: { ...block.attrs, src } }
+      }))
+      return c.html(blocksToHtml(embedded, doc.title, { renders: svg }))
     }
     if (format === 'docx') {
       const { png } = await prepareRenders(blocks, clientSvgs, { png: true, rasters, cache: renderCache.forDoc(doc.id) })

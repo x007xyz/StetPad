@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas'
-import { findBlock, insertBlock, listChanges, projectBlocks } from '@stetpad/crdt'
+import { compact, decide, findBlock, insertBlock, listChanges, projectBlocks } from '@stetpad/crdt'
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import {
@@ -135,6 +135,42 @@ function docWith(blocks: { id: string; type: string; text?: string; attrs?: Reco
 
 describe('DocTools on the new block types', () => {
   const meta = { author: AI, runId: 'r1' }
+
+  describe.each([
+    { type: 'heading', attrs: { level: 1 }, next: { level: 2 }, content: '## Title', text: 'Title' },
+    { type: 'taskItem', attrs: { checked: false }, next: { checked: true }, content: '- [x] Task', text: 'Task' },
+  ])('$type attribute approval', ({ type, attrs, next, content, text }) => {
+    it.each(['accept', 'reject'] as const)('keeps the original until %s', (decision) => {
+      const doc = docWith([{ id: 'b1', type, attrs, text }])
+      const original = projectBlocks(doc, 'original')
+      const r = new DocTools(doc, meta).replaceBlock('b1', content)
+      expect(r.ok).toBe(true)
+      if (!r.ok) throw new Error(r.error)
+      expect(r.change_ids).toHaveLength(1)
+      expect(projectBlocks(doc, 'original')).toEqual(original.map((b) => ({ ...b, state: 'del' })))
+      expect(findBlock(doc, 'b1')!.getAttributes()).toMatchObject(attrs)
+      expect(projectBlocks(doc, 'revised')[0]).toMatchObject({ type, attrs: next, text })
+      expect(listChanges(doc)).toHaveLength(1)
+      decide(doc, r.change_ids[0]!, decision)
+      compact(doc)
+      expect(projectBlocks(doc, 'original')[0]).toMatchObject({ type, attrs: decision === 'accept' ? next : attrs, text })
+      expect(listChanges(doc)).toHaveLength(0)
+    })
+
+    it('does not propose an unchanged attribute', () => {
+      const doc = docWith([{ id: 'b1', type, attrs: next, text }])
+      expect(new DocTools(doc, meta).replaceBlock('b1', content)).toMatchObject({ ok: true, change_ids: [] })
+      expect(listChanges(doc)).toHaveLength(0)
+    })
+
+    it('does not replace a block pending deletion', () => {
+      const doc = docWith([{ id: 'b1', type, attrs, text }])
+      const tools = new DocTools(doc, meta)
+      tools.deleteBlock('b1')
+      expect(tools.replaceBlock('b1', content)).toMatchObject({ ok: false, error: 'block b1 is pending deletion' })
+      expect(findBlock(doc, 'b1')!.getAttributes()).toMatchObject(attrs)
+    })
+  })
 
   it('a new caption on an image is a pending change, and the image keeps its attributes', () => {
     const doc = docWith([

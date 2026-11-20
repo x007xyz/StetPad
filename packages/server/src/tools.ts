@@ -535,10 +535,8 @@ export class DocTools {
       // The language decides how the block renders, so it is a suggestion like any other change.
       return this.replaceWithNew(el, 'codeBlock', { ...cur, language: String(next.attrs.language ?? '') }, next.text, reason)
     }
-    for (const [k, v] of Object.entries(next.attrs)) {
-      if (el.nodeName === 'codeBlock' && k === 'language') continue
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (el.getAttribute(k) !== v) el.setAttribute(k, v as any)
+    if (Object.entries(next.attrs).some(([k, v]) => cur[k] !== v)) {
+      return this.replaceWithNew(el, el.nodeName, { ...cur, ...next.attrs }, conv.text, reason, conv.math)
     }
     return this.proposal(blockId, conv.text, reason, conv.math)
   }

@@ -289,6 +289,15 @@ describe('import', () => {
 
 describe('export', () => {
   it.each([
+    '1. a\n2. b\n\nend paragraph',
+    '- a\n- b\n\n# Heading',
+  ])('separates a list from the following block through Markdown round-trip: %s', async (md) => {
+    const blocks = await fileToBlocks('list.md', enc(md))
+    expect(await fileToBlocks('list.md', enc(blocksToMarkdown(blocks)))).toEqual(blocks)
+    expect(blocksToMarkdown(blocks)).toBe(md + '\n')
+  })
+
+  it.each([
     ['ordered', '1. a\n   1. a1\n2. b', 'ol'],
     ['bullet', '- a\n  - a1\n- b', 'ul'],
     ['mixed', '1. a\n   - a1\n2. b', 'ol'],

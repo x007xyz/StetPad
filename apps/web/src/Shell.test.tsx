@@ -8,6 +8,31 @@ import { Shell } from './Shell'
 
 vi.mock('./App', () => ({ go: vi.fn() }))
 
+it.each([
+  ['Linux x86_64', 'Ctrl K'],
+  ['Win32', 'Ctrl K'],
+  ['MacIntel', '⌘K'],
+  ['iPhone', '⌘K'],
+  ['iPad', '⌘K'],
+  ['', 'Ctrl K'],
+])('shows the search shortcut for platform %s', async (platform, hint) => {
+  vi.spyOn(window.navigator, 'platform', 'get').mockReturnValue(platform)
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json([])))
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<Shell session={{ user: { id: 'me', email: '' } }}>Content</Shell>))
+    expect(container.querySelector('kbd')?.textContent).toBe(hint)
+  } finally {
+    act(() => root.unmount())
+    container.remove()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  }
+})
+
 function sidebarSnapshot(id: string, title: string, folderName: string) {
   const docs = deferred<Response>()
   const folders = deferred<Response>()

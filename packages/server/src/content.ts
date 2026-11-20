@@ -57,8 +57,8 @@ function fencedCodeLines(lines: string[]): boolean[] {
   })
 }
 
-const MATH_DELIM = /^[ \t]*\$\$[ \t]*$/
-const MATH_LINE = /^[ \t]*\$\$(.+?)\$\$[ \t]*$/
+const MATH_DELIM = /^[ \t]*\$\$[ \t]*\r?$/
+const MATH_LINE = /^[ \t]*\$\$(.+?)\$\$[ \t]*\r?$/
 
 /**
  * `$$` display formulas on their own lines become ```math fences, so marked

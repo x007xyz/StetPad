@@ -70,6 +70,19 @@ describe('search', () => {
     expect((await sql.all<{ text_content: string }>('select text_content from documents where id = ?', [byBody.id]))[0]!.text_content).toContain('alpha milestone')
   })
 
+  it.each(['école', 'ÉCOLE', 'École'])('finds Unicode titles for %s regardless of case', async (query) => {
+    const docs = []
+    for (const title of ['ÉCOLE Notes', 'école Notes', 'École Notes']) {
+      docs.push(await store.createDoc(me.id, title, stateWith('Nothing here')))
+    }
+    const hits = await search(query, me.token)
+    for (const doc of docs) {
+      expect(hits).toContainEqual(expect.objectContaining({ id: doc.id, title: doc.title, titleMatch: true, snippet: '' }))
+      await store.deleteDoc(doc.id)
+    }
+    expect(await search('écolière', me.token)).toEqual([])
+  })
+
   it('returns nothing for a blank query', async () => {
     const a = me
     await call('/api/docs', { method: 'POST', body: json({ title: 'Something' }) }, a.token)

@@ -48,6 +48,7 @@ export async function sqliteSql(dataDir: string): Promise<Sql> {
   }
   const db = new Database(newDb)
   db.pragma('journal_mode = WAL')
+  db.function('unicode_lower', { deterministic: true }, (value: string) => value.toLowerCase())
   const bind = (p: unknown[] = []): unknown[] => p.map((v) => (v instanceof Uint8Array && !Buffer.isBuffer(v) ? Buffer.from(v) : v))
   return {
     types: { blob: 'blob', serial: 'integer primary key autoincrement', int: 'integer' },
@@ -208,7 +209,7 @@ export class Store {
     const ql = q.toLowerCase()
     const like = `%${ql.replace(/[\\%_]/g, (ch) => '\\' + ch)}%`
     const rows = await this.sql.all<DocRow & { text_content: string | null }>(
-      `select ${Store.DOC}, text_content from documents where deleted_at is null and ${Store.SCOPE} and (lower(title) like ? escape '\\' or lower(text_content) like ? escape '\\')`,
+      `select ${Store.DOC}, text_content from documents where deleted_at is null and ${Store.SCOPE} and (unicode_lower(title) like ? escape '\\' or lower(text_content) like ? escape '\\')`,
       [userId, like, like],
     )
     const hits: SearchHit[] = []

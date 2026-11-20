@@ -2,11 +2,21 @@ name: ci
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -21,22 +31,29 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, windows-latest]
+        os: [macos-15, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
+      # Packing only bundles workspace sources; the app loads better-sqlite3 from desktop/node_modules.
+      # Skipping install scripts avoids compiling it for Node, which needs Visual Studio on Windows.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm --dir apps/web build
-      - name: Install and pack the desktop app
+      - name: Install desktop dependencies
         working-directory: desktop
-        shell: bash
         run: |
-          npm install
-          npx electron-rebuild -f -w better-sqlite3 || true
-          npm run pack
+          npm ci --no-audit --no-fund
+          node node_modules/electron/install.js
+      - name: Pack the desktop app
+        working-directory: desktop
+        run: npm run pack
         env:
           # Code signing. Leave the secrets unset to build unsigned.
           #   Windows: CSC_LINK (base64 .pfx or URL) + CSC_KEY_PASSWORD
@@ -45,5 +62,4 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
       - name: Smoke test the packaged app
         working-directory: desktop
-        shell: bash
         run: npm run smoke:packed

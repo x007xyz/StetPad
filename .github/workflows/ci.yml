@@ -46,20 +46,10 @@ jobs:
       # Skipping install scripts avoids compiling it for Node, which needs Visual Studio on Windows.
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm --dir apps/web build
-      - name: Point npm and Electron caches at one directory
-        run: |
-          echo "npm_config_cache=$RUNNER_TEMP/desktop-cache/npm" >> "$GITHUB_ENV"
-          echo "ELECTRON_CACHE=$RUNNER_TEMP/desktop-cache/electron" >> "$GITHUB_ENV"
-          echo "ELECTRON_BUILDER_CACHE=$RUNNER_TEMP/desktop-cache/electron-builder" >> "$GITHUB_ENV"
-      - uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}/desktop-cache
-          key: desktop-${{ runner.os }}-${{ hashFiles('desktop/package-lock.json') }}
-          restore-keys: desktop-${{ runner.os }}-
       - name: Install desktop dependencies
         working-directory: desktop
         run: |
-          npm ci
+          npm ci --no-audit --no-fund
           node node_modules/electron/install.js
       - name: Pack the desktop app
         working-directory: desktop

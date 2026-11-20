@@ -73,6 +73,7 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : '恢复失败')
+      setOpen(true)
     }
   }
   const rename = async (v: VersionMeta): Promise<void> => {
@@ -98,7 +99,7 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
           {picked.length === 2 ? '对比所选两个版本' : picked.length === 1 ? '与当前文档对比' : '勾选版本以对比'}
         </button>
       </div>
-      {error && <p className="error pad">{error}</p>}
+      {error && <p className="error pad" role="alert">{error}</p>}
       {list.length === 0 && <p className="muted pad">还没有版本。AI 操作前后、导入后会自动保存，也可以手动保存。</p>}
       <ul>
         {list.map((v) => (

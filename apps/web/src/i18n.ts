@@ -167,6 +167,7 @@ const EXACT: Record<string, string> = {
 
 Object.assign(EXACT, {
   '当前内容会先保存为一个版本，不会丢失。': 'Your current content will be saved as a version first.',
+  'AI 任务运行中，暂不能恢复': 'Wait for the AI task to finish before restoring a version.',
   '文档内容和待确认的修改不会受影响。': 'Document content and pending changes won’t be affected.',
   '新对话': 'New chat', '切换对话': 'Switch chat', '删除对话': 'Delete chat',
   '导出时包含视频？': 'Include videos in the export?', '包含视频': 'Include videos', '不含视频': 'Skip videos',

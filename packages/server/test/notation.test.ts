@@ -269,6 +269,27 @@ describe('import', () => {
 })
 
 describe('export', () => {
+  it.each([
+    ['ordered', '1. a\n   1. a1\n2. b', 'ol'],
+    ['bullet', '- a\n  - a1\n- b', 'ul'],
+    ['mixed', '1. a\n   - a1\n2. b', 'ol'],
+  ])('preserves nested %s lists through Markdown round-trip', async (_, md) => {
+    const blocks = await fileToBlocks('list.md', enc(md))
+    expect(blocks.map((b) => b.attrs.indent)).toEqual([0, 1, 0])
+    expect(await fileToBlocks('list.md', enc(blocksToMarkdown(blocks)))).toEqual(blocks)
+  })
+
+  it.each([
+    ['ordered', '1. a\n   1. a1\n2. b', 'ol', 'ol'],
+    ['bullet', '- a\n  - a1\n- b', 'ul', 'ul'],
+    ['mixed', '1. a\n   - a1\n2. b', 'ol', 'ul'],
+  ])('preserves nested %s lists in HTML export', async (_, md, outer, inner) => {
+    const blocks = await fileToBlocks('list.md', enc(md))
+    const html = blocksToHtml(blocks, 'Lists')
+    expect(html.replace(/\n/g, '')).toContain(`<${outer}><li>a<${inner}><li>a1</li></${inner}></li><li>b</li></${outer}>`)
+    expect(htmlToBlocks(html)).toEqual(blocks)
+  })
+
   const image: Block = { type: 'image', attrs: { src: '/files/abc', alt: 'cat', caption: 'A cat', width: 60 }, delta: [] }
   const mermaid: Block = { blockId: 'm1', type: 'codeBlock', attrs: { language: 'mermaid' }, delta: [{ insert: 'graph TD' }] }
   const math: Block = { blockId: 'x1', type: 'codeBlock', attrs: { language: 'math' }, delta: [{ insert: 'x^2' }] }

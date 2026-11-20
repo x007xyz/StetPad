@@ -102,6 +102,22 @@ describe('server', () => {
     expect(projectBlocks(observer.doc, 'revised')[1]!.text).toBe('suggested B')
   })
 
+  it('clears attributes added after a saved version on full restore', async () => {
+    const id = (await call('/api/docs', { method: 'POST', body: JSON.stringify({ title: 'attributes' }) })).body.id as string
+    const { doc } = open(id)
+    await until(() => projectBlocks(doc, 'revised').length === 1, 'initial block')
+    const blockId = projectBlocks(doc, 'revised')[0]!.blockId
+    const saved = await call(`/api/docs/${id}/versions`, { method: 'POST', body: '{}' })
+    expect((await call(`/api/versions/${saved.body.id}`)).body.content.revised[0].attrs).toEqual({})
+    findBlock(doc, blockId)!.setAttribute('indent', 3 as unknown as string)
+    const observer = open(id)
+    await until(() => projectBlocks(observer.doc, 'revised')[0]?.attrs.indent === 3, 'attribute reaches server')
+    expect((await call(`/api/versions/${saved.body.id}/restore`, { method: 'POST' })).status).toBe(200)
+    const restored = (await call(`/api/docs/${id}/export?format=json`)).body.blocks[0]
+    expect(restored.blockId).toBe(blockId)
+    expect(restored.attrs).toEqual({})
+  })
+
   it('manages AI chats per document', async () => {
     const id = (await call('/api/docs', { method: 'POST', body: JSON.stringify({ title: 'chats' }) })).body.id as string
     expect((await call(`/api/docs/${id}/chats`)).body.chats).toEqual([])

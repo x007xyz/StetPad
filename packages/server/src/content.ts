@@ -436,6 +436,7 @@ export function applyBlocks(doc: Y.Doc, target: RichBlock[], blockIds?: string[]
         return
       }
       const cur = el.getAttributes() as Record<string, unknown>
+      for (const k of Object.keys(cur)) if (k !== 'blockId' && !Object.hasOwn(b.attrs, k)) el.removeAttribute(k)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       for (const [k, v] of Object.entries(b.attrs)) if (cur[k] !== v) el.setAttribute(k, v as any)
       const now = JSON.stringify(blockTexts(el).flatMap((t) => t.toDelta()))

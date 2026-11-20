@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas'
-import { blockText, compact, decide, findBlock, insertBlock, listChanges, listComments, projectBlocks } from '@stetpad/crdt'
+import { blockText, compact, decide, findBlock, insertBlock, listChanges, listComments, projectBlocks, trackedInsert } from '@stetpad/crdt'
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import {
@@ -135,6 +135,21 @@ function docWith(blocks: { id: string; type: string; text?: string; attrs?: Reco
 
 describe('DocTools on the new block types', () => {
   const meta = { author: AI, runId: 'r1' }
+
+  it('refuses attribute changes while another text revision is pending', () => {
+    const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Title' }])
+    const tools = new DocTools(doc, meta)
+    tools.readAll()
+    const changeId = trackedInsert(doc, blockText(findBlock(doc, 'h1')!), 5, ' pending', { author: 'Other' })
+    const before = listChanges(doc)
+    expect(tools.replaceBlock('h1', '## Title')).toEqual({ ok: false, error: 'block has pending changes; resolve them before changing its attributes' })
+    expect(listChanges(doc)).toEqual(before)
+    expect(projectBlocks(doc, 'physical')).toHaveLength(1)
+    expect(findBlock(doc, 'h1')!.getAttribute('level')).toBe(1)
+    decide(doc, changeId, 'reject')
+    compact(doc)
+    expect(projectBlocks(doc, 'original')[0]!.text).toBe('Title')
+  })
 
   it('an attribute replacement preserves links, footnotes and inline math after acceptance', () => {
     const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Link note x' }])

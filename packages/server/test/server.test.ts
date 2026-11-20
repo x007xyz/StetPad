@@ -89,6 +89,24 @@ describe('server', () => {
     expect((await call(`/api/docs/${id}/export?format=md`)).body).toBe('a cat sat\n')
   })
 
+  it('keeps pending suggestions on unselected blocks during partial restore', async () => {
+    const id = (await call('/api/import/create', { method: 'POST', body: JSON.stringify({ title: 'partial restore', blocks: ['old A', 'settled B'].map((insert) => ({ type: 'paragraph', attrs: {}, delta: [{ insert }] })) }) })).body.id as string
+    const { doc } = open(id)
+    await until(() => projectBlocks(doc, 'physical').length === 2, 'blocks synced')
+    const [a, b] = projectBlocks(doc, 'physical')
+    const version = (await call(`/api/docs/${id}/versions`)).body[0].id
+    blockText(findBlock(doc, a!.blockId)!).insert(0, 'new ')
+    trackedReplace(doc, blockText(findBlock(doc, b!.blockId)!), 0, b!.text.length, 'suggested B', { author: 'AI', reason: 'rewrite' })
+    const observer = open(id)
+    await until(() => listChanges(observer.doc).length === 1 && projectBlocks(observer.doc, 'original')[0]?.text === 'new old A', 'edits reach server')
+    const pending = listChanges(observer.doc)
+    expect((await call(`/api/versions/${version}/restore`, { method: 'POST', body: JSON.stringify({ blockIds: [a!.blockId] }) })).status).toBe(200)
+    await until(() => projectBlocks(observer.doc, 'original')[0]?.text === 'old A', 'partial restore reaches client')
+    expect(listChanges(observer.doc)).toEqual(pending)
+    expect(projectBlocks(observer.doc, 'original')[1]!.text).toBe('settled B')
+    expect(projectBlocks(observer.doc, 'revised')[1]!.text).toBe('suggested B')
+  })
+
   it('clears attributes added after a saved version on full restore', async () => {
     const id = (await call('/api/docs', { method: 'POST', body: JSON.stringify({ title: 'attributes' }) })).body.id as string
     const { doc } = open(id)

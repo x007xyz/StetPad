@@ -394,11 +394,26 @@ export function docFromBlocks(list: Block[]): Y.Doc {
 /**
  * Make the document read like `target` (used by "restore version"). Written
  * as ordinary edits on top of the current state, so it syncs like any other
- * change. Pending suggestions are rejected first: they refer to text that the
- * restore is about to replace.
+ * change. Full restores reject pending suggestions first. Partial restores
+ * replace only chosen nodes, leaving all other nodes and change records intact.
  */
-export function applyBlocks(doc: Y.Doc, target: RichBlock[]): void {
+export function applyBlocks(doc: Y.Doc, target: RichBlock[], blockIds?: string[]): void {
   doc.transact(() => {
+    if (blockIds?.length) {
+      const chosen = new Map(target.filter((b) => blockIds.includes(b.blockId)).map((b) => [b.blockId, b]))
+      const frag = content(doc)
+      for (let i = 0; i < frag.length; i++) {
+        const el = frag.get(i)
+        if (!(el instanceof Y.XmlElement)) continue
+        const b = chosen.get(blockIdOf(el))
+        if (!b) continue
+        frag.delete(i, 1)
+        insertBlock(doc, i, b.blockId, '', b.type, b.attrs, b.delta)
+        chosen.delete(b.blockId)
+      }
+      for (const b of chosen.values()) insertBlock(doc, frag.length, b.blockId, '', b.type, b.attrs, b.delta)
+      return
+    }
     for (const c of listChanges(doc)) decide(doc, c.id, 'reject')
     compact(doc)
     const frag = content(doc)

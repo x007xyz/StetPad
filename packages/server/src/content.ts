@@ -317,6 +317,20 @@ export function applyMdFootnotes(list: Block[], defs: Map<string, string>): Bloc
 const INLINE_TEX = /(?<![\\$])\$(?=[^\s$])([^$\n]*?[^\s$\\])\$(?![\d$])/g
 const TOKEN = /(\d+)/g
 
+/** A code span: a run of backticks, then text, then a run of the same length. */
+const CODE_SPAN = /(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)/g
+
+/** Applies `f` to the parts of `line` outside code spans. */
+function outsideCodeSpans(line: string, f: (part: string) => string): string {
+  let out = ''
+  let last = 0
+  for (const m of line.matchAll(CODE_SPAN)) {
+    out += f(line.slice(last, m.index)) + m[0]
+    last = m.index + m[0].length
+  }
+  return out + f(line.slice(last))
+}
+
 /**
  * Replaces inline `$…$` with placeholders before Markdown parsing, so that `*` and `_` inside a
  * formula are not read as emphasis. Code (fenced blocks, code spans), tables and lines with links or
@@ -330,18 +344,12 @@ export function protectInlineMath(md: string): { body: string; tex: string[] } {
     .map((line, i) => {
       if (code[i]) return line
       if (/^\s*\|/.test(line) || line.includes('](') || line.includes('![')) return line
-      // Odd parts of a split on code spans are code; only the others are scanned.
-      return line
-        .split(/(`[^`]*`)/)
-        .map((part, i) =>
-          i % 2
-            ? part
-            : part.replace(INLINE_TEX, (_m, src: string) => {
-                tex.push(src)
-                return `${tex.length - 1}`
-              }),
-        )
-        .join('')
+      return outsideCodeSpans(line, (part) =>
+        part.replace(INLINE_TEX, (_m, src: string) => {
+          tex.push(src)
+          return `${tex.length - 1}`
+        }),
+      )
     })
     .join('\n')
   return { body, tex }

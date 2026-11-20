@@ -647,10 +647,15 @@ export function blocksToMarkdown(input: Block[]): string {
   const notes = footnoteNotes(input)
   const list = withFootnoteRefs(input)
   const out: string[] = []
-  let n = 0
+  const markers: { type: string; n: number; width: number }[] = []
   for (const b of list) {
-    const pad = '  '.repeat(Number(b.attrs.indent ?? 0))
-    n = b.type === 'orderedItem' ? n + 1 : 0
+    const listItem = ['bulletItem', 'orderedItem', 'taskItem'].includes(b.type)
+    const level = Number(b.attrs.indent ?? 0)
+    markers.length = listItem ? Math.min(markers.length, level + 1) : 0
+    const previous = markers[level]
+    const n = b.type === 'orderedItem' && previous?.type === b.type ? previous.n + 1 : 1
+    const pad = ' '.repeat(Array.from({ length: level }, (_, i) => markers[i]?.width ?? 2).reduce((a, b) => a + b, 0))
+    if (listItem) markers[level] = { type: b.type, n, width: b.type === 'orderedItem' ? String(n).length + 2 : 2 }
     switch (b.type) {
       case 'heading':
         out.push('#'.repeat(Number(b.attrs.level ?? 1)) + ' ' + inlineMd(b.delta))
@@ -711,7 +716,7 @@ export function blocksToMarkdown(input: Block[]): string {
         break
       }
       case 'table': {
-        const rows = tableRows(b)
+        const rows = tableRows(b).map((r) => r.map((c) => String(c ?? '').replace(/([\\|])/g, '\\$1')))
         if (rows[0]) {
           out.push('| ' + rows[0].join(' | ') + ' |', '| ' + rows[0].map(() => '---').join(' | ') + ' |', ...rows.slice(1).map((r) => '| ' + r.join(' | ') + ' |'))
         }
@@ -720,7 +725,6 @@ export function blocksToMarkdown(input: Block[]): string {
       default:
         out.push(inlineMd(b.delta))
     }
-    const listItem = ['bulletItem', 'orderedItem', 'taskItem'].includes(b.type)
     if (!listItem) out.push('')
   }
   const body = out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n'

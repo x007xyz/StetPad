@@ -8,6 +8,11 @@ const parse = (html: string, baseUrl?: string) => {
 }
 
 describe('@stetpad/clip domToBlocks', () => {
+  it('indents nested ordered Markdown by the parent marker width', () => {
+    const blocks = parse('<ol><li>a<ol><li>a1</li></ol></li><li>b</li></ol>')
+    expect(blocksToMarkdown(blocks)).toBe('1. a\n   1. a1\n2. b\n')
+  })
+
   it('converts headings, inline formatting, nested lists, tasks, and tables', () => {
     const blocks = parse(
       '<h1>Main</h1>' +
@@ -104,6 +109,22 @@ describe('@stetpad/clip domToBlocks', () => {
     expect(md).toContain('> 来源：[Great Post](https://example.com/article) · 作者：Alice · Example')
     expect(md).toContain('> [!NOTE] 笔记：Useful chart for Q3')
     expect(md).toContain('---')
+  })
+})
+
+describe('@stetpad/clip table Markdown', () => {
+  it('escapes pipes and backslashes in header and body cells', () => {
+    const blocks = parse('<table><tr><th>A|B</th><th>tail</th></tr><tr><td>A\\|B</td><td>tail</td></tr></table>')
+    expect(blocksToMarkdown(blocks)).toBe('| A\\|B | tail |\n| --- | --- |\n| A\\\\\\|B | tail |\n')
+  })
+
+  it('serializes non-string table cells', () => {
+    const rows = JSON.stringify([[1, null], ['a|b', true]])
+    expect(blocksToMarkdown([{ type: 'table', attrs: { rows }, delta: [] }])).toBe('| 1 |  |\n| --- | --- |\n| a\\|b | true |\n')
+  })
+
+  it.each(['[]', 'invalid JSON'])('omits empty or invalid table rows: %s', (rows) => {
+    expect(blocksToMarkdown([{ type: 'table', attrs: { rows }, delta: [] }])).toBe('\n')
   })
 })
 

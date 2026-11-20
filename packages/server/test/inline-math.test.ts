@@ -80,6 +80,13 @@ describe('inline math import from Markdown', () => {
     expect(b!.delta.find((d) => d.insert === 'x')?.attributes?.italic).toBeTruthy()
   })
 
+  it('leaves dollars inside a double- or triple-backtick code span alone', () => {
+    const { body, tex } = protectInlineMath('```a `$x$` b``` and ``$y$`` and $z$')
+    expect(tex).toEqual(['z'])
+    expect(body).toContain('```a `$x$` b```')
+    expect(body).toContain('``$y$``')
+  })
+
   it('leaves code spans and fenced code alone', () => {
     const { body, tex } = protectInlineMath('`$x$` and $y$\n```\n$z$\n```')
     expect(tex).toEqual(['y'])

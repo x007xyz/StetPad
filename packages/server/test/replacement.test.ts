@@ -68,6 +68,32 @@ describe.each([
 })
 
 describe('replacement review regressions', () => {
+  it('accepts a footnote proposal without losing pending human text or a resolved comment', () => {
+    const doc = new Y.Doc()
+    insertBlock(doc, 0, 'b', 'Sales rose.')
+    const comment = commentOnBlock(doc, 'b', 'Sales', 'Human', 'Keep the source')!
+    resolveComment(doc, comment)
+    const r = new DocTools(doc, { author: 'AI' }).addFootnote('b', 'Sales', 'Quarterly report')
+    if (!r.ok) throw new Error(r.error)
+    expect(projectBlocks(doc, 'original')[0]!.delta).toEqual([{ insert: 'Sales rose.' }])
+    const original = blockText(findBlock(doc, 'b')!)
+    original.insert(original.length, ' In June.')
+    decide(doc, r.change_ids[0]!, 'accept')
+    compact(doc)
+    expect.soft(projectBlocks(doc, 'original')[0]).toMatchObject({
+      blockId: r.new_block_id,
+      type: 'paragraph',
+      text: 'Sales rose. In June.',
+      delta: [
+        { insert: 'Sales', attributes: { footnote: { id: r.footnote_id, note: 'Quarterly report' } } },
+        { insert: ' rose. In June.' },
+      ],
+    })
+    expect.soft(listComments(doc)[0]).toMatchObject({ id: comment, blockId: r.new_block_id, orphaned: false, resolved: true })
+    resolveComment(doc, comment, false)
+    expect.soft(listComments(doc)[0]).toMatchObject({ id: comment, blockId: r.new_block_id, orphaned: false, resolved: false })
+  })
+
   it.each([
     { before: 'Sales rose', proposal: 'Sales grew', expected: 'Sales grew!' },
     { before: 'Sales rose', proposal: 'Revenue grew', expected: 'Revenue grew!' },

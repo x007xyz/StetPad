@@ -7,6 +7,9 @@ import { startServer, type RunningServer, type ServerConfig } from '../src'
 import { editImageBytes, generateImageBytes } from '../src/images'
 import { capsOf, parseCaps, providerKeyNames, type ModelScope } from '../src/models'
 import type { Transcriber } from '../src/transcribe'
+import { stubAgentDiscovery } from './stub-agent-discovery'
+
+stubAgentDiscovery()
 
 // Keys from the environment or ~/.dsh would make these tests call real providers. Hide them.
 const hidden = ['DSH_HOME', ...providerKeyNames().map((p) => p.keyName)]

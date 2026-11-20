@@ -123,6 +123,41 @@ describe('server', () => {
     expect(md).toContain('| a | b |')
   })
 
+  it('keeps Markdown footnotes from preview when creating a document', async () => {
+    const form = new FormData()
+    form.append('file', new File(['A word[^1].\n\n[^1]: note text\n'], 'footnote.md'))
+    const preview = await call('/api/import/preview', { method: 'POST', body: form })
+    expect(preview.status).toBe(200)
+    expect(preview.body.blocks[0].delta).toContainEqual({
+      insert: 'word', attributes: { footnote: { id: expect.any(String), note: 'note text' } },
+    })
+    const made = await call('/api/import/create', { method: 'POST', body: JSON.stringify(preview.body) })
+    expect(made.status).toBe(200)
+    const { doc } = open(made.body.id)
+    await until(() => projectBlocks(doc, 'revised').length > 0, 'imported blocks')
+    expect(projectBlocks(doc, 'revised')[0]!.delta).toEqual(preview.body.blocks[0].delta)
+    expect((await call(`/api/docs/${made.body.id}/export?format=md`)).body).toBe('A word[^1].\n\n[^1]: note text\n')
+  })
+
+  it('sanitizes imported footnote attributes', async () => {
+    const notes = [
+      { id: 'empty', note: '' }, { id: 'missing' }, { id: 'number', note: 42 },
+      null, 'bad', {}, { id: '' }, { id: 42 },
+    ]
+    const made = await call('/api/import/create', {
+      method: 'POST', body: JSON.stringify({ title: 'Footnotes', blocks: notes.map((footnote) => ({
+        type: 'paragraph', attrs: {}, delta: [{ insert: 'word', attributes: { footnote } }],
+      })) }),
+    })
+    expect(made.status).toBe(200)
+    const { doc } = open(made.body.id)
+    await until(() => projectBlocks(doc, 'revised').length === notes.length, 'sanitized blocks')
+    expect(projectBlocks(doc, 'revised').map((b) => b.delta)).toEqual([
+      ...['empty', 'missing', 'number'].map((id) => [{ insert: 'word', attributes: { footnote: { id, note: '' } } }]),
+      ...Array.from({ length: 5 }, () => [{ insert: 'word' }]),
+    ])
+  })
+
   it('imports a Word document', async () => {
     // A minimal .docx: a heading and two paragraphs, one with bold text.
     const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'

@@ -113,6 +113,11 @@ describe('@stetpad/clip table Markdown', () => {
     expect(blocksToMarkdown(blocks)).toBe('| A\\|B | tail |\n| --- | --- |\n| A\\\\\\|B | tail |\n')
   })
 
+  it('serializes non-string table cells', () => {
+    const rows = JSON.stringify([[1, null], ['a|b', true]])
+    expect(blocksToMarkdown([{ type: 'table', attrs: { rows }, delta: [] }])).toBe('| 1 |  |\n| --- | --- |\n| a\\|b | true |\n')
+  })
+
   it.each(['[]', 'invalid JSON'])('omits empty or invalid table rows: %s', (rows) => {
     expect(blocksToMarkdown([{ type: 'table', attrs: { rows }, delta: [] }])).toBe('\n')
   })

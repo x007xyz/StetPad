@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { startServer, type RunningServer } from '../src'
 import { formatBlock, parseBlock } from '../src/tools'
+import { nonAsciiFixtures } from './non-ascii'
 
 const TOKEN = 'attachments-test-token'
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0))
@@ -76,6 +77,16 @@ afterAll(async () => {
 })
 
 describe('attachment uploads', () => {
+  it.each(nonAsciiFixtures)('preserves $name attachment filenames and bytes', async (fixture) => {
+    const name = `${fixture.title}.txt`
+    const bytes = new TextEncoder().encode(fixture.content)
+    const url = await upload(bytes, 'text/plain', name)
+    const got = await fetch(base + url)
+    expect(got.status).toBe(200)
+    expect(got.headers.get('content-disposition')).toBe(`attachment; filename*=UTF-8''${encodeURIComponent(name)}`)
+    expect(new Uint8Array(await got.arrayBuffer())).toEqual(bytes)
+  })
+
   it('a PDF is accepted and served inline under a sandboxing Content-Security-Policy', async () => {
     const url = await upload(PDF, 'application/pdf', 'spec sheet.pdf')
     const got = await fetch(base + url)

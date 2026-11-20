@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { startServer, type RunningServer } from '../src'
 import { Store, sqliteSql, type Sql } from '../src/db'
+import { nonAsciiFixtures } from './non-ascii'
 
 const until = async (check: () => boolean | Promise<boolean>, what: string, ms = 8000) => {
   const t = Date.now()
@@ -82,6 +83,38 @@ describe('search', () => {
     }
     expect(await search('écolière', me.token)).toEqual([])
   })
+
+  for (const fixture of nonAsciiFixtures) {
+    it.each(fixture.queries)(`finds ${fixture.name} titles for %s`, async (query) => {
+      const doc = await store.createDoc(me.id, fixture.title, stateWith('Unrelated body'))
+      try {
+        expect(await search(query, me.token)).toContainEqual(expect.objectContaining({ id: doc.id, title: fixture.title, titleMatch: true, snippet: '' }))
+      } finally {
+        await store.deleteDoc(doc.id)
+      }
+    })
+
+    it(`finds unchanged ${fixture.name} body text`, async () => {
+      const doc = await store.createDoc(me.id, 'Unrelated title', stateWith(fixture.content))
+      try {
+        expect(await search(fixture.bodyQuery, me.token)).toContainEqual(expect.objectContaining({ id: doc.id, titleMatch: false, snippet: fixture.content }))
+      } finally {
+        await store.deleteDoc(doc.id)
+      }
+    })
+
+    // src/db.ts uses SQLite's ASCII-only lower(text_content), unlike unicode_lower(title).
+    const bodyCase = fixture.name === 'accents' || fixture.name === 'Turkish dotted and dotless i' ? it.fails : it
+    bodyCase(`finds case-insensitive ${fixture.name} body text`, async () => {
+      const query = fixture.caseContent.toLowerCase()
+      const doc = await store.createDoc(me.id, 'Unrelated title', stateWith(fixture.caseContent))
+      try {
+        expect(await search(query, me.token)).toContainEqual(expect.objectContaining({ id: doc.id, titleMatch: false, snippet: fixture.caseContent }))
+      } finally {
+        await store.deleteDoc(doc.id)
+      }
+    })
+  }
 
   it('returns nothing for a blank query', async () => {
     const a = me

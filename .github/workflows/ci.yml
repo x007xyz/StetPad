@@ -2,11 +2,21 @@ name: ci
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -21,22 +31,39 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, windows-latest]
+        os: [macos-15, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
+      # Only the web UI is bundled into the app; skipping the server package also skips
+      # compiling better-sqlite3 for Node, which needs Visual Studio on Windows.
+      - run: pnpm install --frozen-lockfile --filter @stetpad/web...
       - run: pnpm --dir apps/web build
-      - name: Install and pack the desktop app
-        working-directory: desktop
-        shell: bash
+      - name: Point npm and Electron caches at one directory
         run: |
-          npm install
-          npx electron-rebuild -f -w better-sqlite3 || true
-          npm run pack
+          echo "npm_config_cache=$RUNNER_TEMP/desktop-cache/npm" >> "$GITHUB_ENV"
+          echo "ELECTRON_CACHE=$RUNNER_TEMP/desktop-cache/electron" >> "$GITHUB_ENV"
+          echo "ELECTRON_BUILDER_CACHE=$RUNNER_TEMP/desktop-cache/electron-builder" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/desktop-cache
+          key: desktop-${{ runner.os }}-${{ hashFiles('desktop/package-lock.json') }}
+          restore-keys: desktop-${{ runner.os }}-
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: |
+          npm ci
+          node node_modules/electron/install.js
+      - name: Pack the desktop app
+        working-directory: desktop
+        run: npm run pack
         env:
           # Code signing. Leave the secrets unset to build unsigned.
           #   Windows: CSC_LINK (base64 .pfx or URL) + CSC_KEY_PASSWORD
@@ -45,5 +72,4 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
       - name: Smoke test the packaged app
         working-directory: desktop
-        shell: bash
         run: npm run smoke:packed

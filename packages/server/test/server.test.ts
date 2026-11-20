@@ -56,6 +56,11 @@ describe('server', () => {
     expect((await call('/api/docs', {}, 'nope')).status).toBe(401)
   })
 
+  it.each([42, false, {}, null])('rejects a non-string document title (%j)', async (title) => {
+    const result = await call('/api/docs', { method: 'POST', body: JSON.stringify({ title }) })
+    expect(result).toEqual({ status: 400, body: { error: expect.any(String) } })
+  })
+
   it('creates a document, syncs edits, settles decisions and keeps versions', async () => {
     const created = await call('/api/docs', { method: 'POST', body: JSON.stringify({ title: 'T' }) })
     const id = created.body.id as string

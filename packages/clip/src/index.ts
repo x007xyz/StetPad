@@ -649,6 +649,7 @@ export function blocksToMarkdown(input: Block[]): string {
   for (const b of list) {
     const listItem = ['bulletItem', 'orderedItem', 'taskItem'].includes(b.type)
     const level = Number(b.attrs.indent ?? 0)
+    if (!listItem && markers.length) out.push('')
     markers.length = listItem ? Math.min(markers.length, level + 1) : 0
     const previous = markers[level]
     const n = b.type === 'orderedItem' && previous?.type === b.type ? previous.n + 1 : 1

@@ -113,6 +113,12 @@ const EXACT: Record<string, string> = {
   '还没有版本。AI 操作前后、导入后会自动保存，也可以手动保存。': 'No versions yet. They are saved automatically around AI runs and imports, and you can save one by hand.',
   '命名': 'Rename', '恢复': 'Restore', '版本对比': 'Compare versions', '只看有变化的段落': 'Only changed paragraphs',
   '默认模型': 'Default model', '没有可用的模型': 'No models available', '（未验证）': ' (unverified)',
+  '模型分工': 'Model roles', '识图模型': 'Vision model', '图片生成模型': 'Image generation model', '改图模型': 'Image editing model', '语音转写模型': 'Transcription model', '图表生成模型': 'Diagram generation model',
+  '图片描述、AI 看图、扫描版 PDF 识别': 'Image descriptions, AI vision and scanned PDF recognition',
+  'AI 生成图片': 'AI image generation', 'AI 改图': 'AI image editing', '视频转文字稿和字幕': 'Video transcripts and subtitles',
+  'Mermaid、公式、draw.io 的 AI 生成（自动 = 跟随默认模型）': 'AI generation of Mermaid, formulas and draw.io (automatic = use the default model)',
+  '自动': 'Automatic', '模型分工暂时不可用': 'Model roles are temporarily unavailable',
+  '文字': 'Text', '识图': 'Vision', '生图': 'Image generation', '改图': 'Image editing', '转写': 'Transcription',
   '"未验证"表示这个模型还没有通过编辑评测，可以用，但工具调用的可靠性没有保证。': '"Unverified" means the model has not passed the editing eval. You can use it, but tool-call reliability is not guaranteed.',
   '写作偏好': 'Writing preferences', '例如：不用被动句；术语统一用“修订”而不是“更改”': 'e.g. avoid passive voice; always say "suggestion", not "edit"',
   '模型密钥': 'Model keys', '密钥只保存在服务端，保存后不会再显示。留空表示不修改。没有填写时，会使用环境变量或本机 DSH 配置里的密钥。': 'Keys are stored on the server only and are not shown again. Leave blank to keep as is. If empty, environment variables or the local DSH config are used.',
@@ -153,6 +159,9 @@ Object.assign(EXACT, {
 })
 
 const PATTERNS: [RegExp, (...m: string[]) => string][] = [
+  [/^自动（当前：(.*)）$/, (_, model) => `Automatic (current: ${model})`],
+  [/^模型分工暂时不可用：(.*)$/s, (_, error) => `Model roles are temporarily unavailable: ${error}`],
+  [/^没有可用的模型：在模型提供方里给模型勾选"(.*)"能力$/, (_, cap) => `No models available: enable the "${EXACT[cap] ?? cap}" capability for a model under Model providers`],
   [/^无法删除"(.*)"。$/, (_, t) => `Can't delete "${EXACT[t] ?? t}".`],
   [/^删除文件夹"(.*)"？$/, (_, t) => `Delete folder "${EXACT[t] ?? t}"?`],
   [/^永久删除"(.*)"？$/, (_, t) => `Permanently delete "${EXACT[t] ?? t}"?`],

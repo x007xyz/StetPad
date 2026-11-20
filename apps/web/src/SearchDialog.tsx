@@ -26,6 +26,7 @@ export function SearchDialog({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     const q = query.trim()
+    const my = ++seq.current
     if (!q) {
       setResults([])
       setSearched('')
@@ -34,7 +35,6 @@ export function SearchDialog({ onClose }: { onClose: () => void }) {
       return
     }
     setLoading(true)
-    const my = ++seq.current
     const t = setTimeout(() => {
       api<{ results: SearchResult[] }>(`/search?q=${encodeURIComponent(q)}`)
         .then((r) => {

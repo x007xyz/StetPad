@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { Button } from '../components/ui/button'
 import { Dialog, DialogContent } from '../components/ui/dialog'
@@ -130,6 +130,7 @@ export function Providers({ onClose, onChanged }: { onClose: () => void; onChang
   const [query, setQuery] = useState('')
   const [usage, setUsage] = useState<UsageDay[]>([])
   const [balances, setBalances] = useState<Record<string, BalanceResult | 'loading'>>({})
+  const balanceSequences = useRef(new Map<string, number>())
   const [tests, setTests] = useState<Record<string, { ok?: boolean; ms?: number; error?: string; running?: boolean }>>({})
   const [discovering, setDiscovering] = useState(false)
   const [filter, setFilter] = useState('')
@@ -187,14 +188,18 @@ export function Providers({ onClose, onChanged }: { onClose: () => void; onChang
     setDirty(true)
   }
 
-  const query1 = async (key: string, body: Record<string, string>): Promise<void> => {
+  const queryBalance = async (key: string, body: Record<string, string>): Promise<void> => {
+    const sequence = (balanceSequences.current.get(key) ?? 0) + 1
+    balanceSequences.current.set(key, sequence)
     setBalances((b) => ({ ...b, [key]: 'loading' }))
+    let result: BalanceResult
     try {
-      const r = await api<BalanceResult>('/providers/balance', { method: 'POST', body: JSON.stringify(body) })
-      setBalances((b) => ({ ...b, [key]: r }))
+      result = await api<BalanceResult>('/providers/balance', { method: 'POST', body: JSON.stringify(body) })
     } catch (err) {
-      setBalances((b) => ({ ...b, [key]: { error: err instanceof Error ? err.message : '查询失败' } }))
+      result = { error: err instanceof Error ? err.message : '查询失败' }
     }
+    if (sequence !== balanceSequences.current.get(key)) return
+    setBalances((b) => ({ ...b, [key]: result }))
   }
 
   // Fills the model list from the provider's own /models endpoint. Existing rows keep their state and prices.
@@ -420,7 +425,7 @@ export function Providers({ onClose, onChanged }: { onClose: () => void; onChang
                     <h3 className="sect">余额</h3>
                     {canQueryBalance(current) ? (
                       <div className="row wrap">
-                        <Button size="sm" disabled={current.isNew} onClick={() => void query1(current.id, { provider: current.id, ...(current.builtin ? {} : { baseURL: current.baseURL }), apiKey: current.apiKey })}>查询余额</Button>
+                        <Button size="sm" disabled={current.isNew} onClick={() => void queryBalance(current.id, { provider: current.id, ...(current.builtin ? {} : { baseURL: current.baseURL }), apiKey: current.apiKey })}>查询余额</Button>
                         <BalanceView value={balances[current.id]} />
                       </div>
                     ) : (

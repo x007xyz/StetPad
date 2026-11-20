@@ -76,6 +76,12 @@ button { cursor: pointer; }
 .prose { max-width: 720px; margin: 0 auto; padding: 56px 40px 200px; outline: none; min-height: 60vh; counter-reset: ol ol1 ol2 ol3 ol4 ol5 ol6; font-size: 16px; line-height: 1.7; }
 @media (max-width: 640px) { .prose { padding: 28px 18px 160px; font-size: 16px; } }
 .prose > * { margin: 0 0 2px; counter-set: ol 0 ol1 0 ol2 0 ol3 0 ol4 0 ol5 0 ol6 0; position: relative; padding-top: 2px; padding-bottom: 2px; }
+.prose > [data-indent="1"]:not(.ordered) { counter-set: ol1 0 ol2 0 ol3 0 ol4 0 ol5 0 ol6 0; }
+.prose > [data-indent="2"]:not(.ordered) { counter-set: ol2 0 ol3 0 ol4 0 ol5 0 ol6 0; }
+.prose > [data-indent="3"]:not(.ordered) { counter-set: ol3 0 ol4 0 ol5 0 ol6 0; }
+.prose > [data-indent="4"]:not(.ordered) { counter-set: ol4 0 ol5 0 ol6 0; }
+.prose > [data-indent="5"]:not(.ordered) { counter-set: ol5 0 ol6 0; }
+.prose > [data-indent="6"]:not(.ordered) { counter-set: ol6 0; }
 .prose > .ordered { counter-set: ol1 0 ol2 0 ol3 0 ol4 0 ol5 0 ol6 0; counter-increment: ol; }
 .prose > .ordered[data-indent="1"] { counter-set: ol2 0 ol3 0 ol4 0 ol5 0 ol6 0; counter-increment: ol1; }
 .prose > .ordered[data-indent="2"] { counter-set: ol3 0 ol4 0 ol5 0 ol6 0; counter-increment: ol2; }

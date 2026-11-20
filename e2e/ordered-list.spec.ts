@@ -32,3 +32,33 @@ test('ordered lists restart at each depth and after non-list blocks', async ({ p
   const markers = documents[0].layout.text.map(index => strings[index]).filter(text => /^\d+$/.test(text)).map(text => `${text}.`)
   expect(markers).toEqual(['1.', '2.', '1.', '2.', '1.', '2.', '3.', '3.', '1.', '1.', '1.', '1.', '1.', '1.', '4.', '1.'])
 })
+
+for (const kind of ['bullet', 'task']) {
+  test(`nested ${kind} blocks preserve outer numbering and reset their own level`, async ({ page }) => {
+    await page.goto('/?token=dev')
+    await page.getByRole('button', { name: '新建文档', exact: true }).first().click()
+    const editor = page.locator('[contenteditable="true"]').first()
+    await expect(editor).toBeVisible()
+    await editor.focus()
+    await editor.evaluate((el, blockKind) => {
+      const data = new DataTransfer()
+      data.setData('text/html', Array.from({ length: 6 }, (_, index) => {
+        const level = index + 1
+        return `<div class="ordered" data-indent="${level - 1}">outer first</div>
+          <div class="${blockKind}" data-indent="${level}">nested interruption</div>
+          <div class="ordered" data-indent="${level - 1}">outer second</div>
+          <div class="ordered" data-indent="${level}">nested first</div>
+          <div class="${blockKind}" data-indent="${level}">same-level interruption</div>
+          <div class="ordered" data-indent="${level}">nested restart</div>
+          <p>Reset all levels.</p>`
+      }).join(''))
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+    }, kind)
+    await expect(editor.locator(`.${kind}`)).toHaveCount(12)
+    await expect(editor.locator('.ordered')).toHaveCount(24)
+    const session = await page.context().newCDPSession(page)
+    const { documents, strings } = await session.send('DOMSnapshot.captureSnapshot', { computedStyles: [] })
+    const markers = documents[0].layout.text.map(index => strings[index]).filter(text => /^\d+$/.test(text))
+    expect(markers).toEqual(Array.from({ length: 6 }, () => ['1', '2', '1', '1']).flat())
+  })
+}

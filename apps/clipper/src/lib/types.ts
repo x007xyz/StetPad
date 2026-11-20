@@ -92,6 +92,7 @@ export interface ClipExecutionResult {
   changeId?: string | null
   uploadedImages: number
   skippedImages: number
+  omittedBlockCount?: number
   workflow: WorkflowKind
   mode: 'local'
   baseUrl: string

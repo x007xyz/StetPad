@@ -24,6 +24,7 @@ import {
   requestLocalPair,
   resolveProfile,
 } from '../../src/lib/api'
+import { clipOverflowNotice } from '../../src/lib/clip-notice'
 import { extractActiveTab } from '../../src/lib/inject'
 import { detectBrowserName, generatePkcePair, parseConnectionCode, randomHex } from '../../src/lib/pkce'
 import {
@@ -467,6 +468,11 @@ export function App() {
           {result.skippedImages > 0 && `${result.skippedImages} 张图片保留原链接。`}
           {result.runId && ' AI 正在后台生成待审阅修订建议。'}
         </p>
+        {!!result.omittedBlockCount && (
+          <p role="alert" className="m-0 rounded-lg border border-[var(--border)] bg-[var(--soft)] p-2 text-xs text-[var(--ink)]">
+            {clipOverflowNotice(result.omittedBlockCount)}
+          </p>
+        )}
         <div className="mt-2 flex gap-2">
           <button
             type="button"

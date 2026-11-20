@@ -151,6 +151,20 @@ describe('clipper server', () => {
     expect((await call('/api/me', {}, ok.body.token)).status).toBe(200)
   })
 
+  it('accepts an oversized clip from an installed clipper without silently changing the response', async () => {
+    const manual = await call('/api/clipper/tokens', { method: 'POST', body: JSON.stringify({ name: 'Long clip' }) })
+    const clipToken = manual.body.token as string
+    const paragraphs = Array.from({ length: 2001 }, (_, i) => `Paragraph ${i + 1}`)
+    const res = await call('/api/import/create', {
+      method: 'POST',
+      body: JSON.stringify({ title: 'Long clip', blocks: paragraphs.map((insert) => ({ type: 'paragraph', attrs: {}, delta: [{ insert }] })) }),
+    }, clipToken)
+    expect(res.status).toBe(200)
+    expect(res.body.omittedBlockCount).toBe(1)
+    const exported = await call(`/api/docs/${res.body.id}/export?format=md`, {}, clipToken)
+    expect(exported.body.trimEnd().split('\n\n')).toEqual(paragraphs.slice(0, 2000))
+  })
+
   it('creates documents directly into a folder and clips blocks live as tracked suggestions or direct append', async () => {
     const manual = await call('/api/clipper/tokens', { method: 'POST', body: JSON.stringify({ name: 'Clipper' }) })
     const clipToken = manual.body.token as string

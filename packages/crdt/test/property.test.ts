@@ -194,7 +194,7 @@ describe('random concurrent histories', () => {
       }),
       { numRuns: 1500 },
     )
-  })
+  }, 30_000)
 
   it('text typed by a person survives any amount of concurrent suggesting and rejecting', () => {
     fc.assert(

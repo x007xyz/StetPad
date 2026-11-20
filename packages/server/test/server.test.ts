@@ -1,7 +1,7 @@
 import { blockText, decide, findBlock, insertBlock, listChanges, projectBlocks, trackedReplace } from '@stetpad/crdt'
 import { HocuspocusProvider } from '@hocuspocus/provider'
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { strToU8, zipSync } from 'fflate'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -41,7 +41,7 @@ describe('server', () => {
     dir = mkdtempSync(join(tmpdir(), 'aiw-'))
     server = await startServer({
       dataDir: dir, port: 0,
-      mcpCommand: { command: join(__dirname, '../node_modules/.bin/tsx'), args: [join(__dirname, '../src/mcp.ts')] },
+      mcpCommand: { command: process.execPath, args: ['--import', 'tsx', join(__dirname, '../src/mcp.ts')] },
     })
     base = `http://127.0.0.1:${server.port}`
     token = server.token
@@ -124,27 +124,23 @@ describe('server', () => {
   })
 
   it('imports a Word document', async () => {
-    // A minimal .docx, assembled here: a heading, a paragraph with bold text, and a list item.
-    const file = join(dir, 'sample.docx')
-    const py = `
-import zipfile, sys
-W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
-doc = f'''<?xml version="1.0" encoding="UTF-8"?><w:document {W}><w:body>
+    // A minimal .docx: a heading and two paragraphs, one with bold text.
+    const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    const doc = `<?xml version="1.0" encoding="UTF-8"?><w:document ${W}><w:body>
 <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Report Title</w:t></w:r></w:p>
 <w:p><w:r><w:t xml:space="preserve">Plain and </w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>bold</w:t></w:r><w:r><w:t xml:space="preserve"> text.</w:t></w:r></w:p>
 <w:p><w:r><w:t>Second paragraph.</w:t></w:r></w:p>
-</w:body></w:document>'''
-styles = f'''<?xml version="1.0" encoding="UTF-8"?><w:styles {W}><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style></w:styles>'''
-z = zipfile.ZipFile(sys.argv[1], 'w')
-z.writestr('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>')
-z.writestr('_rels/.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
-z.writestr('word/_rels/document.xml.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="s1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>')
-z.writestr('word/document.xml', doc)
-z.writestr('word/styles.xml', styles)
-z.close()`
-    execFileSync('python3', ['-c', py, file])
+</w:body></w:document>`
+    const styles = `<?xml version="1.0" encoding="UTF-8"?><w:styles ${W}><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style></w:styles>`
+    const file = zipSync({
+      '[Content_Types].xml': strToU8('<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>'),
+      '_rels/.rels': strToU8('<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>'),
+      'word/_rels/document.xml.rels': strToU8('<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="s1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'),
+      'word/document.xml': strToU8(doc),
+      'word/styles.xml': strToU8(styles),
+    })
     const form = new FormData()
-    form.append('file', new File([readFileSync(file)], 'sample.docx'))
+    form.append('file', new File([Buffer.from(file)], 'sample.docx'))
     const r = await call('/api/import/preview', { method: 'POST', body: form })
     expect(r.status).toBe(200)
     expect(r.body.title).toBe('Report Title')
@@ -161,8 +157,8 @@ z.close()`
     const blockId = projectBlocks(owner.doc, 'physical')[0]!.blockId
 
     const transport = new StdioClientTransport({
-      command: join(__dirname, '../node_modules/.bin/tsx'),
-      args: [join(__dirname, '../src/mcp.ts'), '--url', base, '--token', token, '--doc', id, '--author', 'Pi'],
+      command: process.execPath,
+      args: ['--import', 'tsx', join(__dirname, '../src/mcp.ts'), '--url', base, '--token', token, '--doc', id, '--author', 'Pi'],
     })
     const client = new Client({ name: 'test', version: '0' })
     await client.connect(transport)

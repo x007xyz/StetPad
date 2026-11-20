@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { startServer, type RunningServer } from '../src'
 
 const FAKE_AGENT = join(__dirname, 'fake-acp-agent.mjs')
-const MCP_BRIDGE = { command: join(__dirname, '../node_modules/.bin/tsx'), args: [join(__dirname, '../src/mcp.ts')] }
+const MCP_BRIDGE = { command: process.execPath, args: ['--import', 'tsx', join(__dirname, '../src/mcp.ts')] }
 const LOCAL_TOKEN = 'local-test-token-4417'
 
 /** An agent as the Settings dialog submits it. The fake agent stands in for a real ACP program. */

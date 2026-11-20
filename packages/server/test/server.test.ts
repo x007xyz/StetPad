@@ -123,6 +123,23 @@ describe('server', () => {
     expect(md).toContain('| a | b |')
   })
 
+  it('preserves all 2,001 paragraphs when creating a document from an import preview', async () => {
+    const paragraphs = Array.from({ length: 2001 }, (_, i) => `Paragraph ${i + 1}`)
+    const form = new FormData()
+    form.append('file', new File([paragraphs.join('\n\n')], 'long.txt'))
+    const preview = await call('/api/import/preview', { method: 'POST', body: form })
+    expect(preview.status).toBe(200)
+    expect(preview.body.blocks).toHaveLength(paragraphs.length)
+
+    const made = await call('/api/import/create', { method: 'POST', body: JSON.stringify(preview.body) })
+    expect(made.status).toBe(200)
+    const exported = await call(`/api/docs/${made.body.id}/export?format=md`)
+    expect(exported.status).toBe(200)
+    const imported = (exported.body as string).trimEnd().split('\n\n')
+    expect(imported).toHaveLength(paragraphs.length)
+    expect(imported).toEqual(paragraphs)
+  })
+
   it('imports a Word document', async () => {
     // A minimal .docx: a heading and two paragraphs, one with bold text.
     const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'

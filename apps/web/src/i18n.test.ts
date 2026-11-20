@@ -9,7 +9,13 @@ it('translates folder page empty, normal and error states without changing Chine
   ['空文件夹（把文档拖进来）', 'Empty folder (drag documents here)'],
   ['侧边面板', 'Side panel'],
   ['文档标题：Draft', 'Document title: Draft'],
-  ['单独打开 Draft', 'Open separately Draft'],
+  ['单独打开 Draft', 'Open Draft separately'],
+  ['共 0 篇', '0 documents'],
+  ['共 1 篇', '1 document'],
+  ['共 2 篇', '2 documents'],
+  ['0 处修订', '0 changes'],
+  ['1 处修订', '1 change'],
+  ['3 处修订', '3 changes'],
   [
     "找不到这个文件夹，或者你没有权限打开它。",
     "This folder could not be found, or you do not have permission to open it."
@@ -61,18 +67,6 @@ it('translates folder page empty, normal and error states without changing Chine
   [
     "收起AI",
     "Hide AI"
-  ],
-  [
-    "共",
-    "Total"
-  ],
-  [
-    "篇",
-    "documents"
-  ],
-  [
-    "处修订",
-    "changes"
   ]
 ]
   for (const [zh, en] of labels) {

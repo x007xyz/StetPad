@@ -46,9 +46,6 @@ const EXACT: Record<string, string> = {
   '滚动到这里时加载内容…': 'Content loads when you scroll here…',
   '收起修订': 'Hide changes',
   '收起AI': 'Hide AI',
-  '共': 'Total',
-  '篇': 'documents',
-  '处修订': 'changes',
   '侧边面板': 'Side panel',
   // Search, trash, comments
   '搜索文档': 'Search documents',
@@ -179,7 +176,9 @@ Object.assign(EXACT, {
 
 const PATTERNS: [RegExp, (...m: string[]) => string][] = [
   [/^文档标题：(.*)$/, (_, title) => `Document title: ${title}`],
-  [/^单独打开 (.*)$/, (_, title) => `Open separately ${title}`],
+  [/^单独打开 (.*)$/, (_, title) => `Open ${title} separately`],
+  [/^共 (\d+) 篇$/, (_, n) => `${n} ${n === '1' ? 'document' : 'documents'}`],
+  [/^(\d+) 处修订$/, (_, n) => `${n} ${n === '1' ? 'change' : 'changes'}`],
   [/^自动（当前：(.*)）$/, (_, model) => `Automatic (current: ${model})`],
   [/^模型分工暂时不可用：(.*)$/s, (_, error) => `Model roles are temporarily unavailable: ${error}`],
   [/^没有可用的模型：在模型提供方里给模型勾选"(.*)"能力$/, (_, cap) => `No models available: enable the "${EXACT[cap] ?? cap}" capability for a model under Model providers`],

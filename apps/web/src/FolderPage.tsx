@@ -182,14 +182,14 @@ export function FolderPage({ id }: { id: string }) {
               {info && info.docs.length === 0 && <p className="muted mt-4">这个文件夹还是空的。把侧栏里的文档拖进来，或用文档旁的“移动到…”。</p>}
               {info && info.docs.length > 0 && (
                 <nav aria-label="文件夹大纲" className="mt-4 rounded-lg border border-border bg-secondary/40 px-4 py-3">
-                  <div className="mb-1 text-xs font-medium text-muted-foreground">共 {info.docs.length} 篇</div>
+                  <div className="mb-1 text-xs font-medium text-muted-foreground">{`共 ${info.docs.length} 篇`}</div>
                   <ol className="m-0 list-decimal pl-5 text-sm">
                     {info.docs.map((d) => {
                       const n = sections[d.id]?.changes.length ?? 0
                       return (
                         <li key={d.id} className="py-0.5">
                           <button className="text-left hover:underline" onClick={() => scrollToDoc(d.id)}>{d.title}</button>
-                          {n > 0 && <span className="ml-2 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">{n} 处修订</span>}
+                          {n > 0 && <span className="ml-2 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">{`${n} 处修订`}</span>}
                         </li>
                       )
                     })}

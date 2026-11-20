@@ -6,6 +6,8 @@ import {
   changes,
   changesInBlock,
   commentOnBlock,
+  commentIndex,
+  extendCommentAnchor,
   footnoteAttr,
   footnotesOf,
   listComments,
@@ -14,6 +16,7 @@ import {
   decide,
   diffWords,
   findBlock,
+  idKey,
   listChanges,
   newBlockId,
   newChangeId,
@@ -518,6 +521,7 @@ export class DocTools {
     text: string,
     reason?: string,
     math: Array<[number, number]> = [],
+    copied?: RichBlock,
   ) {
     const oldId = blockIdOf(el)
     const old = projectBlocks(this.doc, 'revised').find((b) => b.blockId === oldId)
@@ -527,7 +531,17 @@ export class DocTools {
     const id = newBlockId()
     const meta = { ...this.meta, reason }
     this.doc.transact(() => {
-      trackedInsertBlock(this.doc, blockIndex(this.doc, el) + 1, id, text, meta, { changeId, type, attrs, delta })
+      trackedInsertBlock(this.doc, blockIndex(this.doc, el) + 1, id, text, meta, { changeId, type, attrs, delta: copied?.delta ?? delta })
+      if (copied) {
+        const anchors = commentIndex(this.doc)
+        const before = viewBlock(this.doc, el).filter((c) => !c.removed && c.del.length === 0)
+        const after = viewBlock(this.doc, findBlock(this.doc, id)!)
+        before.forEach((c, i) => {
+          for (const comment of anchors.get(idKey(c.client, c.clock)) ?? []) {
+            extendCommentAnchor(this.doc, comment, [after[i]!])
+          }
+        })
+      }
       trackedDeleteBlock(this.doc, el, meta, { changeId })
     })
     this.markMath(id, text, math)
@@ -558,10 +572,14 @@ export class DocTools {
       // The language decides how the block renders, so it is a suggestion like any other change.
       return this.replaceWithNew(el, 'codeBlock', { ...cur, language: String(next.attrs.language ?? '') }, next.text, reason)
     }
-    for (const [k, v] of Object.entries(next.attrs)) {
-      if (el.nodeName === 'codeBlock' && k === 'language') continue
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (el.getAttribute(k) !== v) el.setAttribute(k, v as any)
+    if (Object.entries(next.attrs).some(([k, v]) => cur[k] !== v)) {
+      const base = this.baselines.get(blockId) ?? readBlock(this.doc, blockId)
+      if (conv.text !== base?.text) return { ok: false as const, error: 'make text edits and attribute changes in separate calls' }
+      const current = this.revised().find((b) => b.blockId === blockId)
+      if (!current) return { ok: false as const, error: `block ${blockId} is pending deletion` }
+      if (changesInBlock(this.doc, el).length) return { ok: false as const, error: 'block has pending changes; resolve them before changing its attributes' }
+      if (conv.math.length && current.text !== conv.text) return { ok: false as const, error: 'block changed since it was read; read it again before adding math' }
+      return this.replaceWithNew(el, el.nodeName, { ...cur, ...next.attrs }, current.text, reason, conv.math, current)
     }
     return this.proposal(blockId, conv.text, reason, conv.math)
   }

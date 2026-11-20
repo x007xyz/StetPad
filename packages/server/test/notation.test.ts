@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas'
-import { decide, findBlock, insertBlock, listChanges, projectBlocks } from '@stetpad/crdt'
+import { blockText, compact, decide, findBlock, insertBlock, listChanges, listComments, projectBlocks, trackedInsert } from '@stetpad/crdt'
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import {
@@ -135,6 +135,125 @@ function docWith(blocks: { id: string; type: string; text?: string; attrs?: Reco
 
 describe('DocTools on the new block types', () => {
   const meta = { author: AI, runId: 'r1' }
+
+  it('refuses attribute changes while another text revision is pending', () => {
+    const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Title' }])
+    const tools = new DocTools(doc, meta)
+    tools.readAll()
+    const changeId = trackedInsert(doc, blockText(findBlock(doc, 'h1')!), 5, ' pending', { author: 'Other' })
+    if (!changeId) throw new Error('expected a pending insertion')
+    const before = listChanges(doc)
+    expect(tools.replaceBlock('h1', '## Title')).toEqual({ ok: false, error: 'block has pending changes; resolve them before changing its attributes' })
+    expect(listChanges(doc)).toEqual(before)
+    expect(projectBlocks(doc, 'physical')).toHaveLength(1)
+    expect(findBlock(doc, 'h1')!.getAttribute('level')).toBe(1)
+    decide(doc, changeId, 'reject')
+    compact(doc)
+    expect(projectBlocks(doc, 'original')[0]!.text).toBe('Title')
+  })
+
+  it('an attribute replacement applies requested inline math', () => {
+    const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Area x' }])
+    const r = new DocTools(doc, meta).replaceBlock('h1', '## Area $x$')
+    if (!r.ok) throw new Error(r.error)
+    decide(doc, r.change_ids[0]!, 'accept')
+    compact(doc)
+    expect(projectBlocks(doc, 'original')[0]).toMatchObject({ attrs: { level: 2 }, delta: [{ insert: 'Area ' }, { insert: 'x', attributes: { math: true } }] })
+  })
+
+  it('refuses baseline math offsets after an untracked user edit', () => {
+    const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Area x' }])
+    const tools = new DocTools(doc, meta)
+    tools.readAll()
+    const text = blockText(findBlock(doc, 'h1')!)
+    text.delete(0, 6)
+    text.insert(0, 'Big area x')
+    expect(tools.replaceBlock('h1', '## Area $x$')).toEqual({ ok: false, error: 'block changed since it was read; read it again before adding math' })
+    expect(listChanges(doc)).toHaveLength(0)
+    expect(projectBlocks(doc, 'physical')).toHaveLength(1)
+    expect(projectBlocks(doc, 'original')[0]).toMatchObject({ attrs: { level: 1 }, delta: [{ insert: 'Big area x' }] })
+  })
+
+  it('an attribute replacement preserves links, footnotes and inline math after acceptance', () => {
+    const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Link note x' }])
+    const text = blockText(findBlock(doc, 'h1')!)
+    text.format(0, 4, { link: { href: 'https://example.com' } })
+    text.format(5, 4, { footnote: { id: 'fn1', note: 'Source' } })
+    text.format(10, 1, { math: true })
+    const delta = projectBlocks(doc, 'revised')[0]!.delta
+    const r = new DocTools(doc, meta).replaceBlock('h1', '## Link note $x$')
+    if (!r.ok) throw new Error(r.error)
+    decide(doc, r.change_ids[0]!, 'accept')
+    compact(doc)
+    expect(projectBlocks(doc, 'original')[0]!.delta).toEqual(delta)
+  })
+
+  it('an attribute replacement preserves a user edit made after the agent read', () => {
+    const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Title' }])
+    const tools = new DocTools(doc, meta)
+    tools.readAll()
+    blockText(findBlock(doc, 'h1')!).insert(5, ' updated by user')
+    const r = tools.replaceBlock('h1', '## Title')
+    if (!r.ok) throw new Error(r.error)
+    decide(doc, r.change_ids[0]!, 'accept')
+    compact(doc)
+    expect(projectBlocks(doc, 'original')[0]).toMatchObject({ attrs: { level: 2 }, text: 'Title updated by user' })
+  })
+
+  it('an attribute replacement keeps comment anchors after acceptance and compaction', () => {
+    const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Title' }])
+    const tools = new DocTools(doc, meta)
+    const comment = tools.addComment('h1', 'Title', 'Keep this')
+    const r = tools.replaceBlock('h1', '## Title')
+    if (!r.ok || !('new_block_id' in r)) throw new Error('expected a replacement')
+    decide(doc, r.change_ids[0]!, 'accept')
+    compact(doc)
+    expect(listComments(doc)).toEqual([expect.objectContaining({ id: comment.comment_id, blockId: r.new_block_id, orphaned: false })])
+  })
+
+  it('rejects a combined text and attribute edit without changing the document', () => {
+    const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Title' }])
+    const r = new DocTools(doc, meta).replaceBlock('h1', '## New title')
+    expect(r).toEqual({ ok: false, error: 'make text edits and attribute changes in separate calls' })
+    expect(listChanges(doc)).toHaveLength(0)
+    expect(projectBlocks(doc, 'original')[0]).toMatchObject({ attrs: { level: 1 }, text: 'Title' })
+  })
+
+  describe.each([
+    { type: 'heading', attrs: { level: 1 }, next: { level: 2 }, content: '## Title', text: 'Title' },
+    { type: 'taskItem', attrs: { checked: false }, next: { checked: true }, content: '- [x] Task', text: 'Task' },
+  ])('$type attribute approval', ({ type, attrs, next, content, text }) => {
+    it.each(['accept', 'reject'] as const)('keeps the original until %s', (decision) => {
+      const doc = docWith([{ id: 'b1', type, attrs, text }])
+      const original = projectBlocks(doc, 'original')
+      const r = new DocTools(doc, meta).replaceBlock('b1', content)
+      expect(r.ok).toBe(true)
+      if (!r.ok) throw new Error(r.error)
+      expect(r.change_ids).toHaveLength(1)
+      expect(projectBlocks(doc, 'original')).toEqual(original.map((b) => ({ ...b, state: 'del' })))
+      expect(findBlock(doc, 'b1')!.getAttributes()).toMatchObject(attrs)
+      expect(projectBlocks(doc, 'revised')[0]).toMatchObject({ type, attrs: next, text })
+      expect(listChanges(doc)).toHaveLength(1)
+      decide(doc, r.change_ids[0]!, decision)
+      compact(doc)
+      expect(projectBlocks(doc, 'original')[0]).toMatchObject({ type, attrs: decision === 'accept' ? next : attrs, text })
+      expect(listChanges(doc)).toHaveLength(0)
+    })
+
+    it('does not propose an unchanged attribute', () => {
+      const doc = docWith([{ id: 'b1', type, attrs: next, text }])
+      expect(new DocTools(doc, meta).replaceBlock('b1', content)).toMatchObject({ ok: true, change_ids: [] })
+      expect(listChanges(doc)).toHaveLength(0)
+    })
+
+    it('does not replace a block pending deletion', () => {
+      const doc = docWith([{ id: 'b1', type, attrs, text }])
+      const tools = new DocTools(doc, meta)
+      tools.deleteBlock('b1')
+      expect(tools.replaceBlock('b1', content)).toMatchObject({ ok: false, error: 'block b1 is pending deletion' })
+      expect(findBlock(doc, 'b1')!.getAttributes()).toMatchObject(attrs)
+    })
+  })
 
   const richDelta = [
     { insert: 'bold', attributes: { bold: true } },

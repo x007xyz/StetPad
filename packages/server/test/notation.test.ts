@@ -38,7 +38,7 @@ describe('block notation: parse and format round-trip', () => {
     expect(parseBlock('> [!NOTE] careful')).toEqual({ type: 'callout', attrs: {}, text: 'careful' })
     expect(parseBlock('---')).toEqual({ type: 'divider', attrs: {}, text: '' })
     expect(parseBlock('plain words')).toEqual({ type: 'paragraph', attrs: {}, text: 'plain words' })
-    expect(parseBlock('[b1] # Prefixed')).toEqual({ type: 'heading', attrs: { level: 1 }, text: 'Prefixed' })
+    expect(parseBlock('[Draft] words')).toEqual({ type: 'paragraph', attrs: {}, text: '[Draft] words' })
     for (const l of ['# Title', '- [ ] open', '> quoted', '> [!NOTE] note', '---', 'plain']) roundTrip(l)
   })
 
@@ -382,6 +382,27 @@ describe('DocTools on the new block types', () => {
     const nb = projectBlocks(doc, 'revised').find((b) => b.blockId === r.new_block_id)!
     expect(nb).toMatchObject({ type: 'codeBlock', text: 'graph TD', attrs: { language: 'mermaid' } })
     expect(listChanges(doc).some((c) => c.id === r.change_ids[0])).toBe(true)
+  })
+
+  it('replaceBlock keeps leading bracket text that is not a block id', () => {
+    const doc = docWith([{ id: 'p1', type: 'paragraph', text: '[Draft] Keep this' }])
+    const tools = new DocTools(doc, meta)
+    expect(tools.replaceBlock('p1', '[Draft] Keep this')).toMatchObject({ ok: true, change_ids: [] })
+    expect(tools.replaceBlock('p1', '[p1] [Draft] Keep this')).toMatchObject({ ok: true, change_ids: [] })
+    expect(listChanges(doc)).toHaveLength(0)
+  })
+
+  it('insertBlocks drops only a block-id prefix', () => {
+    const doc = docWith([{ id: 'p1', type: 'paragraph', text: 'First' }])
+    const r = new DocTools(doc, meta).insertBlocks('p1', ['[TODO] Write intro', '[p1] # Echoed'])
+    if (!r.ok) throw new Error(r.error)
+    decide(doc, r.change_ids[0]!, 'accept')
+    compact(doc)
+    expect(projectBlocks(doc, 'original').map((b) => [b.type, b.text])).toEqual([
+      ['paragraph', 'First'],
+      ['paragraph', '[TODO] Write intro'],
+      ['heading', 'Echoed'],
+    ])
   })
 
   it('readBlocks shows the notation of the new blocks to the agent', () => {

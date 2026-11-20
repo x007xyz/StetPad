@@ -68,6 +68,7 @@ describe('asset garbage collection', () => {
   })
   afterAll(async () => {
     await h.server.close()
+    await h.sql.close()
     rmSync(h.dir, { recursive: true, force: true })
   })
 

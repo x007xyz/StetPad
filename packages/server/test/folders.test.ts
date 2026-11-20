@@ -60,6 +60,11 @@ describe('folders: API', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
+  it.each([42, false, {}, null])('rejects a non-string folder name (%j)', async (name) => {
+    const result = await call('/api/folders', { method: 'POST', body: json({ name }) })
+    expect(result).toEqual({ status: 400, body: { error: expect.any(String) } })
+  })
+
   it('creates, renames, moves documents, and deleting keeps documents at the root', async () => {
     const t = token
     const folder = (await call('/api/folders', { method: 'POST', body: json({ name: ' 草稿 ' }) }, t)).body

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, fmtTime, post, TRIGGERS, type RichBlock, type VersionMeta } from '../api'
 import { History } from 'lucide-react'
 import { Button } from '../components/ui/button'
+import { confirmAction, promptText } from '../components/confirm'
 import { Dialog, DialogContent } from '../components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
 import { Tip } from '../components/ui/tooltip'
@@ -41,8 +42,8 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
     return { meta: v, content: v.content }
   }
   const save = async (): Promise<void> => {
-    const label = prompt('给这个版本起个名字（可留空）') ?? undefined
-    if (label === undefined) return
+    const label = await promptText({ title: '给这个版本起个名字（可留空）', confirmLabel: '保存' })
+    if (label === null) return
     await post(`/docs/${docId}/versions`, { label })
     await load()
   }
@@ -61,7 +62,7 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
     }
   }
   const restore = async (v: VersionMeta): Promise<void> => {
-    if (!confirm(`恢复到"${name(v)}"？\n当前内容会先保存为一个版本，不会丢失。`)) return
+    if (!await confirmAction({ title: `恢复到"${name(v)}"？\n当前内容会先保存为一个版本，不会丢失。`, confirmLabel: '恢复' })) return
     setError('')
     try {
       await post(`/versions/${v.id}/restore`)
@@ -71,7 +72,7 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
     }
   }
   const rename = async (v: VersionMeta): Promise<void> => {
-    const label = prompt('版本名称', v.label ?? '')
+    const label = await promptText({ title: '版本名称', defaultValue: v.label ?? '', confirmLabel: '保存' })
     if (label === null) return
     await api(`/versions/${v.id}`, { method: 'PATCH', body: JSON.stringify({ label }) })
     await load()

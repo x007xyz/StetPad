@@ -8,6 +8,27 @@ import { deferred } from './lib/deferred.test-utils'
 vi.mock('./Shell', () => ({ useWorkspace: () => ({ docs: [], createDoc: vi.fn() }), SidebarToggle: () => null }))
 vi.mock('./App', () => ({ go: vi.fn() }))
 
+it.each([undefined, 1, 3])('shows a PDF page warning only when pages were omitted (%s)', async (omittedPageCount) => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ title: 'PDF', blocks: [], omittedPageCount })))
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<Home />))
+    const input = container.querySelector('input[type="file"]')!
+    Object.defineProperty(input, 'files', { configurable: true, value: [new File(['pdf'], 'long.pdf')] })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+    const warning = document.querySelector('[role="alert"]')
+    if (omittedPageCount) expect(warning?.textContent).toBe(`PDF 导入最多保留前 500 页。继续创建将省略最后 ${omittedPageCount} 页。`)
+    else expect(warning).toBeNull()
+  } finally {
+    act(() => root.unmount())
+    document.body.replaceChildren()
+    vi.unstubAllGlobals()
+  }
+})
+
 it.each(['preview', 'empty', 'error'])('keeps the latest import preview after a stale %s response', async (stale) => {
   const a = deferred<Response>()
   const b = deferred<Response>()

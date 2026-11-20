@@ -73,15 +73,33 @@ button { cursor: pointer; }
 
 /* Document column: narrow and centered, like Notion. */
 .page { flex: 1; min-width: 0; overflow: auto; }
-.prose { max-width: 720px; margin: 0 auto; padding: 56px 40px 200px; outline: none; min-height: 60vh; counter-reset: ol; font-size: 16px; line-height: 1.7; }
+.prose { max-width: 720px; margin: 0 auto; padding: 56px 40px 200px; outline: none; min-height: 60vh; counter-reset: ol ol1 ol2 ol3 ol4 ol5 ol6; font-size: 16px; line-height: 1.7; }
 @media (max-width: 640px) { .prose { padding: 28px 18px 160px; font-size: 16px; } }
-.prose > * { margin: 0 0 2px; counter-reset: ol; position: relative; padding-top: 2px; padding-bottom: 2px; }
-.prose > .ordered { counter-reset: none; counter-increment: ol; }
+.prose > * { margin: 0 0 2px; counter-set: ol 0 ol1 0 ol2 0 ol3 0 ol4 0 ol5 0 ol6 0; position: relative; padding-top: 2px; padding-bottom: 2px; }
+.prose > [data-indent="1"]:not(.ordered) { counter-set: ol1 0 ol2 0 ol3 0 ol4 0 ol5 0 ol6 0; }
+.prose > [data-indent="2"]:not(.ordered) { counter-set: ol2 0 ol3 0 ol4 0 ol5 0 ol6 0; }
+.prose > [data-indent="3"]:not(.ordered) { counter-set: ol3 0 ol4 0 ol5 0 ol6 0; }
+.prose > [data-indent="4"]:not(.ordered) { counter-set: ol4 0 ol5 0 ol6 0; }
+.prose > [data-indent="5"]:not(.ordered) { counter-set: ol5 0 ol6 0; }
+.prose > [data-indent="6"]:not(.ordered) { counter-set: ol6 0; }
+.prose > .ordered { counter-set: ol1 0 ol2 0 ol3 0 ol4 0 ol5 0 ol6 0; counter-increment: ol; }
+.prose > .ordered[data-indent="1"] { counter-set: ol2 0 ol3 0 ol4 0 ol5 0 ol6 0; counter-increment: ol1; }
+.prose > .ordered[data-indent="2"] { counter-set: ol3 0 ol4 0 ol5 0 ol6 0; counter-increment: ol2; }
+.prose > .ordered[data-indent="3"] { counter-set: ol4 0 ol5 0 ol6 0; counter-increment: ol3; }
+.prose > .ordered[data-indent="4"] { counter-set: ol5 0 ol6 0; counter-increment: ol4; }
+.prose > .ordered[data-indent="5"] { counter-set: ol6 0; counter-increment: ol5; }
+.prose > .ordered[data-indent="6"] { counter-set: none; counter-increment: ol6; }
 .prose h1 { font-size: 2em; font-weight: 700; line-height: 1.25; margin-top: 1.4em; } .prose h2 { font-size: 1.5em; font-weight: 600; line-height: 1.3; margin-top: 1.1em; } .prose h3 { font-size: 1.25em; font-weight: 600; margin-top: .8em; }
 .prose .bullet, .prose .ordered, .prose .task { padding-left: 26px; }
 .prose [data-indent="1"] { margin-left: 26px; } .prose [data-indent="2"] { margin-left: 52px; } .prose [data-indent="3"] { margin-left: 78px; } .prose [data-indent="4"] { margin-left: 104px; }
 .prose .bullet::before { content: "•"; position: absolute; left: 8px; }
 .prose .ordered::before { content: counter(ol) "."; position: absolute; left: 0; width: 22px; text-align: right; color: var(--muted-foreground); }
+.prose .ordered[data-indent="1"]::before { content: counter(ol1) "."; }
+.prose .ordered[data-indent="2"]::before { content: counter(ol2) "."; }
+.prose .ordered[data-indent="3"]::before { content: counter(ol3) "."; }
+.prose .ordered[data-indent="4"]::before { content: counter(ol4) "."; }
+.prose .ordered[data-indent="5"]::before { content: counter(ol5) "."; }
+.prose .ordered[data-indent="6"]::before { content: counter(ol6) "."; }
 .prose .task { display: flex; gap: 8px; padding-left: 4px; }
 .prose .task-box { flex: none; width: 16px; height: 16px; margin-top: 6px; border: 1.5px solid var(--muted-foreground); border-radius: 3px; cursor: pointer; }
 .prose .task[data-checked="true"] .task-box { background: var(--primary); border-color: var(--primary); }

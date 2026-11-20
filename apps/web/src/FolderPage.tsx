@@ -47,13 +47,17 @@ export function FolderPage({ id }: { id: string }) {
   const trackingRef = useRef(false)
   trackingRef.current = tracking
   const author = '我'
+  const loadSequence = useRef(0)
 
   const load = useCallback(async (): Promise<void> => {
+    const sequence = ++loadSequence.current
     try {
       const f = await api<FolderInfo>(`/folders/${id}`)
+      if (sequence !== loadSequence.current) return
       setInfo(f)
       document.title = f.name
     } catch {
+      if (sequence !== loadSequence.current) return
       setMissing(true)
     }
   }, [id])

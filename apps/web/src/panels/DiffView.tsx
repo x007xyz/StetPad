@@ -4,8 +4,8 @@ import type { RichBlock } from '../api'
 
 export interface DiffRow {
   id: string
-  left?: { type: string; text: string; attrs?: Record<string, unknown> }
-  right?: { type: string; text: string; attrs?: Record<string, unknown> }
+  left?: { type: string; text: string; attrs?: Record<string, unknown>; delta?: RichBlock['delta'] }
+  right?: { type: string; text: string; attrs?: Record<string, unknown>; delta?: RichBlock['delta'] }
   actions?: ReactNode
 }
 
@@ -44,7 +44,9 @@ export function alignBlocks(a: RichBlock[], b: RichBlock[]): DiffRow[] {
 }
 
 export const rowChanged = (r: DiffRow): boolean =>
-  !r.left || !r.right || r.left.text !== r.right.text || r.left.type !== r.right.type
+  !r.left || !r.right || r.left.text !== r.right.text || r.left.type !== r.right.type ||
+  JSON.stringify(r.left.delta) !== JSON.stringify(r.right.delta) ||
+  JSON.stringify(r.left.attrs ?? {}) !== JSON.stringify(r.right.attrs ?? {})
 
 /** Two versions of a document side by side, aligned block by block. */
 export function DiffView({ rows, leftTitle, rightTitle, onlyChanged }: { rows: DiffRow[]; leftTitle: string; rightTitle: string; onlyChanged?: boolean }) {

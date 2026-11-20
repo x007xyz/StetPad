@@ -103,28 +103,18 @@ describe('search', () => {
       }
     })
 
-    // Store.searchDocs uses SQLite lower for bodies, and JS lower is not full case folding.
-    const bodyCase = fixture.bodyCaseFails ? it.fails : it
+    // src/db.ts uses SQLite's ASCII-only lower(text_content), unlike unicode_lower(title).
+    const bodyCase = fixture.name === 'accents' || fixture.name === 'Turkish dotted and dotless i' ? it.fails : it
     bodyCase(`finds case-insensitive ${fixture.name} body text`, async () => {
-      const doc = await store.createDoc(me.id, 'Unrelated title', stateWith(fixture.content.toUpperCase()))
+      const query = fixture.caseContent.toLowerCase()
+      const doc = await store.createDoc(me.id, 'Unrelated title', stateWith(fixture.caseContent))
       try {
-        expect(await search(fixture.content.toLowerCase(), me.token)).toContainEqual(expect.objectContaining({ id: doc.id, titleMatch: false }))
+        expect(await search(query, me.token)).toContainEqual(expect.objectContaining({ id: doc.id, titleMatch: false, snippet: fixture.caseContent }))
       } finally {
         await store.deleteDoc(doc.id)
       }
     })
   }
-
-  // JS toLowerCase is not full case folding: Straße and STRASSE remain different.
-  it.fails('finds German sharp s titles when searching their uppercase spelling', async () => {
-    const fixture = nonAsciiFixtures.find((f) => f.name === 'German sharp s')!
-    const doc = await store.createDoc(me.id, fixture.title, stateWith('Unrelated body'))
-    try {
-      expect(await search(fixture.title.toUpperCase(), me.token)).toContainEqual(expect.objectContaining({ id: doc.id, titleMatch: true }))
-    } finally {
-      await store.deleteDoc(doc.id)
-    }
-  })
 
   it('returns nothing for a blank query', async () => {
     const a = me

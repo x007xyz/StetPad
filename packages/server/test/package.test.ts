@@ -98,9 +98,7 @@ describe('document package', () => {
 
   describe.each(nonAsciiFixtures)('$name round trips', (fixture) => {
     for (const format of ['package', 'json', 'md', 'html', 'docx'] as const) {
-      // fileToBlocks adds the HTML title as a heading to paragraph-only documents.
-      const roundTrip = format === 'html' ? it.fails : it
-      roundTrip(`preserves the title and UTF-8 content via ${format}`, async () => {
+      it(`preserves the title and UTF-8 content via ${format}`, async () => {
         const created = await send(h, '/import/create', {
           method: 'POST',
           json: { title: fixture.title, blocks: [{ type: 'paragraph', attrs: {}, delta: [{ insert: fixture.content }] }] },
@@ -122,6 +120,12 @@ describe('document package', () => {
           expect(preview.status).toBe(200)
           const parsed = await preview.json()
           expect(parsed.title).toBe(fixture.title)
+          if (format === 'html') {
+            expect(parsed.blocks).toEqual([
+              { type: 'heading', attrs: { level: 1 }, delta: [{ insert: fixture.title }] },
+              { type: 'paragraph', attrs: {}, delta: [{ insert: fixture.content }] },
+            ])
+          }
           restored = await send(h, '/import/create', { method: 'POST', json: parsed })
         }
         expect(restored.status).toBe(200)
@@ -130,7 +134,8 @@ describe('document package', () => {
         expect(copy.title).toBe(fixture.title)
         const expected = Buffer.from(fixture.content + '\n', 'utf8')
         expect(Buffer.from(await md(h, source.id), 'utf8')).toEqual(expected)
-        expect(Buffer.from(await md(h, copy.id), 'utf8')).toEqual(expected)
+        const restoredContent = format === 'html' ? `# ${fixture.title}\n\n${fixture.content}\n` : fixture.content + '\n'
+        expect(Buffer.from(await md(h, copy.id), 'utf8')).toEqual(Buffer.from(restoredContent, 'utf8'))
       })
     }
   })

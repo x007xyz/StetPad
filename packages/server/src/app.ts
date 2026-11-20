@@ -800,7 +800,8 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   api.put('/docs/:id/folder', async (c) => {
     const d = await docFor(c, c.req.param('id'))
     if (!d) return notFound(c)
-    const { folderId } = await c.req.json<{ folderId: string | null }>()
+    const { folderId } = await c.req.json<{ folderId?: unknown }>()
+    if (folderId !== undefined && folderId !== null && typeof folderId !== 'string') return c.json({ error: '文件夹 ID 必须是字符串或 null' }, 400)
     if (folderId && !(await folderFor(c, folderId))) return notFound(c)
     if (d.doc.folder_id && agent.activeRun(AgentRuntime.folderKey(d.doc.folder_id))) return c.json({ error: 'AI 任务运行中，暂不能移动文档' }, 409)
     await store.setDocFolder(d.doc.id, folderId || null)
@@ -984,7 +985,8 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   api.post('/docs/:id/versions', async (c) => {
     const d = await docFor(c, c.req.param('id'))
     if (!d) return notFound(c)
-    const { label, trigger } = await c.req.json<{ label?: string; trigger?: string }>().catch(() => ({} as { label?: string; trigger?: string }))
+    const { label, trigger } = await c.req.json<{ label?: unknown; trigger?: string }>().catch(() => ({} as { label?: unknown; trigger?: string }))
+    if (label !== undefined && typeof label !== 'string') return c.json({ error: '版本标签必须是字符串' }, 400)
     const id = await collab.snapshot(d.doc.id, trigger === 'reviewed' ? 'reviewed' : 'manual', c.get('user').email, label?.trim() || undefined)
     return c.json({ id })
   })
@@ -1070,7 +1072,9 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   api.post('/docs/:id/clip', async (c) => {
     const d = await docFor(c, c.req.param('id'))
     if (!d) return notFound(c)
-    const body = await c.req.json<{ blocks?: unknown[]; asSuggestion?: boolean; author?: string; reason?: string }>().catch(() => ({} as { blocks?: unknown[]; asSuggestion?: boolean; author?: string; reason?: string }))
+    const body = await c.req.json<{ blocks?: unknown[]; asSuggestion?: boolean; author?: unknown; reason?: unknown }>().catch(() => ({} as { blocks?: unknown[]; asSuggestion?: boolean; author?: unknown; reason?: unknown }))
+    if (body.author !== undefined && typeof body.author !== 'string') return c.json({ error: '作者必须是字符串' }, 400)
+    if (body.reason !== undefined && typeof body.reason !== 'string') return c.json({ error: '原因必须是字符串' }, 400)
     if (!Array.isArray(body.blocks) || body.blocks.length === 0) return c.json({ error: '没有可写入的内容' }, 400)
     const clean = sanitizeBlocks(body.blocks)
     if (clean.length === 0) return c.json({ error: '没有可写入的内容' }, 400)

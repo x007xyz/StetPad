@@ -209,7 +209,7 @@ export class Store {
     const ql = q.toLowerCase()
     const like = `%${ql.replace(/[\\%_]/g, (ch) => '\\' + ch)}%`
     const rows = await this.sql.all<DocRow & { text_content: string | null }>(
-      `select ${Store.DOC}, text_content from documents where deleted_at is null and ${Store.SCOPE} and (unicode_lower(title) like ? escape '\\' or lower(text_content) like ? escape '\\')`,
+      `select ${Store.DOC}, text_content from documents where deleted_at is null and ${Store.SCOPE} and (unicode_lower(title) like ? escape '\\' or unicode_lower(text_content) like ? escape '\\')`,
       [userId, like, like],
     )
     const hits: SearchHit[] = []

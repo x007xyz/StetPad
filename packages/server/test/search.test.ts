@@ -103,13 +103,12 @@ describe('search', () => {
       }
     })
 
-    // src/db.ts uses SQLite's ASCII-only lower(text_content), unlike unicode_lower(title).
-    const bodyCase = fixture.name === 'accents' || fixture.name === 'Turkish dotted and dotless i' ? it.fails : it
-    bodyCase(`finds case-insensitive ${fixture.name} body text`, async () => {
+    it(`finds case-insensitive ${fixture.name} body text`, async () => {
       const query = fixture.caseContent.toLowerCase()
       const doc = await store.createDoc(me.id, 'Unrelated title', stateWith(fixture.caseContent))
       try {
         expect(await search(query, me.token)).toContainEqual(expect.objectContaining({ id: doc.id, titleMatch: false, snippet: fixture.caseContent }))
+        expect(await search(query + 'missing', me.token)).toEqual([])
       } finally {
         await store.deleteDoc(doc.id)
       }

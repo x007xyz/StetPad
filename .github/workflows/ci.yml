@@ -42,9 +42,9 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
-      # Only the web UI is bundled into the app; skipping the server package also skips
-      # compiling better-sqlite3 for Node, which needs Visual Studio on Windows.
-      - run: pnpm install --frozen-lockfile --filter @stetpad/web...
+      # Packing only bundles workspace sources; the app loads better-sqlite3 from desktop/node_modules.
+      # Skipping install scripts avoids compiling it for Node, which needs Visual Studio on Windows.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm --dir apps/web build
       - name: Point npm and Electron caches at one directory
         run: |

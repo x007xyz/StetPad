@@ -72,6 +72,19 @@ export function snippetAround(text: string, at: number, len: number): string {
   return (start > 0 ? '…' : '') + text.slice(start, end).replace(/\s+/g, ' ').trim() + (end < text.length ? '…' : '')
 }
 
+function snippetForLowercaseMatch(text: string, at: number, len: number): string {
+  let start = 0
+  let end = 0
+  let lowered = 0
+  for (const ch of text) {
+    if (lowered <= at) start = end
+    end += ch.length
+    lowered += ch.toLowerCase().length
+    if (lowered >= at + len) break
+  }
+  return snippetAround(text, start, end - start)
+}
+
 /**
  * Storage. Every query goes through this class; the engine underneath is
  * SQLite, embedded in the desktop app.
@@ -220,7 +233,7 @@ export class Store {
       if (!titleMatch && at < 0) continue
       hits.push({
         id: r.id, title: r.title, space_id: r.space_id, folder_id: r.folder_id, updated_at: r.updated_at,
-        snippet: at >= 0 ? snippetAround(body, at, ql.length) : '',
+        snippet: at >= 0 ? snippetForLowercaseMatch(body, at, ql.length) : '',
         titleMatch,
       })
     }

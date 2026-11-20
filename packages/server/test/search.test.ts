@@ -115,6 +115,13 @@ describe('search', () => {
     })
   }
 
+  it('keeps the body match in the snippet after lowercase expansions', async () => {
+    const doc = await store.createDoc(me.id, 'Expanded body', stateWith('İ'.repeat(100) + ' foo ' + 'x'.repeat(200)))
+    const hits = await search('foo', me.token)
+    expect(hits.find((h) => h.id === doc.id)?.snippet).toContain('foo')
+    await store.deleteDoc(doc.id)
+  })
+
   it('returns nothing for a blank query', async () => {
     const a = me
     await call('/api/docs', { method: 'POST', body: json({ title: 'Something' }) }, a.token)

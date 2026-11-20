@@ -51,7 +51,8 @@ function fencedCodeLines(lines: string[]): boolean[] {
       if (t.length >= fence.length && [...t].every((c) => c === fence![0])) fence = null
       return true
     }
-    const open = /^\s*(`{3,}|~{3,})/.exec(line)
+    // A backtick fence's info string has no backticks; ```x``` is a code span.
+    const open = /^\s*(`{3,}(?!.*`)|~{3,})/.exec(line)
     if (open) fence = open[1]!
     return open !== null
   })

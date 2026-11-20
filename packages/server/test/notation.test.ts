@@ -248,6 +248,11 @@ describe('import', () => {
     expect(blocks.filter((b) => b.type === 'codeBlock').map((b) => [b.attrs.language, b.delta.map((d) => d.insert).join('')])).toEqual([['math', 'a+b']])
   })
 
+  it('a code span on its own line does not hide later display math', async () => {
+    const blocks = await fileToBlocks('a.md', enc('```foo```\n\n$$a+b$$\n'))
+    expect(blocks.filter((b) => b.type === 'codeBlock').map((b) => [b.attrs.language, b.delta.map((d) => d.insert).join('')])).toEqual([['math', 'a+b']])
+  })
+
   it('a markdown image with a title becomes an image with a caption', async () => {
     const blocks = await fileToBlocks('a.md', enc('![A cat](/files/abc "Asleep")\n'))
     expect(blocks).toEqual([{ type: 'image', attrs: { src: '/files/abc', alt: 'A cat', caption: 'Asleep' }, delta: [] }])

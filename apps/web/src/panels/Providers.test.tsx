@@ -42,6 +42,18 @@ async function setup() {
   await act(async () => root.render(<Providers onClose={vi.fn()} onChanged={vi.fn()} />))
   return { a, b, requests }
 }
+it.each(['data', 'error'] as const)('keeps the latest balance when an older query for the same provider returns %s', async (outcome) => {
+  const { a, b, requests } = await setup()
+  click('查询余额')
+  click('查询余额')
+  expect(requests).toHaveLength(0)
+  await act(async () => b.resolve(Response.json({ items: [{ label: 'Balance', value: 'B' }] })))
+  expect(document.body.textContent).toContain('Balance：B')
+  await act(async () => outcome === 'error' ? a.reject(new Error('stale error'))
+    : a.resolve(Response.json({ items: [{ label: 'Balance', value: 'A' }] })))
+  expect(document.body.textContent).toContain('Balance：B')
+})
+
 it.each(['data', 'empty', 'error'] as const)('keeps another provider balance when an earlier provider returns %s', async (outcome) => {
   const { a, b, requests } = await setup()
   click('查询余额')
@@ -56,4 +68,8 @@ it.each(['data', 'empty', 'error'] as const)('keeps another provider balance whe
   expect(document.body.textContent).not.toContain('Balance：A')
   expect(document.body.textContent).not.toContain('查询中')
   expect(document.body.textContent).not.toContain('stale error')
+  act(() => document.querySelectorAll<HTMLButtonElement>('.prov-item')[0]!.click())
+  expect(document.body.textContent).not.toContain('查询中')
+  if (outcome === 'data') expect(document.body.textContent).toContain('Balance：A')
+  if (outcome === 'error') expect(document.body.textContent).toContain('stale error')
 })

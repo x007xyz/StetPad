@@ -21,6 +21,7 @@ it('translates diff labels but preserves document text, including newly added ma
   const render = () => { root.innerHTML = renderToStaticMarkup(createElement(DiffView, { rows, leftTitle: '原文', rightTitle: '修改稿' })) }
   const dialogs = { alert: window.alert, confirm: window.confirm, prompt: window.prompt }
   try {
+    Object.assign(window, { alert: vi.fn(), confirm: vi.fn(), prompt: vi.fn() })
     render()
     initI18n()
     expect(root.querySelector('strong')!.textContent).toBe('保存')

@@ -52,6 +52,21 @@ it('detects block attribute changes', () => {
   expect(rowChanged(alignBlocks([block], [{ ...block, attrs: { textAlign: 'center' } }])[0]!)).toBe(true)
 })
 
+it('ignores object key order in marks, nested link attributes and block attributes', () => {
+  const left = { ...block, attrs: { level: 1, options: { align: 'left', indent: 0 } }, delta: [{ insert: block.text, attributes: { bold: true, italic: true, link: { href: 'https://example.com', target: '_blank' } } }] }
+  const right = { ...block, attrs: { options: { indent: 0, align: 'left' }, level: 1 }, delta: [{ attributes: { link: { target: '_blank', href: 'https://example.com' }, italic: true, bold: true }, insert: block.text }] }
+  expect(rowChanged(alignBlocks([left], [right])[0]!)).toBe(false)
+  expect(rowChanged(alignBlocks([left], [{ ...right, attrs: { ...right.attrs, level: 2 } }])[0]!)).toBe(true)
+  expect(rowChanged(alignBlocks([left], [{ ...right, delta: [{ insert: block.text, attributes: { bold: true } }] }])[0]!)).toBe(true)
+})
+
+it('preserves array order and distinguishes null and missing attributes', () => {
+  for (const attrs of [{ values: [2, 1] }, { values: [1] }, { values: null }, {}]) {
+    expect(rowChanged(alignBlocks([{ ...block, attrs: { values: [1, 2] } }], [{ ...block, attrs }])[0]!)).toBe(true)
+  }
+  expect(rowChanged(alignBlocks([{ ...block, attrs: { value: null } }], [block])[0]!)).toBe(true)
+})
+
 it('keeps identical content unchanged and handles empty documents', () => {
   expect(rowChanged(alignBlocks([block], [structuredClone(block)])[0]!)).toBe(false)
   expect(alignBlocks([], [])).toEqual([])

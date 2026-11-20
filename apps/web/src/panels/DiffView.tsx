@@ -43,10 +43,22 @@ export function alignBlocks(a: RichBlock[], b: RichBlock[]): DiffRow[] {
   return rows
 }
 
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((value, i) => sameValue(value, b[i]))
+  }
+  const left = a as Record<string, unknown>
+  const right = b as Record<string, unknown>
+  return Object.keys(left).length === Object.keys(right).length &&
+    Object.keys(left).every((key) => Object.hasOwn(right, key) && sameValue(left[key], right[key]))
+}
+
 export const rowChanged = (r: DiffRow): boolean =>
   !r.left || !r.right || r.left.text !== r.right.text || r.left.type !== r.right.type ||
-  JSON.stringify(r.left.delta) !== JSON.stringify(r.right.delta) ||
-  JSON.stringify(r.left.attrs ?? {}) !== JSON.stringify(r.right.attrs ?? {})
+  !sameValue(r.left.delta, r.right.delta) ||
+  !sameValue(r.left.attrs ?? {}, r.right.attrs ?? {})
 
 function richText(block: NonNullable<DiffRow['left']>): ReactNode {
   return block.delta?.map(({ insert, attributes: marks = {} }, i) => {

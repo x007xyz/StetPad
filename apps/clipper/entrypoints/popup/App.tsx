@@ -24,7 +24,7 @@ import {
   requestLocalPair,
   resolveProfile,
 } from '../../src/lib/api'
-import { clipOverflowNotice } from '../../src/lib/clip-notice'
+import { clipOverflowNotice } from '../../src/lib/i18n'
 import { extractActiveTab } from '../../src/lib/inject'
 import { detectBrowserName, generatePkcePair, parseConnectionCode, randomHex } from '../../src/lib/pkce'
 import {

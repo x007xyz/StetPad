@@ -9,7 +9,7 @@ import {
   startDocAiRun,
   startFolderAiRun,
 } from '../src/lib/api'
-import { clipOverflowNotice } from '../src/lib/clip-notice'
+import { clipOverflowNotice } from '../src/lib/i18n'
 import { localizeBlockImages } from '../src/lib/images'
 import { extractActiveTab } from '../src/lib/inject'
 import { getPendingPair, getPrefs, getProfiles, savePrefs, saveProfile, setPendingPair } from '../src/lib/storage'

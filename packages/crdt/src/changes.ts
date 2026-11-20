@@ -73,10 +73,12 @@ function toRanges(ids: CharId[]): Range[] {
   return out
 }
 
-const statusOf = (rec: ChangeRecord, settledOnly: boolean): Status =>
-  ((settledOnly ? rec.get('settled') : (rec.get('settled') ?? rec.get('decision'))) as
+const statusOf = (rec: ChangeRecord, settledOnly: boolean): Status => {
+  if (rec.get('replacement') && rec.get('decision') === 'accept' && !rec.get('settled')) return 'pending'
+  return ((settledOnly ? rec.get('settled') : (rec.get('settled') ?? rec.get('decision'))) as
     | Decision
     | undefined) ?? 'pending'
+}
 
 export interface Index {
   ins: Map<string, string[]>
@@ -448,16 +450,13 @@ export function trackedDeleteBlock(
 }
 
 /**
- * Accept or reject a change. Rebase block replacements before accepting;
- * physical removal waits for `compact`. Every view honours the decision at once.
+ * Accept or reject a change. Physical removal waits for `compact`.
+ * Replacement acceptance stays pending until the server rebases and settles it.
  */
 export function decide(doc: Y.Doc, changeId: string, decision: Decision): boolean {
   const rec = changes(doc).get(changeId)
   if (!rec || rec.get('settled')) return false
-  doc.transact(() => {
-    if (decision === 'accept') mergeReplacement(doc, rec)
-    rec.set('decision', decision)
-  })
+  rec.set('decision', decision)
   return true
 }
 

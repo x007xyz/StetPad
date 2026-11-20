@@ -68,6 +68,28 @@ describe.each([
 })
 
 describe('replacement review regressions', () => {
+  it('merges human text only once when two replicas accept concurrently', () => {
+    const server = new Y.Doc()
+    insertBlock(server, 0, 'b', 'Sales rose.')
+    const r = new DocTools(server, { author: 'AI' }).replaceBlock('b', '## Sales rose.')
+    if (!r.ok) throw new Error(r.error)
+    blockText(findBlock(server, 'b')!).insert(11, ' In June.')
+    const a = cloneDoc(server)
+    const b = cloneDoc(server)
+    decide(a, r.change_ids[0]!, 'accept')
+    decide(b, r.change_ids[0]!, 'accept')
+    expect(projectBlocks(a, 'original')[0]).toMatchObject({ blockId: 'b', text: 'Sales rose. In June.' })
+    expect(listChanges(a)).toHaveLength(1)
+    sync(server, a)
+    sync(server, b)
+    compact(server)
+    expect(projectBlocks(server, 'original')[0]!.text).toBe('Sales rose. In June.')
+    sync(server, a)
+    sync(server, b)
+    expect(projectBlocks(a, 'original')).toEqual(projectBlocks(server, 'original'))
+    expect(projectBlocks(b, 'original')).toEqual(projectBlocks(server, 'original'))
+  })
+
   it.each(['insert', 'delete'] as const)('keeps a human tracked %s pending after accepting only formatting', (kind) => {
     const doc = new Y.Doc()
     insertBlock(doc, 0, 'b', 'Sales rose.', 'heading', { level: 1 })

@@ -4,11 +4,10 @@ import { Button } from '../components/ui/button'
 import { Dialog, DialogContent } from '../components/ui/dialog'
 import { Select } from '../components/ui/select'
 import { cn } from '../lib/utils'
+import { useImageModelCatalog } from './useImageModelCatalog'
 
 type ImageSize = '1024x1024' | '1536x1024' | '1024x1536'
 
-interface ImageModel { id: string; label: string; price?: string }
-interface ImageModelsResponse { models: ImageModel[]; default: string | null }
 interface GenerateResponse { url: string; id: string; mime: string; modelId: string }
 
 interface Props {
@@ -37,8 +36,6 @@ const ALT_MAX = 80
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
 export function AiImageDialog({ docId, open, initialPrompt, onClose, onInsert }: Props) {
-  const [models, setModels] = useState<ImageModel[] | null>(null)
-  const [modelId, setModelId] = useState('')
   const [size, setSize] = useState<ImageSize>('1024x1024')
   const [prompt, setPrompt] = useState('')
   const [busy, setBusy] = useState(false)
@@ -49,9 +46,7 @@ export function AiImageDialog({ docId, open, initialPrompt, onClose, onInsert }:
   const [history, setHistory] = useState<Generated[]>([])
   const abortRef = useRef<AbortController | null>(null)
   const startedAt = useRef(0)
-  const modelsLoaded = useRef(false)
 
-  // Load the model list once, the first time the dialog opens.
   useEffect(() => {
     if (!open) {
       abortRef.current?.abort()
@@ -62,20 +57,11 @@ export function AiImageDialog({ docId, open, initialPrompt, onClose, onInsert }:
     setPrompt(initialPrompt ?? '')
     setCurrent(null)
     setError(null)
-    if (modelsLoaded.current) return
-    api<ImageModelsResponse>('/image-models')
-      .then((r) => {
-        modelsLoaded.current = true
-        setModels(r.models)
-        setModelId(r.default ?? r.models[0]?.id ?? '')
-      })
-      .catch((e: unknown) => {
-        setModels([])
-        setError(message(e))
-      })
     // Runs only when the dialog opens; initialPrompt is read at that moment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+
+  const { models, modelId, setModelId } = useImageModelCatalog(open, 'generate', setError)
 
   // Elapsed seconds while a request is in flight.
   useEffect(() => {

@@ -4,9 +4,8 @@ import { Button } from '../components/ui/button'
 import { Dialog, DialogContent } from '../components/ui/dialog'
 import { Select } from '../components/ui/select'
 import { cn } from '../lib/utils'
+import { useImageModelCatalog } from './useImageModelCatalog'
 
-interface ImageModel { id: string; label: string }
-interface ImageEditModelsResponse { models: ImageModel[]; default: string | null }
 interface EditResponse { url: string; id: string; mime: string; modelId: string }
 
 interface Props {
@@ -34,8 +33,6 @@ const message = (e: unknown): string => (e instanceof Error ? e.message : String
 
 /** Edits one picture of the document with an AI model, from a text instruction. */
 export function AiImageEditDialog({ docId, src, open, onClose, onReplace, onInsert }: Props) {
-  const [models, setModels] = useState<ImageModel[] | null>(null)
-  const [modelId, setModelId] = useState('')
   const [prompt, setPrompt] = useState('')
   const [busy, setBusy] = useState(false)
   const [elapsed, setElapsed] = useState(0)
@@ -45,7 +42,6 @@ export function AiImageEditDialog({ docId, src, open, onClose, onReplace, onInse
   const abortRef = useRef<AbortController | null>(null)
   const startedAt = useRef(0)
 
-  // Load the model list each time the dialog opens: the keys may have changed in settings.
   useEffect(() => {
     if (!open) {
       abortRef.current?.abort()
@@ -57,17 +53,9 @@ export function AiImageEditDialog({ docId, src, open, onClose, onReplace, onInse
     setResult(null)
     setError(null)
     setShowOriginal(false)
-    setModels(null)
-    api<ImageEditModelsResponse>('/image-edit-models')
-      .then((r) => {
-        setModels(r.models)
-        setModelId(r.default ?? r.models[0]?.id ?? '')
-      })
-      .catch((e: unknown) => {
-        setModels([])
-        setError(message(e))
-      })
   }, [open])
+
+  const { models, modelId, setModelId } = useImageModelCatalog(open, 'edit', setError)
 
   // Elapsed seconds while a request is in flight.
   useEffect(() => {

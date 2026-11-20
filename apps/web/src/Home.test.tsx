@@ -8,6 +8,63 @@ import { deferred } from './lib/deferred.test-utils'
 vi.mock('./Shell', () => ({ useWorkspace: () => ({ docs: [], createDoc: vi.fn() }), SidebarToggle: () => null }))
 vi.mock('./App', () => ({ go: vi.fn() }))
 
+it.each([false, true])('creates only one document for rapid preview confirmation (empty: %s)', async (empty) => {
+  const pending = deferred<Response>()
+  const fetch = vi.fn().mockResolvedValueOnce(Response.json({
+    title: 'Import', blocks: empty ? [] : [{ type: 'paragraph', attrs: {}, delta: [{ insert: 'Hello' }] }],
+  })).mockImplementation(() => pending.promise)
+  vi.stubGlobal('fetch', fetch)
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<Home />))
+    const input = container.querySelector('input[type="file"]')!
+    Object.defineProperty(input, 'files', { value: [new File(['Hello'], 'import.md')] })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+    const create = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === '创建文档')!
+    act(() => { create.click(); create.click() })
+    expect(fetch.mock.calls.filter(([url]) => url === '/api/import/create')).toHaveLength(1)
+    expect(create.disabled).toBe(true)
+    await act(async () => pending.resolve(Response.json({ id: 'imported' })))
+  } finally {
+    act(() => root.unmount())
+    document.body.replaceChildren()
+    vi.unstubAllGlobals()
+  }
+})
+
+it('allows retry after a failed create request', async () => {
+  const pending = deferred<Response>()
+  const fetch = vi.fn().mockResolvedValueOnce(Response.json({ title: 'Import', blocks: [] }))
+    .mockImplementationOnce(() => pending.promise)
+    .mockResolvedValueOnce(Response.json({ id: 'retried' }))
+  vi.stubGlobal('fetch', fetch)
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<Home />))
+    const input = container.querySelector('input[type="file"]')!
+    Object.defineProperty(input, 'files', { value: [new File([''], 'empty.md')] })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+    const create = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === '创建文档')!
+    act(() => create.click())
+    await act(async () => pending.resolve(Response.json({ error: 'Create failed' }, { status: 500 })))
+    expect(create.disabled).toBe(false)
+    expect(container.textContent).toContain('Create failed')
+    await act(async () => create.click())
+    expect(fetch.mock.calls.filter(([url]) => url === '/api/import/create')).toHaveLength(2)
+    expect(container.textContent).not.toContain('Create failed')
+  } finally {
+    act(() => root.unmount())
+    document.body.replaceChildren()
+    vi.unstubAllGlobals()
+  }
+})
+
 it.each([undefined, 1, 3])('shows a PDF page warning only when pages were omitted (%s)', async (omittedPageCount) => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ title: 'PDF', blocks: [], omittedPageCount })))
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)

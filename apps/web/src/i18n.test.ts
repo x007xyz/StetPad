@@ -106,6 +106,24 @@ it('translates folder page empty, normal and error states without changing Chine
   }
 })
 
+it.each(['设置', '搜索文档', '删除 草稿', ''])('preserves interpolated user titles (%s) while translating UI labels', (title) => {
+  localStorage.setItem('aiw.lang', 'en')
+  const labels = [
+    [`无法删除"${title}"。`, `Can't delete "${title}".`],
+    [`删除文件夹"${title}"？`, `Delete folder "${title}"?`],
+    [`永久删除"${title}"？`, `Permanently delete "${title}"?`],
+    [`把"${title}"移到回收站？`, `Move "${title}" to the trash?`],
+    [`"${title}" 已移到回收站`, `"${title}" moved to the trash`],
+    [`文档标题：${title}`, `Document title: ${title}`],
+    [`单独打开 ${title}`, `Open ${title} separately`],
+  ]
+  for (const [zh, en] of labels) {
+    // Empty trailing titles are trimmed by the translator before pattern matching.
+    if (!title && zh === '单独打开 ') continue
+    expect(t(zh!)).toBe(en)
+  }
+})
+
 it('translates the Settings model roles, including automatic, empty and error states', () => {
   const labels = [
     ['模型分工', 'Model roles'],

@@ -167,7 +167,29 @@ async function checkForUpdates(): Promise<void> {
   }
 }
 
+const SMOKE_RENDER_SELECTOR = '#root main h1'
+
+async function assertMainWindowRenders(win: BrowserWindow, timeoutMs = 20_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (!win.webContents.isLoadingMainFrame() && await win.webContents.executeJavaScript(`(() => {
+      const heading = document.querySelector(${JSON.stringify(SMOKE_RENDER_SELECTOR)})
+      if (!heading) return false
+      const rect = heading.getBoundingClientRect()
+      return rect.width > 0 && rect.height > 0 && getComputedStyle(heading).visibility === 'visible'
+    })()`)) {
+      console.log(`Smoke render check passed: main window rendered a visible ${SMOKE_RENDER_SELECTOR}`)
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  throw new Error(`Smoke render check failed: main window did not render a visible ${SMOKE_RENDER_SELECTOR} within ${timeoutMs / 1000}s`)
+}
+
 async function smoke(s: RunningServer): Promise<boolean> {
+  const win = createWindow()
+  if (!win) throw new Error('Smoke render check failed: main window was not created')
+  await assertMainWindowRenders(win)
   const base = `http://127.0.0.1:${s.port}`
   const auth = { authorization: `Bearer ${s.token}` }
   const json = { ...auth, 'content-type': 'application/json' }

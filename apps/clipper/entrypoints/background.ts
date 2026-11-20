@@ -1,4 +1,4 @@
-import { buildSourceHeaderBlocks, collectImageUrls, type Block } from '@stetpad/clip'
+import { buildSourceHeaderBlocks, collectImageUrls, MAX_IMPORT_BLOCKS, type Block } from '@stetpad/clip'
 import { browser } from 'wxt/browser'
 import {
   appendClipDoc,
@@ -9,6 +9,7 @@ import {
   startDocAiRun,
   startFolderAiRun,
 } from '../src/lib/api'
+import { clipOverflowNotice } from '../src/lib/i18n'
 import { localizeBlockImages } from '../src/lib/images'
 import { extractActiveTab } from '../src/lib/inject'
 import { getPendingPair, getPrefs, getProfiles, savePrefs, saveProfile, setPendingPair } from '../src/lib/storage'
@@ -17,10 +18,15 @@ import type { ClipExecutionRequest, ClipExecutionResult } from '../src/lib/types
 const MENU_SELECTION = 'stetpad-clip-selection'
 const MENU_PAGE = 'stetpad-clip-page'
 
-function flashBadge(text: string, color: string): void {
+let badgeTimer: ReturnType<typeof setTimeout> | undefined
+
+function flashBadge(text: string, color: string, notice?: string): void {
+  clearTimeout(badgeTimer)
   void browser.action.setBadgeText({ text })
   void browser.action.setBadgeBackgroundColor({ color })
-  setTimeout(() => {
+  void browser.action.setTitle({ title: notice ?? browser.runtime.getManifest().name })
+  if (notice) return
+  badgeTimer = setTimeout(() => {
     void browser.action.setBadgeText({ text: '' })
   }, 3500)
 }
@@ -106,7 +112,8 @@ async function executeClip(req: ClipExecutionRequest): Promise<ClipExecutionResu
     clippedAt: nowLabel(),
     note: req.note,
   })
-  const combined: Block[] = [...headerBlocks, ...req.blocks]
+  const omittedBlockCount = Math.max(0, headerBlocks.length + req.blocks.length - MAX_IMPORT_BLOCKS)
+  const combined: Block[] = [...headerBlocks, ...req.blocks.slice(0, MAX_IMPORT_BLOCKS - headerBlocks.length)]
   const hasExternalImages = req.localizeImages && collectImageUrls(combined).length > 0
 
   if (req.workflow === 'append') {
@@ -132,6 +139,7 @@ async function executeClip(req: ClipExecutionRequest): Promise<ClipExecutionResu
       changeId: res.changeId,
       uploadedImages,
       skippedImages,
+      omittedBlockCount,
       workflow: 'append',
       mode: profile.mode,
       baseUrl: profile.baseUrl,
@@ -186,6 +194,7 @@ async function executeClip(req: ClipExecutionRequest): Promise<ClipExecutionResu
     runId,
     uploadedImages,
     skippedImages,
+    omittedBlockCount,
     workflow: 'create',
     mode: profile.mode,
     baseUrl: profile.baseUrl,
@@ -267,7 +276,7 @@ export default defineBackground(() => {
             flashBadge('!', '#D63F2A')
             return
           }
-          await executeClip({
+          const result = await executeClip({
             tabId,
             profileId,
             workflow: 'create',
@@ -284,7 +293,8 @@ export default defineBackground(() => {
             localizeImages: prefs.localizeImages,
             asSuggestion: prefs.asSuggestion,
           })
-          flashBadge('✓', '#2b8a3e')
+          if (result.omittedBlockCount) flashBadge('!', '#a15c00', clipOverflowNotice(result.omittedBlockCount))
+          else flashBadge('✓', '#2b8a3e')
         } catch (err) {
           console.error('context menu clip failed', err)
           flashBadge('!', '#D63F2A')

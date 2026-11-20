@@ -181,6 +181,8 @@ const PATTERNS: [RegExp, (...m: string[]) => string][] = [
   [/^删除 (.*)$/, (_, t) => `Delete ${t}`], [/^正在解析 (.*)…$/, (_, t) => `Parsing ${t}…`],
   [/^恢复到"(.*)"？\n当前内容会先保存为一个版本，不会丢失。$/, (_, t) => `Restore "${t}"?\nThe current content is saved as a version first.`],
   [/^共 (\d+) 个段落。$/, (_, n) => `${n} blocks.`],
+  [/^导入最多保留前 (\d+) 个段落。继续创建将省略最后 (\d+) 个段落。$/, (_, limit, omitted) => `This import can keep only the first ${limit} blocks. Creating the document will omit the last ${omitted} ${omitted === '1' ? 'block' : 'blocks'}.`],
+  [/^导入内容超过 (\d+) 个段落，请拆分后重试。$/, (_, limit) => `The import exceeds ${limit} blocks. Split the file and try again.`],
   [/^原文档的排版不会保留，内容已整理成下面的简单格式。$/, () => 'The original layout is not kept; the content was normalised into the simple format below.'],
   [/^……其余 (\d+) 段未显示$/, (_, n) => `…${n} more blocks not shown`],
   [/^(\d+) 字$/, (_, n) => `${n} words`], [/^ ?字$/, () => ' chars'],

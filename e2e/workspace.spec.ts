@@ -91,6 +91,17 @@ test('imports Markdown with preview and exports its content', async ({ page }) =
   expect(await readFile((await download.path())!, 'utf8')).toContain('Round trip prose.')
 })
 
+test('warns about an omitted paragraph before creating a long import', async ({ page }) => {
+  const paragraphs = Array.from({ length: 2001 }, (_, i) => `Paragraph ${i + 1}`)
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'long.txt', mimeType: 'text/plain', buffer: Buffer.from(paragraphs.join('\n\n')),
+  })
+  const preview = page.getByRole('dialog', { name: '导入预览' })
+  await expect(preview.getByRole('alert')).toHaveText('导入最多保留前 2000 个段落。继续创建将省略最后 1 个段落。')
+  await preview.getByRole('button', { name: '创建文档' }).click()
+  await expect(editor(page).locator(':scope > p').last()).toHaveText('Paragraph 2000')
+})
+
 test('reports an invalid document package without creating a document', async ({ page }) => {
   await page.locator('input[type="file"]').setInputFiles({ name: 'broken.stetpad', mimeType: 'application/octet-stream', buffer: Buffer.from('not a package') })
   await expect(page.locator('main .error')).toBeVisible()

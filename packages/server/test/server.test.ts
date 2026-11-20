@@ -123,6 +123,31 @@ describe('server', () => {
     expect(md).toContain('| a | b |')
   })
 
+  it('reports import overflow before creating a bounded document', async () => {
+    const paragraphs = Array.from({ length: 2001 }, (_, i) => `Paragraph ${i + 1}`)
+    const form = new FormData()
+    form.append('file', new File([paragraphs.join('\n\n')], 'long.txt'))
+    const preview = await call('/api/import/preview', { method: 'POST', body: form })
+    expect(preview.status).toBe(200)
+    expect(preview.body.omittedBlockCount).toBe(1)
+    expect(preview.body.blocks).toHaveLength(2000)
+
+    const before = await call('/api/docs')
+    const overflow = await call('/api/import/create', {
+      method: 'POST',
+      body: JSON.stringify({ ...preview.body, blocks: [...preview.body.blocks, { type: 'paragraph', attrs: {}, delta: [{ insert: 'Paragraph 2001' }] }] }),
+    })
+    expect(overflow.status).toBe(413)
+    expect((await call('/api/docs')).body).toEqual(before.body)
+
+    const made = await call('/api/import/create', { method: 'POST', body: JSON.stringify(preview.body) })
+    expect(made.status).toBe(200)
+    const exported = await call(`/api/docs/${made.body.id}/export?format=md`)
+    expect(exported.status).toBe(200)
+    const imported = (exported.body as string).trimEnd().split('\n\n')
+    expect(imported).toEqual(paragraphs.slice(0, 2000))
+  })
+
   it('keeps Markdown footnotes from preview when creating a document', async () => {
     const form = new FormData()
     form.append('file', new File(['A word[^1].\n\n[^1]: note text\n'], 'footnote.md'))

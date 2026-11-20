@@ -1,6 +1,6 @@
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
-import { isEmbedUrl, safeHref, safeImageSrc, safeVideoSrc } from '@stetpad/clip'
+import { isEmbedUrl, MAX_IMPORT_BLOCKS, safeHref, safeImageSrc, safeVideoSrc } from '@stetpad/clip'
 import { BLOCK_TYPES, blocks as yBlocks, type CommentView, footnoteAttr, insertBlock, listComments, newBlockId, newChangeId, projectBlocks, trackedInsertBlock } from '@stetpad/crdt'
 import { Hono, type Context } from 'hono'
 import { streamSSE } from 'hono/streaming'
@@ -186,7 +186,7 @@ const ALLOWED_BLOCK_TYPES: ReadonlySet<string> = new Set(BLOCK_TYPES)
 const ALLOWED_MARKS = new Set(['bold', 'italic', 'underline', 'strike', 'code', 'highlight', 'link', 'math', 'footnote'])
 function sanitizeBlocks(raw: unknown[]): Block[] {
   const out: Block[] = []
-  for (const item of raw.slice(0, 2000)) {
+  for (const item of raw.slice(0, MAX_IMPORT_BLOCKS)) {
     if (!item || typeof item !== 'object') continue
     const b = item as Record<string, unknown>
     const type = typeof b.type === 'string' && ALLOWED_BLOCK_TYPES.has(b.type) ? b.type : 'paragraph'
@@ -1041,6 +1041,9 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
       if (blocks.length === 0) return c.json({ error: '没有解析出任何内容' }, 422)
       const heading = blocks.find((b) => b.type === 'heading')
       const title = (heading?.delta.map((d) => d.insert).join('') || file.name.replace(/\.[^.]+$/, '')).slice(0, 80)
+      if (blocks.length > MAX_IMPORT_BLOCKS) {
+        return c.json({ title, blocks: blocks.slice(0, MAX_IMPORT_BLOCKS), omittedBlockCount: blocks.length - MAX_IMPORT_BLOCKS })
+      }
       return c.json({ title, blocks })
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : '解析失败' }, 422)
@@ -1049,6 +1052,10 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   api.post('/import/create', async (c) => {
     const { title, blocks, folderId } = await c.req.json<{ title: string; blocks: Block[]; folderId?: string }>()
     if (!Array.isArray(blocks)) return c.json({ error: 'bad request' }, 400)
+    const omittedBlockCount = Math.max(0, blocks.length - MAX_IMPORT_BLOCKS)
+    if (omittedBlockCount > 0 && !c.get('token').startsWith('clp_')) {
+      return c.json({ error: `导入内容超过 ${MAX_IMPORT_BLOCKS} 个段落，请拆分后重试。` }, 413)
+    }
     const folder = folderId ? await folderFor(c, folderId) : null
     if (folderId && !folder) return notFound(c)
     const user = c.get('user')
@@ -1056,7 +1063,11 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     const doc = await store.createDoc(user.id, (title ?? '').trim() || '导入的文档', Y.encodeStateAsUpdate(docFromBlocks(clean)))
     if (folder) await store.setDocFolder(doc.id, folder.folder.id)
     await collab.snapshot(doc.id, 'import', user.email)
-    return c.json(folder ? { ...doc, folder_id: folder.folder.id } : doc)
+    return c.json({
+      ...doc,
+      ...(folder ? { folder_id: folder.folder.id } : {}),
+      ...(omittedBlockCount > 0 ? { omittedBlockCount } : {}),
+    })
   })
   api.post('/docs/:id/clip', async (c) => {
     const d = await docFor(c, c.req.param('id'))

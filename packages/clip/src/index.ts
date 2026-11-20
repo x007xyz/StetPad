@@ -4,6 +4,8 @@
  * browsers (extension content scripts) and Node.js (via linkedom).
  */
 
+export const MAX_IMPORT_BLOCKS = 2000
+
 export interface InlineDelta {
   insert: string
   attributes?: Record<string, unknown>

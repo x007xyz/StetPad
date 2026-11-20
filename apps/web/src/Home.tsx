@@ -7,7 +7,7 @@ import { Dialog, DialogContent } from './components/ui/dialog'
 import { Field, Input } from './components/ui/input'
 import { SidebarToggle, useWorkspace } from './Shell'
 
-interface Preview { title: string; blocks: RichBlock[] }
+interface Preview { title: string; blocks: RichBlock[]; omittedBlockCount?: number }
 
 /** The message for an import that left files out: their names, five at most. */
 const droppedNote = (dropped: { name: string | null; mime: string }[]): string => {
@@ -69,8 +69,10 @@ export function Home() {
   }
   const confirmImport = async (): Promise<void> => {
     if (!preview) return
-    go({ page: 'doc', id: (await post<DocMeta>('/import/create', preview)).id })
+    const { title, blocks } = preview
+    go({ page: 'doc', id: (await post<DocMeta>('/import/create', { title, blocks })).id })
   }
+  const omittedBlockCount = preview?.omittedBlockCount ?? 0
 
   return (
     <div
@@ -126,7 +128,10 @@ export function Home() {
       <Dialog open={!!preview} onOpenChange={(o) => !o && setPreview(null)}>
         {preview && (
           <DialogContent title="导入预览" className="max-w-3xl">
-            <p className="muted">原文档的排版不会保留，内容已整理成下面的简单格式。共 {preview.blocks.length} 个段落。</p>
+            <p className="muted">原文档的排版不会保留，内容已整理成下面的简单格式。共 {preview.blocks.length + omittedBlockCount} 个段落。</p>
+            {omittedBlockCount > 0 && (
+              <p role="alert" className="warn">{`导入最多保留前 ${preview.blocks.length} 个段落。继续创建将省略最后 ${omittedBlockCount} 个段落。`}</p>
+            )}
             <Field label="标题">
               <Input value={preview.title} onChange={(e) => setPreview({ ...preview, title: e.target.value })} />
             </Field>

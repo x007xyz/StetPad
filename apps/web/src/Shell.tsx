@@ -1,5 +1,5 @@
 import { ChevronRight, ChevronsLeft, FilePlus2, FileText, Folder as FolderIcon, FolderInput, FolderPlus, PanelLeft, Pencil, Plus, Search, Settings as SettingsIcon, Trash, Trash2 } from 'lucide-react'
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, post, type DocMeta, type Folder } from './api'
 import { go, type Session } from './App'
 import { ConfirmHost, confirmAction } from './components/confirm'
@@ -71,9 +71,12 @@ export function Shell({ session, activeId, activeFolderId, trashActive, children
   const [settings, setSettings] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [toast, setToast] = useState<{ text: string; nonce: number; error?: boolean } | null>(null)
+  const reloadVersion = useRef(0)
 
   const reload = useCallback(async (): Promise<void> => {
+    const version = ++reloadVersion.current
     const [d, f] = await Promise.all([api<DocMeta[]>('/docs'), api<Folder[]>('/folders')])
+    if (version !== reloadVersion.current) return
     setDocs(d)
     setFolders(f)
   }, [])

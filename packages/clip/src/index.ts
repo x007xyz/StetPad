@@ -517,10 +517,11 @@ export function domToBlocks(root: any, opts: { baseUrl?: string } = {}): Block[]
         const rows = [...node.querySelectorAll('tr')]
           .filter((tr: any) => !isHiddenElement(tr))
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .map((tr: any) => [...tr.querySelectorAll('th,td')].filter((c: any) => !isHiddenElement(c)).map((c: any) => {
+          .map((tr: any) => [...tr.querySelectorAll('th,td')].map((c: any) => {
+            if (isHiddenElement(c)) return ''
             const delta: InlineDelta[] = []
             inline(c, {}, delta)
-            return trimmed(delta).map((d) => d.insert).join('')
+            return collapse(delta.map((d) => d.insert).join(''))
           }))
           .filter((r) => r.length)
         if (rows.length) out.push({ type: 'table', attrs: { rows: JSON.stringify(rows) }, delta: [] })

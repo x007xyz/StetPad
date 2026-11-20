@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest'
-import { fmtTime } from './api'
+import { fmtTime, TRIGGERS } from './api'
 import { ago } from './panels/Ai'
 import { t } from './i18n'
+import { versionName } from './panels/Versions'
 
 afterEach(() => {
   localStorage.removeItem('aiw.lang')
@@ -30,4 +31,14 @@ it.each(['en', 'zh'])('formats older AI chat dates in %s', (lang) => {
 it.each(['en', 'zh'])('translates the versions tooltip and accessible label in %s', (lang) => {
   localStorage.setItem('aiw.lang', lang)
   expect(t('版本历史')).toBe(lang === 'en' ? 'Version history' : '版本历史')
+})
+
+it.each(['en', 'zh'])('translates all default version triggers in %s', (lang) => {
+  localStorage.setItem('aiw.lang', lang)
+  const english = ['Manual save', 'Auto save', 'Import', 'Before AI', 'After AI', 'Changes reviewed', 'Before restore', 'Restore']
+  expect(Object.values(TRIGGERS).map(t)).toEqual(lang === 'en' ? english : Object.values(TRIGGERS))
+  const version = { id: 'v', label: null, trigger: 'manual', author: 'me', word_count: 1, created_at: new Date(2026, 10, 20, 9, 5).getTime() }
+  expect(versionName(version)).toBe(lang === 'en' ? 'Manual save · Nov 20, 09:05' : '手动保存 · 11月20日 09:05')
+  expect(versionName({ ...version, label: '手动保存' })).toBe('手动保存')
+  expect(versionName({ ...version, trigger: 'unknown' })).toContain('unknown · ')
 })

@@ -38,6 +38,7 @@ export function fmtDate(t: number): string {
 }
 
 const EXACT: Record<string, string> = {
+  '手动保存': 'Manual save', '自动保存': 'Auto save', '导入': 'Import', 'AI 操作前': 'Before AI', 'AI 操作后': 'After AI', '修订处理完': 'Changes reviewed', '恢复前': 'Before restore',
   // Folder page
   '空文件夹（把文档拖进来）': 'Empty folder (drag documents here)',
   '找不到这个文件夹，或者你没有权限打开它。': 'This folder could not be found, or you do not have permission to open it.',
@@ -251,7 +252,7 @@ function tr(raw: string): string {
 }
 
 const ATTRS = ['placeholder', 'aria-label', 'title', 'label']
-const SKIP = '.ProseMirror, .chat-body, .md'
+const SKIP = '.ProseMirror, .chat-body, .md, [data-i18n-skip]'
 
 function walk(root: Node): void {
   if (root.nodeType === Node.TEXT_NODE) {

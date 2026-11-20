@@ -5,10 +5,12 @@
   "type": "module",
   "packageManager": "pnpm@9.10.0",
   "scripts": {
+    "test:e2e": "playwright test",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   }

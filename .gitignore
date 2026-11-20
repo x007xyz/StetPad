@@ -11,3 +11,5 @@ desktop/dist
 desktop/drawio
 .output
 .wxt
+test-results/
+playwright-report/

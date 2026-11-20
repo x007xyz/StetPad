@@ -26,6 +26,27 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: corepack enable && corepack prepare pnpm@9.10.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-failure
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 14
+
   desktop:
     needs: test
     strategy:

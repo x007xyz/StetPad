@@ -487,23 +487,31 @@ const figure = (inner: string, caption: string): string =>
 export function blocksToHtml(input: Block[], title: string, opts: HtmlOptions = {}): string {
   const { blocks: list, notes } = withFootnoteRefs(input)
   const body: string[] = []
-  let open: string | null = null
+  const open: { tag: string; level: number }[] = []
   const close = (): void => {
-    if (open) body.push(`</${open}>`)
-    open = null
+    const last = open.pop()
+    if (last) body.push(`</li></${last.tag}>`)
   }
   for (const b of list) {
     const level = Number(b.attrs.indent ?? 0)
     const tag = b.type === 'orderedItem' ? 'ol' : b.type === 'bulletItem' || b.type === 'taskItem' ? 'ul' : null
-    if (tag !== open) {
-      close()
-      if (tag) body.push(`<${tag}>`)
-      open = tag
+    while (open.length && (!tag || open[open.length - 1]!.level > level)) close()
+    if (tag) {
+      let last = open[open.length - 1]
+      if (last?.level === level && last.tag !== tag) {
+        close()
+        last = open[open.length - 1]
+      }
+      if (last?.level === level) body.push('</li>')
+      else {
+        body.push(`<${tag}>`)
+        open.push({ tag, level })
+      }
     }
     switch (b.type) {
       case 'heading': body.push(`<h${b.attrs.level ?? 1}>${inlineHtml(b.delta)}</h${b.attrs.level ?? 1}>`); break
-      case 'bulletItem': case 'orderedItem': body.push(`<li>${inlineHtml(b.delta)}</li>`); break
-      case 'taskItem': body.push(`<li><input type="checkbox" disabled${b.attrs.checked ? ' checked' : ''}> ${inlineHtml(b.delta)}</li>`); break
+      case 'bulletItem': case 'orderedItem': body.push(`<li>${inlineHtml(b.delta)}`); break
+      case 'taskItem': body.push(`<li><input type="checkbox" disabled${b.attrs.checked ? ' checked' : ''}> ${inlineHtml(b.delta)}`); break
       case 'quote': body.push(`<blockquote>${inlineHtml(b.delta)}</blockquote>`); break
       case 'callout': body.push(`<aside>${inlineHtml(b.delta)}</aside>`); break
       case 'codeBlock': {
@@ -570,7 +578,7 @@ export function blocksToHtml(input: Block[], title: string, opts: HtmlOptions = 
       default: body.push(`<p${level ? ` data-indent="${level}" style="margin-left:${level * 2}em"` : ''}>${inlineHtml(b.delta)}</p>`)
     }
   }
-  close()
+  while (open.length) close()
   const foot = notes.length
     ? `<section class="footnotes"><ol>${notes.map((n) => `<li id="fn-${n.number}">${esc(n.note)} <a href="#fnref-${n.number}">↩</a></li>`).join('')}</ol></section>`
     : ''

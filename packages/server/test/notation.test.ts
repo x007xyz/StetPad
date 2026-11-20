@@ -287,7 +287,19 @@ describe('export', () => {
     const blocks = await fileToBlocks('list.md', enc(md))
     const html = blocksToHtml(blocks, 'Lists')
     expect(html.replace(/\n/g, '')).toContain(`<${outer}><li>a<${inner}><li>a1</li></${inner}></li><li>b</li></${outer}>`)
-    expect(htmlToBlocks(html)).toEqual(blocks)
+    expect(htmlToBlocks(html.split('<body>')[1]!.split('</body>')[0]!)).toEqual(blocks)
+  })
+
+  it.each([
+    '',
+    '1. a\n   1. a1\n      - deep\n   - other\n2. b\n\n# End\n\n1. restart',
+    '- [ ] a\n  - [x] child\n- [ ] b',
+    Array.from({ length: 11 }, (_, i) => `${i + 1}. item ${i}${i === 9 ? '\n    1. child' : ''}`).join('\n'),
+  ])('round-trips list boundaries, tasks, and wide markers: %s', async (md) => {
+    const blocks = await fileToBlocks('list.md', enc(md))
+    expect(await fileToBlocks('list.md', enc(blocksToMarkdown(blocks)))).toEqual(blocks)
+    const html = blocksToHtml(blocks, 'Lists')
+    expect(htmlToBlocks(html.split('<body>')[1]!.split('</body>')[0]!)).toEqual(blocks)
   })
 
   const image: Block = { type: 'image', attrs: { src: '/files/abc', alt: 'cat', caption: 'A cat', width: 60 }, delta: [] }

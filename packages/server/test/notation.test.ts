@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas'
-import { findBlock, insertBlock, listChanges, projectBlocks } from '@stetpad/crdt'
+import { decide, findBlock, insertBlock, listChanges, projectBlocks } from '@stetpad/crdt'
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import {
@@ -135,6 +135,49 @@ function docWith(blocks: { id: string; type: string; text?: string; attrs?: Reco
 
 describe('DocTools on the new block types', () => {
   const meta = { author: AI, runId: 'r1' }
+
+  const richDelta = [
+    { insert: 'bold', attributes: { bold: true } },
+    { insert: ' link', attributes: { link: 'https://example.com' } },
+    { insert: ' note', attributes: { footnote: { id: 'fn1', note: 'A note' } } },
+    { insert: ' x', attributes: { math: true } },
+  ]
+  const richDoc = (type = 'paragraph') => {
+    const doc = docWith([{ id: 'p1', type, attrs: type === 'codeBlock' ? { language: 'js' } : {}, text: ' ' }])
+    const t = findBlock(doc, 'p1')!.toArray()[0] as Y.XmlText
+    t.delete(0, 1)
+    t.applyDelta(richDelta)
+    return doc
+  }
+
+  it.each(['move', 'heading', 'language', 'edited heading'])('%s preserves carried inline marks after acceptance', (op) => {
+    const doc = richDoc(op === 'language' ? 'codeBlock' : 'paragraph')
+    const tools = new DocTools(doc, meta)
+    const r = op === 'move' ? tools.moveBlock('p1', null)
+      : tools.replaceBlock('p1', op === 'language' ? '```ts\nbold link note x\n```'
+        : `# bold link note $x$${op === 'edited heading' ? ' added' : ''}`)
+    expect(r.ok).toBe(true)
+    if (!r.ok || !('new_block_id' in r)) throw new Error('expected a replacement')
+    const expected = op === 'edited heading' ? [...richDelta, { insert: ' added' }] : richDelta
+    expect(projectBlocks(doc, 'revised')[0]!.delta).toEqual(expected)
+    for (const id of r.change_ids) expect(decide(doc, id, 'accept')).toBe(true)
+    expect(projectBlocks(doc, 'revised')[0]!.delta).toEqual(expected)
+  })
+
+  it('conversion treats inline Markdown as literal text, not new marks', () => {
+    const doc = richDoc()
+    new DocTools(doc, meta).replaceBlock('p1', '# **new** [label](https://example.org)')
+    expect(projectBlocks(doc, 'revised')[0]!.delta).toEqual([{ insert: '**new** [label](https://example.org)' }])
+  })
+
+  it.each(['move', 'convert'])('%s handles empty and missing blocks', (op) => {
+    const doc = docWith([{ id: 'p1', type: 'paragraph', text: '' }])
+    const tools = new DocTools(doc, meta)
+    const run = (id: string) => op === 'move' ? tools.moveBlock(id, null) : tools.replaceBlock(id, '# ')
+    expect(run('missing')).toMatchObject({ ok: false })
+    expect(run('p1')).toMatchObject({ ok: true })
+    expect(projectBlocks(doc, 'revised')[0]!.delta).toEqual([])
+  })
 
   it('a new caption on an image is a pending change, and the image keeps its attributes', () => {
     const doc = docWith([

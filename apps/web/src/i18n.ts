@@ -244,7 +244,7 @@ function tr(raw: string): string {
 }
 
 const ATTRS = ['placeholder', 'aria-label', 'title', 'label']
-const SKIP = '.ProseMirror, .chat-body, .md'
+const SKIP = '.ProseMirror, .chat-body, .md, .doc-text'
 
 function walk(root: Node): void {
   if (root.nodeType === Node.TEXT_NODE) {

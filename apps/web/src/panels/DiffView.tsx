@@ -84,11 +84,11 @@ export function DiffView({ rows, leftTitle, rightTitle, onlyChanged }: { rows: D
           <div key={r.id} className={'diff-row' + (changedRow ? ' changed' : '')} data-diff-changed={changedRow || undefined}>
             <div className={'diff-cell' + (!r.left ? ' absent' : !r.right ? ' removed' : '')}>
               {r.left && <span className="kind">{label(r.left)}</span>}
-              {r.left && (formattingOnly ? richText(r.left) : ops ? ops.filter((o) => o.type !== 'insert').map((o, k) => (o.type === 'delete' ? <del key={k}>{o.text}</del> : <span key={k}>{o.text}</span>)) : r.left.text)}
+              {r.left && <span className="doc-text">{formattingOnly ? richText(r.left) : ops ? ops.filter((o) => o.type !== 'insert').map((o, k) => (o.type === 'delete' ? <del key={k}>{o.text}</del> : <span key={k}>{o.text}</span>)) : r.left.text}</span>}
             </div>
             <div className={'diff-cell' + (!r.right ? ' absent' : !r.left ? ' added' : '')}>
               {r.right && <span className="kind">{label(r.right)}</span>}
-              {r.right && (formattingOnly ? richText(r.right) : ops ? ops.filter((o) => o.type !== 'delete').map((o, k) => (o.type === 'insert' ? <ins key={k}>{o.text}</ins> : <span key={k}>{o.text}</span>)) : r.right.text)}
+              {r.right && <span className="doc-text">{formattingOnly ? richText(r.right) : ops ? ops.filter((o) => o.type !== 'delete').map((o, k) => (o.type === 'insert' ? <ins key={k}>{o.text}</ins> : <span key={k}>{o.text}</span>)) : r.right.text}</span>}
               {formattingOnly && <div className="muted small">仅格式变化</div>}
               {r.actions && <div className="diff-actions">{r.actions}</div>}
             </div>

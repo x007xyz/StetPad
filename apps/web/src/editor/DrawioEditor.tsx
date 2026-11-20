@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { confirmAction } from '../components/confirm'
 import { drawioBaseUrl, drawioEditorUrl, parseDrawioMessage, uploadPng } from './drawio'
 
 export interface DrawioEditorProps {
@@ -132,9 +133,13 @@ export function DrawioEditor(props: DrawioEditorProps) {
 
   if (!open) return null
 
-  // Closing with unsaved changes asks first.
-  const requestClose = (): void => {
-    if (dirty.current && !window.confirm('有未保存的修改，确定关闭？')) return
+  const requestClose = async (): Promise<void> => {
+    if (dirty.current && !(await confirmAction({
+      title: '放弃未保存的修改？',
+      body: '关闭后，图表中未保存的修改将丢失。',
+      confirmLabel: '放弃修改',
+      danger: true,
+    }))) return
     props.onClose()
   }
 
@@ -145,7 +150,7 @@ export function DrawioEditor(props: DrawioEditorProps) {
         {busy && <span className="drawio-note">正在保存…</span>}
         {notice && <span className="drawio-error">{notice}</span>}
         <span className="drawio-spacer" />
-        <button type="button" className="drawio-close" onClick={requestClose}>
+        <button type="button" className="drawio-close" onClick={() => void requestClose()}>
           关闭
         </button>
       </header>

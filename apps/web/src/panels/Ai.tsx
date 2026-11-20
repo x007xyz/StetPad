@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api, post, streamRun, type ModelsResponse, type RunMeta } from '../api'
 import { Button } from '../components/ui/button'
+import { confirmAction } from '../components/confirm'
 import type { CommentView, DecidedChange, PendingChange } from '@stetpad/crdt'
 import { ArrowUp, ChevronDown, MessageSquare, Pencil, Pilcrow, Plus, Square, TextQuote, Trash2, X } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
@@ -298,6 +299,14 @@ function ChatBar({ runs }: { runs: ReturnType<typeof useRuns> }) {
   const [name, setName] = useState('')
   const cur = chats.find((c) => c.id === chatId)
   const label = (c?: ChatMeta): string => c?.title || '新对话'
+  const requestDelete = async (chat: ChatMeta): Promise<void> => {
+    if (await confirmAction({
+      title: `删除对话"${label(chat)}"？`,
+      body: '文档内容和待确认的修改不会受影响。',
+      confirmLabel: '删除',
+      danger: true,
+    })) await deleteChat(chat.id)
+  }
   const commit = (id: string): void => {
     const t = name.trim()
     setEditing(null)
@@ -339,7 +348,7 @@ function ChatBar({ runs }: { runs: ReturnType<typeof useRuns> }) {
                       <span className="muted small">{ago(c.updated_at)}</span>
                     </button>
                     <button className="chat-act" aria-label="重命名" title="重命名" onClick={() => { setName(c.title); setEditing(c.id) }}><Pencil className="size-3.5" /></button>
-                    <button className="chat-act" aria-label="删除对话" title="删除对话" onClick={() => { if (confirm(`删除对话"${label(c)}"？文档内容和待确认的修改不会受影响。`)) void deleteChat(c.id) }}><Trash2 className="size-3.5" /></button>
+                    <button className="chat-act" aria-label="删除对话" title="删除对话" onClick={() => void requestDelete(c)}><Trash2 className="size-3.5" /></button>
                   </>
                 )}
               </li>

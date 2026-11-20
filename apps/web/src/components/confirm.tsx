@@ -3,17 +3,20 @@ import { Button } from './ui/button'
 import { Dialog, DialogContent } from './ui/dialog'
 import { Input } from './ui/input'
 
-type Request = { title: string; body?: string; confirmLabel: string; danger?: boolean; text?: { defaultValue?: string; placeholder?: string }; resolve: (value: string | boolean | null) => void }
+type ConfirmOptions = { title: string; body?: string; confirmLabel: string; danger?: boolean }
+type Request = ConfirmOptions & { cancelLabel?: string; text?: { defaultValue?: string; placeholder?: string }; resolve: (value: string | boolean | null) => void }
 
 let show: ((r: Request) => void) | null = null
 
 /**
- * An in-app replacement for window.confirm: resolves true when the user
- * confirms, false when they cancel or dismiss. Needs <ConfirmHost /> mounted.
+ * Resolves true on confirm and false on cancel. With a custom cancel label,
+ * dismissal resolves null so only an explicit button click selects an option.
  */
-export function confirmAction(opts: { title: string; body?: string; confirmLabel: string; danger?: boolean }): Promise<boolean> {
-  if (!show) return Promise.resolve(window.confirm(opts.body ? `${opts.title}\n${opts.body}` : opts.title))
-  return new Promise((resolve) => show!({ ...opts, resolve: (value) => resolve(value === true) }))
+export function confirmAction(opts: ConfirmOptions & { cancelLabel: string }): Promise<boolean | null>
+export function confirmAction(opts: ConfirmOptions & { cancelLabel?: never }): Promise<boolean>
+export function confirmAction(opts: ConfirmOptions & { cancelLabel?: string }): Promise<boolean | null> {
+  if (!show) return Promise.resolve(opts.cancelLabel === undefined ? false : null)
+  return new Promise((resolve) => show!({ ...opts, resolve: (value) => resolve(value === null && opts.cancelLabel !== undefined ? null : value === true) }))
 }
 
 export function promptText(opts: { title: string; defaultValue?: string; placeholder?: string; confirmLabel: string }): Promise<string | null> {
@@ -27,23 +30,25 @@ export function ConfirmHost() {
   const input = useRef<HTMLInputElement>(null)
   useEffect(() => {
     show = (r) => setReq((cur) => {
-      cur?.resolve(false)
+      cur?.resolve(null)
       return r
     })
     return () => {
       show = null
     }
   }, [])
-  const close = (confirmed: boolean): void => {
+  const close = (confirmed: boolean | null): void => {
     req?.resolve(req.text ? confirmed ? input.current?.value ?? '' : null : confirmed)
     setReq(null)
   }
   return (
-    <Dialog open={req !== null} onOpenChange={(o) => !o && close(false)}>
+    <Dialog open={req !== null} onOpenChange={(o) => !o && close(null)}>
       {req && (
         <DialogContent
           title={req.title}
+          description={req.body}
           className="max-w-sm"
+          layerClassName="z-[1010]"
           // Like window.confirm, Enter confirms: start on the confirm button, not the first one.
           onOpenAutoFocus={(e) => {
             e.preventDefault()
@@ -53,7 +58,6 @@ export function ConfirmHost() {
             } else ok.current?.focus()
           }}
         >
-          {req.body && <p className="text-sm text-muted-foreground">{req.body}</p>}
           {req.text && <Input key={req.title} ref={input} aria-label={req.title} defaultValue={req.text.defaultValue ?? ''} placeholder={req.text.placeholder} onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
               e.preventDefault()
@@ -61,7 +65,7 @@ export function ConfirmHost() {
             }
           }} />}
           <div className="mt-4 flex justify-end gap-2">
-            <Button onClick={() => close(false)}>取消</Button>
+            <Button onClick={() => close(false)}>{req.cancelLabel ?? '取消'}</Button>
             <Button ref={ok} variant={req.danger ? 'destructive' : 'default'} className={req.danger ? 'border border-destructive/40' : undefined} onClick={() => close(true)}>{req.confirmLabel}</Button>
           </div>
         </DialogContent>

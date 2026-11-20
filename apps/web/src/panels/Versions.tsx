@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, fmtTime, post, TRIGGERS, type RichBlock, type VersionMeta } from '../api'
 import { History } from 'lucide-react'
 import { Button } from '../components/ui/button'
-import { promptText } from '../components/confirm'
+import { confirmAction, promptText } from '../components/confirm'
 import { Dialog, DialogContent } from '../components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
 import { Tip } from '../components/ui/tooltip'
@@ -62,7 +62,11 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
     }
   }
   const restore = async (v: VersionMeta): Promise<void> => {
-    if (!confirm(`恢复到"${name(v)}"？\n当前内容会先保存为一个版本，不会丢失。`)) return
+    if (!(await confirmAction({
+      title: `恢复到"${name(v)}"？`,
+      body: '当前内容会先保存为一个版本，不会丢失。',
+      confirmLabel: '恢复',
+    }))) return
     setError('')
     try {
       await post(`/versions/${v.id}/restore`)

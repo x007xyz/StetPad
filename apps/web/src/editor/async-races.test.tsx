@@ -43,6 +43,12 @@ function typePrompt(value: string) {
   act(() => input.dispatchEvent(new Event('input', { bubbles: true })))
 }
 
+function renderImageDialog(mode: 'generate' | 'edit', open: boolean) {
+  return act(async () => root.render(mode === 'generate'
+    ? <AiImageDialog docId="doc" open={open} onClose={vi.fn()} onInsert={vi.fn()} />
+    : <AiImageEditDialog docId="doc" src="/original.png" open={open} onClose={vi.fn()} onInsert={vi.fn()} onReplace={vi.fn()} />))
+}
+
 it.each(['success', 'error'] as const)('keeps the latest diagram after an old %s response', async (outcome) => {
   const a = deferred<Response>()
   const b = deferred<Response>()
@@ -66,6 +72,43 @@ it.each(['success', 'error'] as const)('keeps the latest diagram after an old %s
 
 it.each([
   ['generate', 'success'], ['generate', 'error'], ['edit', 'success'], ['edit', 'error'],
+] as const)('keeps the latest %s model catalog after an old %s response', async (mode, outcome) => {
+  const a = deferred<Response>()
+  const b = deferred<Response>()
+  const fetchMock = vi.fn().mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise)
+  vi.stubGlobal('fetch', fetchMock)
+
+  await renderImageDialog(mode, true)
+  await renderImageDialog(mode, false)
+  await renderImageDialog(mode, true)
+  expect(fetchMock).toHaveBeenCalledTimes(2)
+
+  await act(async () => b.resolve(Response.json({ models: [{ id: 'B', label: 'Model B' }], default: 'B' })))
+  expect(document.querySelector('select')?.value).toBe('B')
+  await act(async () => outcome === 'success'
+    ? a.resolve(Response.json({ models: [{ id: 'A', label: 'Model A' }], default: 'A' }))
+    : a.reject(new Error('stale catalog error')))
+  expect(document.querySelector('select')?.value).toBe('B')
+  expect(document.body.textContent).not.toMatch(/Model A|stale catalog error/)
+})
+
+it.each(['generate', 'edit'] as const)('preserves the %s catalog reload policy after a successful load', async (mode) => {
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(Response.json({ models: [{ id: 'A', label: 'Model A' }], default: null }))
+    .mockResolvedValueOnce(Response.json({ models: [{ id: 'B', label: 'Model B' }], default: null }))
+  vi.stubGlobal('fetch', fetchMock)
+
+  await renderImageDialog(mode, true)
+  expect(document.querySelector('select')?.value).toBe('A')
+  await renderImageDialog(mode, false)
+  await renderImageDialog(mode, true)
+
+  expect(fetchMock).toHaveBeenCalledTimes(mode === 'generate' ? 1 : 2)
+  expect(document.querySelector('select')?.value).toBe(mode === 'generate' ? 'A' : 'B')
+})
+
+it.each([
+  ['generate', 'success'], ['generate', 'error'], ['edit', 'success'], ['edit', 'error'],
 ] as const)('keeps the latest image after cancelling an earlier %s request with %s', async (mode, outcome) => {
   const a = deferred<Response>()
   const b = deferred<Response>()
@@ -74,16 +117,11 @@ it.each([
     ? Promise.resolve(Response.json({ models: [{ id: 'model', label: 'Model' }], default: 'model' }))
     : requests.shift()!.promise)
   vi.stubGlobal('fetch', fetchMock)
-  const render = async (open: boolean) => {
-    await act(async () => root.render(mode === 'generate'
-      ? <AiImageDialog docId="doc" open={open} onClose={vi.fn()} onInsert={vi.fn()} />
-      : <AiImageEditDialog docId="doc" src="/original.png" open={open} onClose={vi.fn()} onInsert={vi.fn()} onReplace={vi.fn()} />))
-  }
-  await render(true)
+  await renderImageDialog(mode, true)
   typePrompt('A')
   click(mode === 'generate' ? '生成' : '改图')
-  await render(false)
-  await render(true)
+  await renderImageDialog(mode, false)
+  await renderImageDialog(mode, true)
   typePrompt('B')
   click(mode === 'generate' ? '生成' : '改图')
   expect(requests).toHaveLength(0)

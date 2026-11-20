@@ -5,6 +5,9 @@ import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { startServer, type RunningServer } from '../src'
 import { catalogEntry } from '../src/provider-catalog'
+import { stubAgentDiscovery } from './stub-agent-discovery'
+
+stubAgentDiscovery()
 
 const SECRET = 'sk-custom-test-secret-7731'
 const BASE_URL = 'https://llm.example.com/v1'

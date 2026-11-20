@@ -115,9 +115,9 @@ export function SearchDialog({ onClose }: { onClose: () => void }) {
                 <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline gap-2">
-                    <span className="truncate text-sm font-medium">{highlight(r.title, query)}</span>
+                    <span translate="no" className="truncate text-sm font-medium">{highlight(r.title, query)}</span>
                   </span>
-                  {r.snippet && <span className="line-clamp-2 block text-xs text-muted-foreground">{highlight(r.snippet, query)}</span>}
+                  {r.snippet && <span translate="no" className="line-clamp-2 block text-xs text-muted-foreground">{highlight(r.snippet, query)}</span>}
                 </span>
                 <span className="shrink-0 pt-0.5 text-[11px] text-muted-foreground">{fmtTime(r.updated_at)}</span>
               </li>

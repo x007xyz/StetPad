@@ -178,7 +178,7 @@ export function FolderPage({ id }: { id: string }) {
         <div className="flex min-h-0 flex-1">
           <main className="page" ref={page}>
             <div className="mx-auto w-full max-w-[720px] px-5 pt-8 sm:px-10">
-              <h1 className="text-3xl font-bold tracking-tight">{info?.name ?? ''}</h1>
+              <h1 translate="no" className="text-3xl font-bold tracking-tight">{info?.name ?? ''}</h1>
               {info && info.docs.length === 0 && <p className="muted mt-4">这个文件夹还是空的。把侧栏里的文档拖进来，或用文档旁的“移动到…”。</p>}
               {info && info.docs.length > 0 && (
                 <nav aria-label="文件夹大纲" className="mt-4 rounded-lg border border-border bg-secondary/40 px-4 py-3">
@@ -188,7 +188,7 @@ export function FolderPage({ id }: { id: string }) {
                       const n = sections[d.id]?.changes.length ?? 0
                       return (
                         <li key={d.id} className="py-0.5">
-                          <button className="text-left hover:underline" onClick={() => scrollToDoc(d.id)}>{d.title}</button>
+                          <button translate="no" className="text-left hover:underline" onClick={() => scrollToDoc(d.id)}>{d.title}</button>
                           {n > 0 && <span className="ml-2 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">{`${n} 处修订`}</span>}
                         </li>
                       )
@@ -306,10 +306,10 @@ function DocSection({ doc, first, author, trackingRef, force, onState, onRenamed
   }
 
   return (
-    <section ref={root} data-doc-id={id} className={cn('mx-auto w-full max-w-[720px] px-5 sm:px-10', !first && 'mt-10')} aria-label={doc.title}>
+    <section ref={root} data-doc-id={id} className={cn('mx-auto w-full max-w-[720px] px-5 sm:px-10', !first && 'mt-10')} aria-labelledby={`doc-title-${id}`}>
       <hr className="mb-4 mt-8 border-border" />
       <div className="flex items-center gap-2">
-        <input className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-2xl font-bold tracking-tight outline-none hover:bg-accent focus:border-ring focus:bg-background" aria-label={`文档标题：${doc.title}`}
+        <input id={`doc-title-${id}`} className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-2xl font-bold tracking-tight outline-none hover:bg-accent focus:border-ring focus:bg-background" aria-label={`文档标题：${doc.title}`}
           defaultValue={doc.title} key={doc.title} onBlur={(e) => rename(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
         <Tip text="在单独页面中打开"><Button variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground" aria-label={`单独打开 ${doc.title}`} onClick={() => go({ page: 'doc', id })}><ExternalLink /></Button></Tip>
       </div>

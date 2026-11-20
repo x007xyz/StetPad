@@ -247,7 +247,7 @@ function SidebarBody({ ctx, activeId, activeFolderId, trashActive, onNavigate }:
     >
       <button className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1 text-left text-[13px]" aria-current={d.id === activeId ? 'page' : undefined} onClick={() => { go({ page: 'doc', id: d.id }); onNavigate() }}>
         <FileText className="size-4 shrink-0 text-muted-foreground" />
-        <span className="truncate">{d.title}</span>
+        <span translate="no" className="truncate">{d.title}</span>
       </button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -256,7 +256,7 @@ function SidebarBody({ ctx, activeId, activeFolderId, trashActive, onNavigate }:
         <DropdownMenuContent align="start">
           <div className="px-2 py-1 text-xs text-muted-foreground">移动到…</div>
           {folders.filter((f) => f.id !== d.folder_id).map((f) => (
-            <DropdownMenuItem key={f.id} onSelect={() => void moveDoc(d.id, f.id)}><FolderIcon className="size-4" />{f.name}</DropdownMenuItem>
+            <DropdownMenuItem key={f.id} onSelect={() => void moveDoc(d.id, f.id)}><FolderIcon className="size-4" /><span translate="no">{f.name}</span></DropdownMenuItem>
           ))}
           {folders.length === 0 && <div className="px-2 py-1 text-xs text-muted-foreground">还没有文件夹</div>}
           {d.folder_id && <><DropdownMenuSeparator /><DropdownMenuItem onSelect={() => void moveDoc(d.id, null)}>移出文件夹</DropdownMenuItem></>}
@@ -311,7 +311,7 @@ function SidebarBody({ ctx, activeId, activeFolderId, trashActive, onNavigate }:
                   ) : (
                     <button className="flex min-w-0 flex-1 items-center gap-2 py-1 pr-2 text-left text-[13px] font-medium" aria-current={f.id === activeFolderId ? 'page' : undefined} onClick={() => { go({ page: 'folder', id: f.id }); onNavigate() }}>
                       <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="truncate">{f.name}</span>
+                      <span translate="no" className="truncate">{f.name}</span>
                       <span className="text-xs font-normal text-muted-foreground">{inside.length}</span>
                     </button>
                   )}

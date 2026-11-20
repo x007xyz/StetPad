@@ -63,7 +63,7 @@ export function TrashPage() {
               {list.map((d) => (
                 <li key={d.id} className="flex items-center gap-3 px-3 py-2.5">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{d.title || '无标题'}</div>
+                    <div className="truncate text-sm font-medium">{d.title ? <span translate="no">{d.title}</span> : '无标题'}</div>
                     <div className="muted text-xs">删除于 {fmtTime(d.deleted_at)}</div>
                   </div>
                   <Button variant="outline" size="sm" disabled={busy === d.id} onClick={() => void restore(d)}><RotateCcw />恢复</Button>

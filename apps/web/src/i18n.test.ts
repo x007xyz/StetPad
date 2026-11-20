@@ -1,8 +1,37 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it } from 'vitest'
-import { t } from './i18n'
+import { afterEach, expect, it, vi } from 'vitest'
+import { initI18n, t } from './i18n'
 
-afterEach(() => localStorage.removeItem('aiw.lang'))
+afterEach(() => {
+  localStorage.removeItem('aiw.lang')
+  vi.unstubAllGlobals()
+})
+
+it('preserves user titles in lists, including nested text, attributes and later updates', async () => {
+  localStorage.setItem('aiw.lang', 'en')
+  for (const name of ['alert', 'confirm', 'prompt']) vi.stubGlobal(name, vi.fn())
+  document.body.innerHTML = `<div id="root">
+    <main><span translate="no" title="设置">设置</span><button>设置</button></main>
+    <nav><span translate="no">设置</span><span translate="no"><mark>设置</mark></span></nav>
+    <div translate="no"></div>
+  </div>`
+  initI18n()
+  const root = document.getElementById('root')!
+  const title = root.querySelector('main span')!
+  expect(title.textContent).toBe('设置')
+  expect(title.getAttribute('title')).toBe('设置')
+  expect(root.querySelector('button')!.textContent).toBe('Settings')
+  expect(root.querySelector('nav')!.textContent).toBe('设置设置')
+  expect(root.lastElementChild!.textContent).toBe('')
+
+  title.firstChild!.nodeValue = '搜索文档'
+  title.setAttribute('title', '搜索文档')
+  root.querySelector('nav')!.insertAdjacentHTML('beforeend', '<span translate="no">设置</span><button>设置</button>')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(title.textContent).toBe('搜索文档')
+  expect(title.getAttribute('title')).toBe('搜索文档')
+  expect(root.querySelector('nav')!.textContent).toBe('设置设置设置Settings')
+})
 
 it('translates folder page empty, normal and error states without changing Chinese', () => {
   const labels = [

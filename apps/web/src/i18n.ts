@@ -2,8 +2,8 @@
  * Interface language. The source strings are Chinese; English is applied by
  * translating rendered text and attributes against the tables below. Switching
  * language reloads the page, so nothing needs to be translated back.
- * Text that is not in the tables stays Chinese (documents and model output are
- * never touched: the editor and chat bodies are skipped).
+ * User content must be marked translate="no"; editor and chat bodies are also
+ * skipped. Text that is not in the tables stays unchanged.
  */
 export type Lang = 'zh' | 'en'
 
@@ -244,7 +244,7 @@ function tr(raw: string): string {
 }
 
 const ATTRS = ['placeholder', 'aria-label', 'title', 'label']
-const SKIP = '.ProseMirror, .chat-body, .md'
+const SKIP = '[translate="no"], .ProseMirror, .chat-body, .md'
 
 function walk(root: Node): void {
   if (root.nodeType === Node.TEXT_NODE) {
@@ -258,6 +258,7 @@ function walk(root: Node): void {
     return
   }
   if (!(root instanceof Element)) return
+  if (root.closest(SKIP)) return
   for (const a of ATTRS) {
     const v = root.getAttribute(a)
     if (v) {
@@ -265,7 +266,7 @@ function walk(root: Node): void {
       if (t !== v) root.setAttribute(a, t)
     }
   }
-  if (!root.closest(SKIP)) root.childNodes.forEach(walk)
+  root.childNodes.forEach(walk)
 }
 
 export function initI18n(): void {

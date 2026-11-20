@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, fmtTime, isDesktop, post, type ModelsResponse } from '../api'
 import { Button } from '../components/ui/button'
 import { Dialog, DialogContent } from '../components/ui/dialog'
@@ -71,9 +71,12 @@ export function Settings({ onClose }: { onClose: () => void }) {
   const [copiedCode, setCopiedCode] = useState(false)
   const [clipperError, setClipperError] = useState('')
   const [error, setError] = useState('')
+  const loadSequence = useRef(0)
 
   const load = async (): Promise<void> => {
+    const sequence = ++loadSequence.current
     const m = await api<ModelsResponse>('/models')
+    if (sequence !== loadSequence.current) return
     setModels(m)
     setModel(m.default ?? '')
     setDefaultProvider(m.models.find((x) => x.id === m.default)?.provider ?? '')
@@ -81,19 +84,27 @@ export function Settings({ onClose }: { onClose: () => void }) {
     setKnown(all)
     setAgents(all.filter((a) => !a.builtin).map(({ id, label, command, args }) => ({ id, label, command, args })))
     const settings = await api<{ preferences: string }>('/settings')
+    if (sequence !== loadSequence.current) return
     setPreferences(settings.preferences)
-    await loadRoles()
-    setUsage(await api('/usage'))
-    setClipperTokens((await api<{ tokens: ClipperToken[] }>('/clipper/tokens')).tokens)
+    await loadRoles(sequence)
+    if (sequence !== loadSequence.current) return
+    const nextUsage = await api<NonNullable<typeof usage>>('/usage')
+    if (sequence !== loadSequence.current) return
+    setUsage(nextUsage)
+    const { tokens } = await api<{ tokens: ClipperToken[] }>('/clipper/tokens')
+    if (sequence !== loadSequence.current) return
+    setClipperTokens(tokens)
   }
   /** Loads 模型分工. A failure only hides this section; the rest of the page keeps working. */
-  const loadRoles = async (): Promise<void> => {
+  const loadRoles = async (sequence: number): Promise<void> => {
     try {
       const r = await api<{ roles: RoleRow[] }>('/model-roles')
+      if (sequence !== loadSequence.current) return
       setRoles(r.roles)
       setRoleValues(Object.fromEntries(r.roles.map((x) => [x.key, x.value])))
       setRolesError('')
     } catch (err) {
+      if (sequence !== loadSequence.current) return
       setRoles(null)
       setRolesError(`模型分工暂时不可用${err instanceof Error ? `：${err.message}` : ''}`)
     }
@@ -101,6 +112,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
   useEffect(() => void load(), [])
 
   const save = async (): Promise<void> => {
+    ++loadSequence.current
     setError('')
     try {
       // External agents are a desktop-only feature.

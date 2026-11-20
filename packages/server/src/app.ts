@@ -186,7 +186,7 @@ const ALLOWED_BLOCK_TYPES: ReadonlySet<string> = new Set(BLOCK_TYPES)
 const ALLOWED_MARKS = new Set(['bold', 'italic', 'underline', 'strike', 'code', 'highlight', 'link', 'math'])
 function sanitizeBlocks(raw: unknown[]): Block[] {
   const out: Block[] = []
-  for (const item of raw.slice(0, 2000)) {
+  for (const item of raw) {
     if (!item || typeof item !== 'object') continue
     const b = item as Record<string, unknown>
     const type = typeof b.type === 'string' && ALLOWED_BLOCK_TYPES.has(b.type) ? b.type : 'paragraph'

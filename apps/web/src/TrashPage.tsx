@@ -1,5 +1,5 @@
 import { RotateCcw, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, fmtTime, post, type TrashDoc } from './api'
 import { confirmAction } from './components/confirm'
 import { Button } from './components/ui/button'
@@ -11,12 +11,17 @@ export function TrashPage() {
   const [list, setList] = useState<TrashDoc[] | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
+  const seq = useRef(0)
 
   const load = useCallback(async (): Promise<void> => {
+    const my = ++seq.current
     try {
-      setList(await api<TrashDoc[]>('/trash'))
+      const docs = await api<TrashDoc[]>('/trash')
+      if (my !== seq.current) return
+      setList(docs)
       setError('')
     } catch (e) {
+      if (my !== seq.current) return
       setError(e instanceof Error ? e.message : '加载失败')
     }
   }, [])

@@ -1,0 +1,78 @@
+import type * as Y from 'yjs'
+import { viewBlock } from './changes'
+import { commentIndex, extendCommentAnchor } from './comments'
+import { blockText, changes, findBlock, idKey, rawChars, type ChangeRecord } from './doc'
+import { diffWords } from './diff'
+
+interface Replacement {
+  source: string
+  target: string
+  pairs: [string, string | null][]
+}
+
+const key = (c: { client: number; clock: number }): string => idKey(c.client, c.clock)
+
+/** Keep the identity correspondence so later human edits can be rebased at settlement. */
+export function trackReplacement(doc: Y.Doc, changeId: string, source: string, target: string): void {
+  const before = viewBlock(doc, findBlock(doc, source)!).filter((c) => !c.removed && !c.del.length)
+  const after = viewBlock(doc, findBlock(doc, target)!)
+  const pairs: Replacement['pairs'] = []
+  const anchors = commentIndex(doc, true)
+  let a = 0
+  let b = 0
+  for (const op of diffWords(before.map((c) => c.ch).join(''), after.map((c) => c.ch).join(''))) {
+    for (let i = 0; i < op.text.length; i++) {
+      if (op.type === 'insert') { b++; continue }
+      const old = before[a++]!
+      const next = op.type === 'equal' ? after[b++]! : null
+      pairs.push([key(old), next ? key(next) : null])
+      if (next) for (const id of anchors.get(key(old)) ?? []) extendCommentAnchor(doc, id, [next])
+    }
+  }
+  changes(doc).get(changeId)!.set('replacement', { source, target, pairs } satisfies Replacement)
+}
+
+/** Transfer edits by identity, not by matching text that may occur more than once. */
+export function mergeReplacement(doc: Y.Doc, rec: ChangeRecord): void {
+  const replacement = rec.get('replacement') as Replacement | undefined
+  if (!replacement) return
+  const source = findBlock(doc, replacement.source)
+  const target = findBlock(doc, replacement.target)
+  if (!source || !target) return
+  const current = viewBlock(doc, source).filter((c) => !c.removed && !c.del.length)
+  const alive = new Set(current.map(key))
+  const mapping = new Map(replacement.pairs)
+  const text = blockText(target)
+  const deleted = new Set(replacement.pairs.filter(([id]) => !alive.has(id)).map(([, id]) => id))
+  const chars = rawChars(text)
+  for (let i = chars.length - 1; i >= 0; i--) if (deleted.has(key(chars[i]!))) text.delete(i, 1)
+  const anchors = commentIndex(doc, true)
+  let at = 0
+  for (let i = 0; i < current.length; i++) {
+    const c = current[i]!
+    const id = key(c)
+    if (mapping.has(id)) {
+      const pos = rawChars(text).findIndex((ch) => key(ch) === mapping.get(id))
+      if (pos >= 0) at = pos + 1
+      continue
+    }
+    // At the start, retain any proposal-only prefix before the next shared character.
+    if (at === 0) {
+      const next = current.slice(i + 1).map((ch) => mapping.get(key(ch))).find((k) => k != null)
+      const pos = rawChars(text).findIndex((ch) => key(ch) === next)
+      if (pos >= 0) at = pos
+    }
+    let offset = 0
+    let attrs: Record<string, unknown> = {}
+    for (const run of c.text.toDelta()) {
+      const len = typeof run.insert === 'string' ? run.insert.length : 1
+      if (c.index < offset + len) { attrs = run.attributes ?? {}; break }
+      offset += len
+    }
+    text.insert(at, c.ch, attrs)
+    const inserted = rawChars(text)[at++]!
+    mapping.set(id, key(inserted))
+    for (const comment of anchors.get(id) ?? []) extendCommentAnchor(doc, comment, [inserted])
+  }
+  rec.set('replacement', { ...replacement, pairs: [...mapping].filter(([id]) => alive.has(id)) } satisfies Replacement)
+}

@@ -1,4 +1,5 @@
 import * as Y from 'yjs'
+import { mergeReplacement } from './replacement'
 import {
   ATOM_BLOCK_TYPES,
   blockIdOf,
@@ -447,13 +448,16 @@ export function trackedDeleteBlock(
 }
 
 /**
- * Accept or reject a change. Only records the decision; the document text is
- * untouched until `compact` runs. Every view honours the decision at once.
+ * Accept or reject a change. Rebase block replacements before accepting;
+ * physical removal waits for `compact`. Every view honours the decision at once.
  */
 export function decide(doc: Y.Doc, changeId: string, decision: Decision): boolean {
   const rec = changes(doc).get(changeId)
   if (!rec || rec.get('settled')) return false
-  rec.set('decision', decision)
+  doc.transact(() => {
+    if (decision === 'accept') mergeReplacement(doc, rec)
+    rec.set('decision', decision)
+  })
   return true
 }
 
@@ -517,6 +521,7 @@ export function compact(doc: Y.Doc): void {
   doc.transact(() => {
     changes(doc).forEach((rec) => {
       const d = rec.get('decision')
+      if (d === 'accept' && !rec.get('settled')) mergeReplacement(doc, rec)
       if (d && !rec.get('settled')) rec.set('settled', d)
     })
     const idx = buildIndex(doc, true)

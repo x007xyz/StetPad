@@ -6,8 +6,6 @@ import {
   changes,
   changesInBlock,
   commentOnBlock,
-  commentIndex,
-  extendCommentAnchor,
   footnoteAttr,
   footnotesOf,
   listComments,
@@ -16,7 +14,6 @@ import {
   decide,
   diffWords,
   findBlock,
-  idKey,
   listChanges,
   newBlockId,
   newChangeId,
@@ -25,6 +22,7 @@ import {
   readBlock,
   trackedDeleteBlock,
   trackedInsertBlock,
+  trackReplacement,
   viewBlock,
   type Baseline,
   type Meta,
@@ -537,16 +535,7 @@ export class DocTools {
     const meta = { ...this.meta, reason }
     this.doc.transact(() => {
       trackedInsertBlock(this.doc, blockIndex(this.doc, el) + 1, id, text, meta, { changeId, type, attrs, delta: copied?.delta ?? delta })
-      if (copied) {
-        const anchors = commentIndex(this.doc)
-        const before = viewBlock(this.doc, el).filter((c) => !c.removed && c.del.length === 0)
-        const after = viewBlock(this.doc, findBlock(this.doc, id)!)
-        before.forEach((c, i) => {
-          for (const comment of anchors.get(idKey(c.client, c.clock)) ?? []) {
-            extendCommentAnchor(this.doc, comment, [after[i]!])
-          }
-        })
-      }
+      trackReplacement(this.doc, changeId, oldId, id)
       trackedDeleteBlock(this.doc, el, meta, { changeId })
     })
     this.markMath(id, text, math)

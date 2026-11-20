@@ -22,6 +22,7 @@ export function Home() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
   const file = useRef<HTMLInputElement>(null)
+  const seq = useRef(0)
 
   /** A document package (.stetpad zip, or a .stetpad.json export): the server creates the document from it. */
   const importPackage = async (f: File): Promise<void> => {
@@ -49,17 +50,21 @@ export function Home() {
     }
   }
   const importFile = async (f: File): Promise<void> => {
+    const my = ++seq.current
     if (/\.stetpad(\.zip|\.json)?$/i.test(f.name)) return importPackage(f)
     setError('')
     setBusy(`正在解析 ${f.name}…`)
     try {
       const form = new FormData()
       form.append('file', f)
-      setPreview(await api<Preview>('/import/preview', { method: 'POST', body: form }))
+      const next = await api<Preview>('/import/preview', { method: 'POST', body: form })
+      if (my !== seq.current) return
+      setPreview(next)
     } catch (e) {
+      if (my !== seq.current) return
       setError(e instanceof Error ? e.message : '导入失败')
     } finally {
-      setBusy('')
+      if (my === seq.current) setBusy('')
     }
   }
   const confirmImport = async (): Promise<void> => {

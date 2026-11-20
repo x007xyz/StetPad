@@ -555,7 +555,7 @@ export class DocTools {
       const current = this.revised().find((b) => b.blockId === blockId)
       if (!current) return { ok: false as const, error: `block ${blockId} is pending deletion` }
       if (changesInBlock(this.doc, el).length) return { ok: false as const, error: 'block has pending changes; resolve them before changing its attributes' }
-      return this.replaceWithNew(el, el.nodeName, { ...cur, ...next.attrs }, current.text, reason, [], current)
+      return this.replaceWithNew(el, el.nodeName, { ...cur, ...next.attrs }, current.text, reason, conv.math, current)
     }
     return this.proposal(blockId, conv.text, reason, conv.math)
   }

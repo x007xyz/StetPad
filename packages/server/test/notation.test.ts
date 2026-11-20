@@ -141,6 +141,7 @@ describe('DocTools on the new block types', () => {
     const tools = new DocTools(doc, meta)
     tools.readAll()
     const changeId = trackedInsert(doc, blockText(findBlock(doc, 'h1')!), 5, ' pending', { author: 'Other' })
+    if (!changeId) throw new Error('expected a pending insertion')
     const before = listChanges(doc)
     expect(tools.replaceBlock('h1', '## Title')).toEqual({ ok: false, error: 'block has pending changes; resolve them before changing its attributes' })
     expect(listChanges(doc)).toEqual(before)
@@ -149,6 +150,15 @@ describe('DocTools on the new block types', () => {
     decide(doc, changeId, 'reject')
     compact(doc)
     expect(projectBlocks(doc, 'original')[0]!.text).toBe('Title')
+  })
+
+  it('an attribute replacement applies requested inline math', () => {
+    const doc = docWith([{ id: 'h1', type: 'heading', attrs: { level: 1 }, text: 'Area x' }])
+    const r = new DocTools(doc, meta).replaceBlock('h1', '## Area $x$')
+    if (!r.ok) throw new Error(r.error)
+    decide(doc, r.change_ids[0]!, 'accept')
+    compact(doc)
+    expect(projectBlocks(doc, 'original')[0]).toMatchObject({ attrs: { level: 2 }, delta: [{ insert: 'Area ' }, { insert: 'x', attributes: { math: true } }] })
   })
 
   it('an attribute replacement preserves links, footnotes and inline math after acceptance', () => {

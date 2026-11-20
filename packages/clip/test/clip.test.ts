@@ -16,8 +16,8 @@ describe('@stetpad/clip domToBlocks', () => {
   })
 
   it('keeps column positions for hidden cells and single-line cells with multiline math', () => {
-    expect(parse('<table><tr><th>A</th><th>B</th><th>C</th></tr><tr><td>1</td><td style="visibility:hidden">x</td><td>3</td></tr><tr><td><script type="math/tex">a\n+ b</script></td><td>2</td><td>3</td></tr></table>')).toEqual([
-      { type: 'table', attrs: { rows: JSON.stringify([['A', 'B', 'C'], ['1', '', '3'], ['$a + b$', '2', '3']]) }, delta: [] },
+    expect(parse('<table><tr><th>A</th><th>B</th><th>C</th></tr><tr><td>1</td><td style="visibility:hidden">x</td><td>3</td></tr><tr><td>1</td><td style="display:none">x</td><td hidden>y</td><td>2</td><td>3</td></tr><tr><td><script type="math/tex">a\n+ b</script></td><td>2</td><td>3</td></tr></table>')).toEqual([
+      { type: 'table', attrs: { rows: JSON.stringify([['A', 'B', 'C'], ['1', '', '3'], ['1', '2', '3'], ['$a + b$', '2', '3']]) }, delta: [] },
     ])
   })
 

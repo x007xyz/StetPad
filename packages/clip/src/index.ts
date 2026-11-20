@@ -275,6 +275,13 @@ function isHiddenElement(el: any): boolean {
   )
 }
 
+/** Hidden and also removed from layout, so it occupies no table column. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function takesNoSpace(el: any): boolean {
+  if (el.hasAttribute?.('hidden')) return true
+  return /(?:^|;)\s*display\s*:\s*none\b/.test(String(el.getAttribute?.('style') ?? '').toLowerCase())
+}
+
 /** Extract TeX source from KaTeX / MathML / MathJax nodes. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function extractMathTex(el: any): { tex: string; display: boolean } | null {
@@ -517,7 +524,7 @@ export function domToBlocks(root: any, opts: { baseUrl?: string } = {}): Block[]
         const rows = [...node.querySelectorAll('tr')]
           .filter((tr: any) => !isHiddenElement(tr))
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .map((tr: any) => [...tr.querySelectorAll('th,td')].map((c: any) => {
+          .map((tr: any) => [...tr.querySelectorAll('th,td')].filter((c: any) => !takesNoSpace(c)).map((c: any) => {
             if (isHiddenElement(c)) return ''
             const delta: InlineDelta[] = []
             inline(c, {}, delta)

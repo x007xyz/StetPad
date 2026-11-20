@@ -1,4 +1,4 @@
-import { blockText, changes, cloneDoc, commentOnBlock, compact, decide, findBlock, insertBlock, listComments, projectBlocks, resolveComment } from '@stetpad/crdt'
+import { blockText, changes, cloneDoc, commentOnBlock, compact, decide, findBlock, insertBlock, listChanges, listComments, projectBlocks, resolveComment, sync, trackedDelete, trackedInsert } from '@stetpad/crdt'
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { DocTools } from '../src/tools'
@@ -64,5 +64,28 @@ describe.each([
     compact(doc)
     resolveComment(doc, id, false)
     expect(listComments(doc)[0]).toMatchObject({ blockId: r.new_block_id, orphaned: false, resolved: false })
+  })
+})
+
+describe('replacement review regressions', () => {
+  it.each(['insert', 'delete'] as const)('keeps a human tracked %s pending after accepting only formatting', (kind) => {
+    const doc = new Y.Doc()
+    insertBlock(doc, 0, 'b', 'Sales rose.', 'heading', { level: 1 })
+    const r = new DocTools(doc, { author: 'AI' }).replaceBlock('b', '## Sales rose.')
+    if (!r.ok) throw new Error(r.error)
+    const t = blockText(findBlock(doc, 'b')!)
+    const meta = { author: 'Human', reason: 'Still under review', runId: 'human-edit' }
+    const human = kind === 'insert' ? trackedInsert(doc, t, t.length, ' In June.', meta)! : trackedDelete(doc, t, 6, 4, meta)!
+    decide(doc, r.change_ids[0]!, 'accept')
+    compact(doc)
+    expect(listChanges(doc)).toEqual([expect.objectContaining({ id: human, ...meta })])
+    expect(projectBlocks(doc, 'original')[0]!.text).toBe('Sales rose.')
+    expect(projectBlocks(doc, 'revised')[0]!.text).toBe(kind === 'insert' ? 'Sales rose. In June.' : 'Sales .')
+    for (const decision of ['accept', 'reject'] as const) {
+      const replica = cloneDoc(doc)
+      decide(replica, human, decision)
+      compact(replica)
+      expect(projectBlocks(replica, 'original')[0]!.text).toBe(decision === 'reject' ? 'Sales rose.' : kind === 'insert' ? 'Sales rose. In June.' : 'Sales .')
+    }
   })
 })

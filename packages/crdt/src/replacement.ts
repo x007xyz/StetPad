@@ -1,5 +1,5 @@
 import type * as Y from 'yjs'
-import { viewBlock } from './changes'
+import { addToChange, viewBlock, type CharView } from './changes'
 import { commentIndex, extendCommentAnchor } from './comments'
 import { blockText, changes, findBlock, idKey, rawChars, type ChangeRecord } from './doc'
 import { diffWords } from './diff'
@@ -39,7 +39,7 @@ export function mergeReplacement(doc: Y.Doc, rec: ChangeRecord): void {
   const source = findBlock(doc, replacement.source)
   const target = findBlock(doc, replacement.target)
   if (!source || !target) return
-  const current = viewBlock(doc, source).filter((c) => !c.removed && !c.del.length)
+  const current = viewBlock(doc, source).filter((c) => !c.removed)
   const alive = new Set(current.map(key))
   const mapping = new Map(replacement.pairs)
   const text = blockText(target)
@@ -47,13 +47,27 @@ export function mergeReplacement(doc: Y.Doc, rec: ChangeRecord): void {
   const chars = rawChars(text)
   for (let i = chars.length - 1; i >= 0; i--) if (deleted.has(key(chars[i]!))) text.delete(i, 1)
   const anchors = commentIndex(doc, true)
+  const carryChanges = (source: CharView, target: { client: number; clock: number }): void => {
+    for (const side of ['ins', 'del'] as const) {
+      for (const change of source[side]) {
+        const existing = viewBlock(doc, targetBlock).find((c) => key(c) === key(target))
+        if (!existing?.[side].includes(change)) {
+          addToChange(doc, change, side, [target], { author: String(changes(doc).get(change)!.get('author')) })
+        }
+      }
+    }
+  }
+  const targetBlock = target
   let at = 0
   for (let i = 0; i < current.length; i++) {
     const c = current[i]!
     const id = key(c)
     if (mapping.has(id)) {
       const pos = rawChars(text).findIndex((ch) => key(ch) === mapping.get(id))
-      if (pos >= 0) at = pos + 1
+      if (pos >= 0) {
+        at = pos + 1
+        carryChanges(c, rawChars(text)[pos]!)
+      }
       continue
     }
     // At the start, retain any proposal-only prefix before the next shared character.
@@ -71,6 +85,7 @@ export function mergeReplacement(doc: Y.Doc, rec: ChangeRecord): void {
     }
     text.insert(at, c.ch, attrs)
     const inserted = rawChars(text)[at++]!
+    carryChanges(c, inserted)
     mapping.set(id, key(inserted))
     for (const comment of anchors.get(id) ?? []) extendCommentAnchor(doc, comment, [inserted])
   }

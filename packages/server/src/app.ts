@@ -1013,13 +1013,7 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     const target = (JSON.parse(v.content_json) as VersionContent).revised
     const { blockIds } = await c.req.json<{ blockIds?: string[] }>().catch(() => ({} as { blockIds?: string[] }))
     await collab.withDoc(v.document_id, (doc) => {
-      if (!blockIds?.length) return applyBlocks(doc, target)
-      // Restore only the chosen blocks: everything else keeps its current content.
-      const chosen = new Map(target.filter((b) => blockIds.includes(b.blockId)).map((b) => [b.blockId, b]))
-      const merged = projectBlocks(doc, 'revised').map((b) => chosen.get(b.blockId) ?? b)
-      const have = new Set(merged.map((b) => b.blockId))
-      for (const b of chosen.values()) if (!have.has(b.blockId)) merged.push(b) // a block that no longer exists comes back at the end
-      applyBlocks(doc, merged)
+      applyBlocks(doc, target, blockIds)
     })
     await collab.snapshot(v.document_id, 'restore', who)
     return c.json({ ok: true })

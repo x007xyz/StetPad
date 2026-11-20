@@ -9,14 +9,15 @@ describe('document input types', () => {
   let dir: string
   let base: string
   let docId: string
-  const call = async (path: string, method: string, body: unknown) => {
+  const send = async (path: string, method: string, body: string) => {
     const res = await fetch(base + path, {
       method,
       headers: { authorization: `Bearer ${server.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify(body),
+      body,
     })
     return { status: res.status, body: res.headers.get('content-type')?.includes('json') ? await res.json() : await res.text() }
   }
+  const call = (path: string, method: string, body: unknown) => send(path, method, JSON.stringify(body))
   const blocks = [{ type: 'paragraph', delta: [{ insert: 'Clipped text' }] }]
 
   beforeAll(async () => {
@@ -61,5 +62,52 @@ describe('document input types', () => {
 
   it('rejects empty clip content', async () => {
     expect(await call(`/api/docs/${docId}/clip`, 'POST', { blocks: [] })).toEqual({ status: 400, body: { error: expect.any(String) } })
+  })
+
+  describe('rename and create routes', () => {
+    let folderId: string
+    let versionId: string
+    beforeAll(async () => {
+      folderId = (await call('/api/folders', 'POST', { name: 'Rename me' })).body.id
+      versionId = (await call(`/api/docs/${docId}/versions`, 'POST', { label: 'v1' })).body.id
+    })
+    const route = (name: string) => ({
+      'PATCH /docs/:id': { method: 'PATCH', path: `/api/docs/${docId}`, field: 'title', rest: {} },
+      'PATCH /folders/:id': { method: 'PATCH', path: `/api/folders/${folderId}`, field: 'name', rest: {} },
+      'PATCH /versions/:vid': { method: 'PATCH', path: `/api/versions/${versionId}`, field: 'label', rest: {} },
+      'POST /import/create': { method: 'POST', path: '/api/import/create', field: 'title', rest: { blocks } },
+      'POST /clipper/tokens': { method: 'POST', path: '/api/clipper/tokens', field: 'name', rest: {} },
+    })[name]!
+    const all = ['PATCH /docs/:id', 'PATCH /folders/:id', 'PATCH /versions/:vid', 'POST /import/create', 'POST /clipper/tokens']
+
+    it.each(all)('%s rejects a non-string field', async (name) => {
+      const { method, path, field, rest } = route(name)
+      for (const value of [5, {}, false, []]) {
+        expect(await call(path, method, { ...rest, [field]: value })).toEqual({ status: 400, body: { error: expect.any(String) } })
+      }
+    })
+
+    // The clipper token route keeps treating a missing or unreadable body as "use the default name".
+    it.each(all.slice(0, 4))('%s rejects a body that is not a JSON object', async (name) => {
+      const { method, path } = route(name)
+      for (const body of ['not json', 'null', '5']) {
+        expect(await send(path, method, body)).toEqual({ status: 400, body: { error: expect.any(String) } })
+      }
+    })
+
+    it('rejects a non-string import folder ID', async () => {
+      expect(await call('/api/import/create', 'POST', { blocks, folderId: 5 })).toEqual({ status: 400, body: { error: expect.any(String) } })
+    })
+
+    it.each(all)('%s accepts a string field', async (name) => {
+      const { method, path, field, rest } = route(name)
+      expect((await call(path, method, { ...rest, [field]: ' Renamed ' })).status).toBe(200)
+    })
+
+    it('saves the trimmed names', async () => {
+      expect((await call(`/api/docs/${docId}`, 'GET', undefined)).body.title).toBe('Renamed')
+      expect((await call(`/api/folders/${folderId}`, 'GET', undefined)).body.name).toBe('Renamed')
+      expect((await call(`/api/versions/${versionId}`, 'GET', undefined)).body.label).toBe('Renamed')
+    })
   })
 })

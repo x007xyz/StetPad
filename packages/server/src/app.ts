@@ -649,7 +649,8 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   api.get('/clipper/tokens', async (c) => c.json({ tokens: await store.listClipperTokens(c.get('user').id) }))
   api.post('/clipper/tokens', async (c) => {
     if (c.get('token').startsWith('clp_')) return c.json({ error: 'forbidden' }, 403)
-    const body = await c.req.json<{ name?: string }>().catch(() => ({} as { name?: string }))
+    const body = await c.req.json<{ name?: unknown }>().catch(() => ({} as { name?: unknown }))
+    if (body.name !== undefined && typeof body.name !== 'string') return c.json({ error: '连接名称必须是字符串' }, 400)
     const created = await store.createClipperToken(c.get('user').id, body.name?.trim() || '手动连接')
     return c.json({ ...created, mode: 'local' })
   })
@@ -679,8 +680,10 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   api.patch('/docs/:id', async (c) => {
     const d = await docFor(c, c.req.param('id'))
     if (!d) return notFound(c)
-    const { title } = await c.req.json<{ title: string }>()
-    await store.renameDoc(d.doc.id, (title ?? '').trim() || '未命名文档')
+    const body = await c.req.json<{ title?: unknown }>().catch(() => null)
+    if (!body || typeof body !== 'object') return c.json({ error: 'bad request' }, 400)
+    if (body.title !== undefined && typeof body.title !== 'string') return c.json({ error: '文档标题必须是字符串' }, 400)
+    await store.renameDoc(d.doc.id, body.title?.trim() || '未命名文档')
     return c.json({ ok: true })
   })
   // Delete moves a document to the trash. It is hidden everywhere until restored or purged (or auto-purged).
@@ -786,8 +789,10 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   api.patch('/folders/:id', async (c) => {
     const f = await folderFor(c, c.req.param('id'))
     if (!f) return notFound(c)
-    const { name } = await c.req.json<{ name: string }>()
-    await store.renameFolder(f.folder.id, (name ?? '').trim().slice(0, 80) || '新建文件夹')
+    const body = await c.req.json<{ name?: unknown }>().catch(() => null)
+    if (!body || typeof body !== 'object') return c.json({ error: 'bad request' }, 400)
+    if (body.name !== undefined && typeof body.name !== 'string') return c.json({ error: '文件夹名称必须是字符串' }, 400)
+    await store.renameFolder(f.folder.id, body.name?.trim().slice(0, 80) || '新建文件夹')
     return c.json({ ok: true })
   })
   api.delete('/folders/:id', async (c) => {
@@ -1003,8 +1008,10 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   api.patch('/versions/:vid', async (c) => {
     const v = await versionFor(c, c.req.param('vid'))
     if (!v) return notFound(c)
-    const { label } = await c.req.json<{ label: string }>()
-    await store.labelVersion(v.id, (label ?? '').trim())
+    const body = await c.req.json<{ label?: unknown }>().catch(() => null)
+    if (!body || typeof body !== 'object') return c.json({ error: 'bad request' }, 400)
+    if (body.label !== undefined && typeof body.label !== 'string') return c.json({ error: '版本标签必须是字符串' }, 400)
+    await store.labelVersion(v.id, body.label?.trim() ?? '')
     return c.json({ ok: true })
   })
   api.post('/versions/:vid/restore', async (c) => {
@@ -1050,8 +1057,11 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     }
   })
   api.post('/import/create', async (c) => {
-    const { title, blocks, folderId } = await c.req.json<{ title: string; blocks: Block[]; folderId?: string }>()
-    if (!Array.isArray(blocks)) return c.json({ error: 'bad request' }, 400)
+    const body = await c.req.json<{ title?: unknown; blocks?: Block[]; folderId?: unknown }>().catch(() => null)
+    if (!body || typeof body !== 'object' || !Array.isArray(body.blocks)) return c.json({ error: 'bad request' }, 400)
+    const { title, blocks, folderId } = body
+    if (title !== undefined && typeof title !== 'string') return c.json({ error: '文档标题必须是字符串' }, 400)
+    if (folderId !== undefined && folderId !== null && typeof folderId !== 'string') return c.json({ error: '文件夹 ID 必须是字符串或 null' }, 400)
     const omittedBlockCount = Math.max(0, blocks.length - MAX_IMPORT_BLOCKS)
     if (omittedBlockCount > 0 && !c.get('token').startsWith('clp_')) {
       return c.json({ error: `导入内容超过 ${MAX_IMPORT_BLOCKS} 个段落，请拆分后重试。` }, 413)
@@ -1060,7 +1070,7 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     if (folderId && !folder) return notFound(c)
     const user = c.get('user')
     const clean = sanitizeBlocks(blocks)
-    const doc = await store.createDoc(user.id, (title ?? '').trim() || '导入的文档', Y.encodeStateAsUpdate(docFromBlocks(clean)))
+    const doc = await store.createDoc(user.id, title?.trim() || '导入的文档', Y.encodeStateAsUpdate(docFromBlocks(clean)))
     if (folder) await store.setDocFolder(doc.id, folder.folder.id)
     await collab.snapshot(doc.id, 'import', user.email)
     return c.json({

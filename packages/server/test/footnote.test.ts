@@ -144,10 +144,11 @@ describe('DocTools footnotes', () => {
 
   it('lists footnotes after the blocks when reading, never inside the text', () => {
     const { tools } = setup()
-    tools.addFootnote('b1', 'lazy dog', 'Dogs sleep.')
-    const read = tools.readBlocks({ block_ids: ['b1'] })
-    expect(read.startsWith('[b1] The quick brown fox jumps. The lazy dog sleeps.')).toBe(true)
-    expect(read).toContain('\n\nFootnotes:\n[b1] [^1] "lazy dog" → Dogs sleep.')
+    const result = tools.addFootnote('b1', 'lazy dog', 'Dogs sleep.')
+    if (!result.ok) throw new Error(result.error)
+    const read = tools.readBlocks({ block_ids: [result.new_block_id] })
+    expect(read.startsWith(`[${result.new_block_id}] The quick brown fox jumps. The lazy dog sleeps.`)).toBe(true)
+    expect(read).toContain(`\n\nFootnotes:\n[${result.new_block_id}] [^1] "lazy dog" → Dogs sleep.`)
   })
 })
 

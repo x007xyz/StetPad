@@ -68,6 +68,22 @@ describe.each([
 })
 
 describe('replacement review regressions', () => {
+  it.each([
+    { before: 'Sales rose', proposal: 'Sales grew', expected: 'Sales grew!' },
+    { before: 'Sales rose', proposal: 'Revenue grew', expected: 'Revenue grew!' },
+    { before: 'Sales rose', proposal: 'Sales ', expected: 'Sales !' },
+  ])('places human suffixes after converted text: $proposal', ({ before, proposal, expected }) => {
+    const doc = new Y.Doc()
+    insertBlock(doc, 0, 'b', before)
+    const r = new DocTools(doc, { author: 'AI' }).replaceBlock('b', '## ' + proposal)
+    if (!r.ok) throw new Error(r.error)
+    const t = blockText(findBlock(doc, 'b')!)
+    t.insert(t.length, '!')
+    decide(doc, r.change_ids[0]!, 'accept')
+    compact(doc)
+    expect(projectBlocks(doc, 'original')[0]!.text).toBe(expected)
+  })
+
   it('merges human text only once when two replicas accept concurrently', () => {
     const server = new Y.Doc()
     insertBlock(server, 0, 'b', 'Sales rose.')

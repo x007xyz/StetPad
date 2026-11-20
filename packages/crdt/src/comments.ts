@@ -94,11 +94,11 @@ export const deleteComment = (doc: Y.Doc, id: string): void => {
   comments(doc).delete(id)
 }
 
-/** Ids that open comments are anchored to: `client:clock` -> comment ids. */
-export function commentIndex(doc: Y.Doc): Map<string, string[]> {
+/** Ids that comments are anchored to: `client:clock` -> comment ids. Open only by default. */
+export function commentIndex(doc: Y.Doc, includeResolved = false): Map<string, string[]> {
   const out = new Map<string, string[]>()
   comments(doc).forEach((c, id) => {
-    if (c.get('resolved')) return
+    if (!includeResolved && c.get('resolved')) return
     for (const [client, clock, len] of (c.get('anchor') as Y.Array<Range>).toArray()) {
       for (let i = 0; i < len; i++) {
         const k = idKey(client, clock + i)

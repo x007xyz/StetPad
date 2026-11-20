@@ -1,4 +1,5 @@
 import * as Y from 'yjs'
+import { mergeReplacement } from './replacement'
 import {
   ATOM_BLOCK_TYPES,
   blockIdOf,
@@ -72,10 +73,12 @@ function toRanges(ids: CharId[]): Range[] {
   return out
 }
 
-const statusOf = (rec: ChangeRecord, settledOnly: boolean): Status =>
-  ((settledOnly ? rec.get('settled') : (rec.get('settled') ?? rec.get('decision'))) as
+const statusOf = (rec: ChangeRecord, settledOnly: boolean): Status => {
+  if (rec.get('replacement') && rec.get('decision') === 'accept' && !rec.get('settled')) return 'pending'
+  return ((settledOnly ? rec.get('settled') : (rec.get('settled') ?? rec.get('decision'))) as
     | Decision
     | undefined) ?? 'pending'
+}
 
 export interface Index {
   ins: Map<string, string[]>
@@ -447,8 +450,8 @@ export function trackedDeleteBlock(
 }
 
 /**
- * Accept or reject a change. Only records the decision; the document text is
- * untouched until `compact` runs. Every view honours the decision at once.
+ * Accept or reject a change. Physical removal waits for `compact`.
+ * Replacement acceptance stays pending until the server rebases and settles it.
  */
 export function decide(doc: Y.Doc, changeId: string, decision: Decision): boolean {
   const rec = changes(doc).get(changeId)
@@ -517,6 +520,7 @@ export function compact(doc: Y.Doc): void {
   doc.transact(() => {
     changes(doc).forEach((rec) => {
       const d = rec.get('decision')
+      if (d === 'accept' && !rec.get('settled')) mergeReplacement(doc, rec)
       if (d && !rec.get('settled')) rec.set('settled', d)
     })
     const idx = buildIndex(doc, true)

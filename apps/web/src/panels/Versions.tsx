@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, fmtTime, post, TRIGGERS, type RichBlock, type VersionMeta } from '../api'
 import { History } from 'lucide-react'
 import { Button } from '../components/ui/button'
@@ -16,9 +16,24 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
   const [onlyChanged, setOnlyChanged] = useState(true)
   const [error, setError] = useState('')
   const [open, setOpen] = useState(false)
+  const latestLoad = useRef<{ docId: string } | null>(null)
 
-  const load = (): Promise<void> => api<VersionMeta[]>(`/docs/${docId}/versions`).then(setList)
-  useEffect(() => void load(), [docId, refreshKey, open])
+  const load = useCallback(async (): Promise<void> => {
+    if (latestLoad.current?.docId !== docId) return
+    const request = { docId }
+    latestLoad.current = request
+    try {
+      const versions = await api<VersionMeta[]>(`/docs/${docId}/versions`)
+      if (latestLoad.current === request) setList(versions)
+    } catch (e) {
+      if (latestLoad.current === request) throw e
+    }
+  }, [docId])
+  useEffect(() => {
+    latestLoad.current = { docId }
+    void load()
+    return () => { latestLoad.current = null }
+  }, [docId, refreshKey, open, load])
 
   const name = (v: VersionMeta): string => v.label || `${TRIGGERS[v.trigger] ?? v.trigger} · ${fmtTime(v.created_at)}`
   const fetchOne = async (id: string): Promise<Loaded> => {

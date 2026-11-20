@@ -25,6 +25,8 @@ interface Ctx {
   reload: () => Promise<void>
   createDoc: () => Promise<void>
   removeDoc: (d: DocMeta) => Promise<void>
+  /** Bumped whenever the shell moves a document to the trash. */
+  trashVersion: number
   openSearch: () => void
   sidebarOpen: boolean
   toggleSidebar: () => void
@@ -71,6 +73,7 @@ export function Shell({ session, activeId, activeFolderId, trashActive, children
   const [settings, setSettings] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [toast, setToast] = useState<{ text: string; nonce: number; error?: boolean } | null>(null)
+  const [trashVersion, setTrashVersion] = useState(0)
   const reloadVersion = useRef(0)
 
   const reload = useCallback(async (): Promise<void> => {
@@ -96,6 +99,7 @@ export function Shell({ session, activeId, activeFolderId, trashActive, children
       setToast({ text: `无法删除"${d.title}"。`, nonce: Date.now(), error: true })
       return
     }
+    setTrashVersion((v) => v + 1)
     await reload()
     if (d.id === activeId) go({ page: 'home' })
     setToast({ text: `"${d.title}" 已移到回收站`, nonce: Date.now() })
@@ -155,8 +159,8 @@ export function Shell({ session, activeId, activeFolderId, trashActive, children
   }, [isMobile])
 
   const ctx: Ctx = useMemo(() => ({
-    session, docs, folders, createFolder, renameFolder, removeFolder, moveDoc, reload, createDoc, removeDoc, openSearch, sidebarOpen, toggleSidebar, openSettings: () => setSettings(true), isMobile,
-  }), [session, docs, folders, createFolder, renameFolder, removeFolder, moveDoc, reload, createDoc, removeDoc, openSearch, sidebarOpen, toggleSidebar, isMobile])
+    session, docs, folders, createFolder, renameFolder, removeFolder, moveDoc, reload, createDoc, removeDoc, trashVersion, openSearch, sidebarOpen, toggleSidebar, openSettings: () => setSettings(true), isMobile,
+  }), [session, docs, folders, createFolder, renameFolder, removeFolder, moveDoc, reload, createDoc, removeDoc, trashVersion, openSearch, sidebarOpen, toggleSidebar, isMobile])
 
   const sidebar = (
     <SidebarBody

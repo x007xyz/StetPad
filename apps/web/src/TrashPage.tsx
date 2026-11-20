@@ -7,7 +7,7 @@ import { SidebarToggle, useWorkspace } from './Shell'
 
 /** 回收站: the trashed documents. */
 export function TrashPage() {
-  const { reload } = useWorkspace()
+  const { reload, trashVersion } = useWorkspace()
   const [list, setList] = useState<TrashDoc[] | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
@@ -27,7 +27,7 @@ export function TrashPage() {
   }, [])
   useEffect(() => {
     void load()
-  }, [load])
+  }, [load, trashVersion])
 
   const act = async (d: TrashDoc, run: () => Promise<unknown>): Promise<void> => {
     setBusy(d.id)

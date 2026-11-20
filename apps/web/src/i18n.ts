@@ -31,6 +31,25 @@ export function setLang(l: Lang): void {
 }
 
 const EXACT: Record<string, string> = {
+  // Folder page
+  '空文件夹（把文档拖进来）': 'Empty folder (drag documents here)',
+  '找不到这个文件夹，或者你没有权限打开它。': 'This folder could not be found, or you do not have permission to open it.',
+  '这个文件夹还是空的。把侧栏里的文档拖进来，或用文档旁的“移动到…”。': 'This folder is empty. Drag documents here from the sidebar, or use “Move to…” next to a document.',
+  '这里的 AI 能阅读并修改这个文件夹里的全部文档，例如"统一各篇的语气""检查前后的术语是否一致"。修改会以修订的形式出现在对应文档里，由你逐条确认。': 'The AI here can read and edit all documents in this folder, for example to make the tone consistent or check terminology across documents. Edits appear as changes in each document for you to review individually.',
+  '没有可用的模型。请在"设置"里填写模型密钥。': 'No models available. Enter a model API key in "Settings".',
+  '没有可编辑的文档': 'No editable documents',
+  '文件夹名称': 'Folder name',
+  '文件夹大纲': 'Folder outline',
+  '给文件夹里的 AI 的指令': 'Instructions for the folder AI',
+  '让 AI 处理整个文件夹…（Enter 发送）': 'Ask AI to work on the whole folder… (Enter to send)',
+  '在单独页面中打开': 'Open on a separate page',
+  '滚动到这里时加载内容…': 'Content loads when you scroll here…',
+  '收起修订': 'Hide changes',
+  '收起AI': 'Hide AI',
+  '共': 'Total',
+  '篇': 'documents',
+  '处修订': 'changes',
+  '侧边面板': 'Side panel',
   // Search, trash, comments
   '搜索文档': 'Search documents',
   '回收站': 'Trash',
@@ -159,6 +178,8 @@ Object.assign(EXACT, {
 })
 
 const PATTERNS: [RegExp, (...m: string[]) => string][] = [
+  [/^文档标题：(.*)$/, (_, title) => `Document title: ${title}`],
+  [/^单独打开 (.*)$/, (_, title) => `Open separately ${title}`],
   [/^自动（当前：(.*)）$/, (_, model) => `Automatic (current: ${model})`],
   [/^模型分工暂时不可用：(.*)$/s, (_, error) => `Model roles are temporarily unavailable: ${error}`],
   [/^没有可用的模型：在模型提供方里给模型勾选"(.*)"能力$/, (_, cap) => `No models available: enable the "${EXACT[cap] ?? cap}" capability for a model under Model providers`],

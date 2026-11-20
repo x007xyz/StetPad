@@ -4,6 +4,85 @@ import { t } from './i18n'
 
 afterEach(() => localStorage.removeItem('aiw.lang'))
 
+it('translates folder page empty, normal and error states without changing Chinese', () => {
+  const labels = [
+  ['空文件夹（把文档拖进来）', 'Empty folder (drag documents here)'],
+  ['侧边面板', 'Side panel'],
+  ['文档标题：Draft', 'Document title: Draft'],
+  ['单独打开 Draft', 'Open separately Draft'],
+  [
+    "找不到这个文件夹，或者你没有权限打开它。",
+    "This folder could not be found, or you do not have permission to open it."
+  ],
+  [
+    "这个文件夹还是空的。把侧栏里的文档拖进来，或用文档旁的“移动到…”。",
+    "This folder is empty. Drag documents here from the sidebar, or use “Move to…” next to a document."
+  ],
+  [
+    "这里的 AI 能阅读并修改这个文件夹里的全部文档，例如\"统一各篇的语气\"\"检查前后的术语是否一致\"。修改会以修订的形式出现在对应文档里，由你逐条确认。",
+    "The AI here can read and edit all documents in this folder, for example to make the tone consistent or check terminology across documents. Edits appear as changes in each document for you to review individually."
+  ],
+  [
+    "没有可用的模型。请在\"设置\"里填写模型密钥。",
+    "No models available. Enter a model API key in \"Settings\"."
+  ],
+  [
+    "没有可编辑的文档",
+    "No editable documents"
+  ],
+  [
+    "文件夹名称",
+    "Folder name"
+  ],
+  [
+    "文件夹大纲",
+    "Folder outline"
+  ],
+  [
+    "给文件夹里的 AI 的指令",
+    "Instructions for the folder AI"
+  ],
+  [
+    "让 AI 处理整个文件夹…（Enter 发送）",
+    "Ask AI to work on the whole folder… (Enter to send)"
+  ],
+  [
+    "在单独页面中打开",
+    "Open on a separate page"
+  ],
+  [
+    "滚动到这里时加载内容…",
+    "Content loads when you scroll here…"
+  ],
+  [
+    "收起修订",
+    "Hide changes"
+  ],
+  [
+    "收起AI",
+    "Hide AI"
+  ],
+  [
+    "共",
+    "Total"
+  ],
+  [
+    "篇",
+    "documents"
+  ],
+  [
+    "处修订",
+    "changes"
+  ]
+]
+  for (const [zh, en] of labels) {
+    localStorage.setItem('aiw.lang', 'zh')
+    expect(t(zh!)).toBe(zh)
+    localStorage.setItem('aiw.lang', 'en')
+    expect(t(zh!)).toBe(en)
+  }
+})
+
 it('translates the Settings model roles, including automatic, empty and error states', () => {
   const labels = [
     ['模型分工', 'Model roles'],

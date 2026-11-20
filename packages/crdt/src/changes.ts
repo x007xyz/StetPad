@@ -393,6 +393,8 @@ export function removeText(
   })
 }
 
+const ATOM_BLOCK_TYPES = new Set(['divider', 'image', 'video', 'drawio', 'table', 'file', 'linkCard'])
+
 /** Propose a new block. */
 export function trackedInsertBlock(
   doc: Y.Doc,
@@ -400,19 +402,27 @@ export function trackedInsertBlock(
   blockId: string,
   str: string,
   meta: Meta,
-  opts: TrackOptions & { type?: string; attrs?: Record<string, unknown> } = {},
+  opts: TrackOptions & {
+    type?: string
+    attrs?: Record<string, unknown>
+    delta?: { insert: string; attributes?: Record<string, unknown> }[]
+  } = {},
 ): string {
   const id = opts.changeId ?? newChangeId()
+  const type = opts.type ?? 'paragraph'
   doc.transact(() => {
     const frag = content(doc)
-    const el = new Y.XmlElement(opts.type ?? 'paragraph')
+    const el = new Y.XmlElement(type)
     frag.insert(Math.min(index, frag.length), [el])
     el.setAttribute('blockId', blockId)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const [k, v] of Object.entries(opts.attrs ?? {})) el.setAttribute(k, v as any)
-    const t = new Y.XmlText()
-    el.insert(0, [t])
-    if (str) t.insert(0, str)
+    if (opts.delta?.length || str || !ATOM_BLOCK_TYPES.has(type)) {
+      const t = new Y.XmlText()
+      el.insert(0, [t])
+      if (opts.delta?.length) t.applyDelta(opts.delta)
+      else if (str) t.insert(0, str)
+    }
     const e = elementId(el)
     addRange(ensureRecord(doc, id, meta), 'ins', [e.client, e.clock, 1])
   })

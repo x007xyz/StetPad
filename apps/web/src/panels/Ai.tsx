@@ -352,7 +352,7 @@ function ChatBar({ runs }: { runs: ReturnType<typeof useRuns> }) {
   )
 }
 
-export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, onFocus, canDecide, refs, setRefs, comments, listBlocks, focusSignal }: {
+export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, onFocus, refs, setRefs, comments, listBlocks, focusSignal }: {
   docId: string
   runs: ReturnType<typeof useRuns>
   changes: PendingChange[]
@@ -360,7 +360,6 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
   blockText: (id: string) => string
   onDecide: (ids: string[], d: 'accept' | 'reject') => void
   onFocus: (id: string) => void
-  canDecide: boolean
   refs: ContextItem[]
   setRefs: (f: (cur: ContextItem[]) => ContextItem[]) => void
   comments: CommentView[]
@@ -371,7 +370,7 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
   const area = useRef<HTMLTextAreaElement>(null)
   const changesOf = (runId: string): PendingChange[] => changes.filter((c) => c.runId === runId)
   const review = (runId: string) => (
-    <RunChanges decided={decided.filter((c) => c.runId === runId)} changes={changesOf(runId)} blockText={blockText} onDecide={onDecide} onFocus={onFocus} canDecide={canDecide} />
+    <RunChanges decided={decided.filter((c) => c.runId === runId)} changes={changesOf(runId)} blockText={blockText} onDecide={onDecide} onFocus={onFocus} />
   )
   const dkey = draftKey(docId, runs.chatId)
   const [input, setInputState] = useState(() => readDraft(dkey))

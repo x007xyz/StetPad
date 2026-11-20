@@ -1,8 +1,6 @@
 /**
- * Everything that differs between the web build and the desktop app goes
- * through here: where the service is and how the caller proves who it is.
- * The desktop shell injects `window.aiw`; in a browser the session token
- * lives in localStorage.
+ * How the UI reaches the local service. The desktop shell injects `window.aiw`,
+ * which carries the token that proves who the caller is.
  */
 declare global {
   interface Window {
@@ -11,24 +9,30 @@ declare global {
 }
 
 export const isDesktop = !!window.aiw
-const KEY = 'aiw.session'
 
-export const getToken = (): string => {
-  if (window.aiw) return window.aiw.token
+/**
+ * Outside the desktop shell (development in a browser), the token is passed
+ * once as `?token=` and kept for the tab's session.
+ */
+const TOKEN_KEY = 'aiw.token'
+function browserToken(): string {
   try {
-    return localStorage.getItem(KEY) ?? ''
+    const url = new URL(location.href)
+    const fromUrl = url.searchParams.get('token')
+    if (fromUrl) {
+      sessionStorage.setItem(TOKEN_KEY, fromUrl)
+      url.searchParams.delete('token')
+      history.replaceState(null, '', url.pathname + url.search + url.hash)
+      return fromUrl
+    }
+    return sessionStorage.getItem(TOKEN_KEY) ?? ''
   } catch {
     return ''
   }
 }
-export const setToken = (t: string | null): void => {
-  try {
-    if (t) localStorage.setItem(KEY, t)
-    else localStorage.removeItem(KEY)
-  } catch {
-    // Private mode: the session lasts until the page closes.
-  }
-}
+const token = window.aiw?.token ?? browserToken()
+
+export const getToken = (): string => token
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -80,9 +84,8 @@ export function download(name: string, content: string | Blob, mime: string): vo
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export interface Folder { id: string; name: string; space_id: string | null; created_at: number }
-export interface DocMeta { id: string; title: string; created_at: number; updated_at: number; space_id?: string | null; folder_id?: string | null; access?: 'owner' | 'editor' | 'viewer'; sync?: string | null }
-export interface Space { id: string; name: string; owner_id: string; role: 'owner' | 'editor' | 'viewer' }
+export interface Folder { id: string; name: string; created_at: number }
+export interface DocMeta { id: string; title: string; created_at: number; updated_at: number; folder_id?: string | null }
 export interface ModelInfo { id: string; provider: string; label: string; verified: boolean; enabled: boolean }
 export interface ModelsResponse {
   models: ModelInfo[]
@@ -154,4 +157,23 @@ export const fmtTime = (t: number): string => {
   const d = new Date(t)
   const p = (n: number): string => String(n).padStart(2, '0')
   return `${d.getMonth() + 1}月${d.getDate()}日 ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+/** GET /search: one hit across every document the caller can open. */
+export interface SearchResult {
+  id: string
+  title: string
+  folder_id: string | null
+  updated_at: number
+  snippet: string
+  titleMatch: boolean
+}
+/** GET /trash: a trashed document, with the time it was moved there. */
+export type TrashDoc = DocMeta & { deleted_at: number }
+/** POST /docs/:id/comments/:cid/notify: `ai` says whether the server started an AI reply. */
+export interface NotifyResult { ai: boolean }
+
+/** Tell the server a comment (or a reply, given its index) was written so it can run @AI. Resolves to whether an AI reply was started. */
+export function notifyComment(docId: string, commentId: string, reply?: number): Promise<boolean> {
+  return post<NotifyResult>(`/docs/${docId}/comments/${commentId}/notify`, reply === undefined ? {} : { reply }).then((r) => r.ai).catch(() => false)
 }

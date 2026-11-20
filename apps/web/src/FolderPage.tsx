@@ -20,7 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { IndexeddbPersistence } from 'y-indexeddb'
 import * as Y from 'yjs'
 import { api, collabUrl, getToken, post, streamRun, type DocMeta, type Folder, type ModelsResponse, type RunMeta } from './api'
-import { go, type Session } from './App'
+import { go } from './App'
 import { Button } from './components/ui/button'
 import { Dialog, SheetContent } from './components/ui/dialog'
 import { Select } from './components/ui/select'
@@ -35,7 +35,7 @@ import { ChangesPanel, RunChanges } from './panels/Changes'
 import { SidebarToggle, useWorkspaceOptional } from './Shell'
 
 const COLORS = ['#d9480f', '#2b8a3e', '#1971c2', '#9c36b5', '#c2255c', '#087f5b']
-type FolderInfo = Folder & { access?: 'owner' | 'editor' | 'viewer'; docs: DocMeta[] }
+type FolderInfo = Folder & { docs: DocMeta[] }
 interface SectionState { ydoc: Y.Doc; changes: PendingChange[]; decided: DecidedChange[]; status: 'connecting' | 'connected' | 'offline' }
 type Tab = 'changes' | 'ai'
 
@@ -44,7 +44,7 @@ type Tab = 'changes' | 'ai'
  * editor on its own collaboration connection, so edits are saved exactly as on
  * the single-document page.
  */
-export function FolderPage({ id, session }: { id: string; session: Session }) {
+export function FolderPage({ id }: { id: string }) {
   const workspace = useWorkspaceOptional()
   const [info, setInfo] = useState<FolderInfo | null>(null)
   const [missing, setMissing] = useState(false)
@@ -57,8 +57,7 @@ export function FolderPage({ id, session }: { id: string; session: Session }) {
   const page = useRef<HTMLElement>(null)
   const trackingRef = useRef(false)
   trackingRef.current = tracking
-  const author = session.mode === 'local' ? '我' : session.user.email
-  const readOnly = info?.access === 'viewer'
+  const author = '我'
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -146,9 +145,8 @@ export function FolderPage({ id, session }: { id: string; session: Session }) {
 
   const panel = (
     <div className="panel flex min-h-0 flex-1 flex-col">
-      {tab === 'changes' && <ChangesPanel changes={changes} blockText={blockText} onDecide={decideMany} onFocus={focusChange} canDecide={!readOnly} />}
-      {tab === 'ai' && <FolderAi folderId={id} changes={changes} decided={decided} blockText={blockText} onDecide={decideMany} onFocus={focusChange} canDecide={!readOnly}
-        disabled={readOnly || ids.length === 0} />}
+      {tab === 'changes' && <ChangesPanel changes={changes} blockText={blockText} onDecide={decideMany} onFocus={focusChange} />}
+      {tab === 'ai' && <FolderAi folderId={id} changes={changes} decided={decided} blockText={blockText} onDecide={decideMany} onFocus={focusChange} disabled={ids.length === 0} />}
     </div>
   )
   const buttons: [Tab, string, typeof Sparkles, number | boolean][] = [['changes', '修订', ListChecks, changes.length], ['ai', 'AI', Sparkles, false]]
@@ -158,18 +156,16 @@ export function FolderPage({ id, session }: { id: string; session: Session }) {
       <div className="flex min-h-0 flex-1 flex-col">
         <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-background px-3 py-1.5">
           <SidebarToggle />
-          <input className="min-w-0 flex-1 basis-40 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-semibold outline-none hover:bg-accent focus:border-ring focus:bg-background" aria-label="文件夹名称" readOnly={readOnly}
+          <input className="min-w-0 flex-1 basis-40 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-semibold outline-none hover:bg-accent focus:border-ring focus:bg-background" aria-label="文件夹名称"
             defaultValue={info?.name ?? ''} key={info?.name} onBlur={(e) => rename(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span aria-hidden className={cn('size-1.5 rounded-full', status === 'connected' ? 'bg-emerald-500' : status === 'connecting' ? 'bg-amber-400' : 'bg-orange-500')} />
             <span role="status" className="max-sm:sr-only">{status === 'connected' ? '已同步' : status === 'connecting' ? '连接中…' : '离线，修改已保存在本机'}</span>
           </span>
-          {!readOnly && (
-            <label className="flex cursor-pointer items-center gap-1.5 text-[13px]">
-              <Switch checked={tracking} onCheckedChange={setTracking} aria-label="修订模式" />
-              <span>修订模式</span>
-            </label>
-          )}
+          <label className="flex cursor-pointer items-center gap-1.5 text-[13px]">
+            <Switch checked={tracking} onCheckedChange={setTracking} aria-label="修订模式" />
+            <span>修订模式</span>
+          </label>
           <div role="group" aria-label="侧边面板" className="flex items-center gap-0.5">
             {buttons.map(([t, label, Icon, badge]) => {
               const active = panelOpen && tab === t
@@ -208,7 +204,7 @@ export function FolderPage({ id, session }: { id: string; session: Session }) {
               )}
             </div>
             {info?.docs.map((d, i) => (
-              <DocSection key={d.id} doc={d} first={i === 0} author={author} trackingRef={trackingRef} readOnly={readOnly || d.access === 'viewer'} force={force.has(d.id)} onState={onSection}
+              <DocSection key={d.id} doc={d} first={i === 0} author={author} trackingRef={trackingRef} force={force.has(d.id)} onState={onSection}
                 onRenamed={() => { void load(); void workspace?.reload() }} />
             ))}
             <div className="h-40" />
@@ -228,12 +224,11 @@ export function FolderPage({ id, session }: { id: string; session: Session }) {
 }
 
 /** One document of the folder: its title, a divider, and an editor on its own connection. */
-function DocSection({ doc, first, author, trackingRef, readOnly, force, onState, onRenamed }: {
+function DocSection({ doc, first, author, trackingRef, force, onState, onRenamed }: {
   doc: DocMeta
   first: boolean
   author: string
   trackingRef: React.MutableRefObject<boolean>
-  readOnly: boolean
   force: boolean
   onState: (docId: string, s: SectionState) => void
   onRenamed: () => void
@@ -308,7 +303,6 @@ function DocSection({ doc, first, author, trackingRef, readOnly, force, onState,
         BlockId, BlockKeys,
         Tracked.configure({ doc: ydoc, user: () => ({ author, tracking: trackingRef.current }) }),
       ],
-      editable: !readOnly,
       editorProps: { attributes: { class: 'prose', spellcheck: 'false' } },
     })
     editorRef.current = editor
@@ -317,10 +311,7 @@ function DocSection({ doc, first, author, trackingRef, readOnly, force, onState,
       editor.destroy()
       editorRef.current = null
     }
-  }, [ready, visible, ydoc, author, readOnly, trackingRef])
-  useEffect(() => {
-    editorRef.current?.setEditable(!readOnly)
-  }, [readOnly])
+  }, [ready, visible, ydoc, author, trackingRef])
 
   const rename = async (title: string): Promise<void> => {
     if (!title.trim() || title.trim() === doc.title) return
@@ -333,7 +324,7 @@ function DocSection({ doc, first, author, trackingRef, readOnly, force, onState,
       <hr className="mb-4 mt-8 border-border" />
       <div className="flex items-center gap-2">
         <input className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-2xl font-bold tracking-tight outline-none hover:bg-accent focus:border-ring focus:bg-background" aria-label={`文档标题：${doc.title}`}
-          readOnly={readOnly} defaultValue={doc.title} key={doc.title} onBlur={(e) => rename(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
+          defaultValue={doc.title} key={doc.title} onBlur={(e) => rename(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
         <Tip text="在单独页面中打开"><Button variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground" aria-label={`单独打开 ${doc.title}`} onClick={() => go({ page: 'doc', id })}><ExternalLink /></Button></Tip>
       </div>
       {!visible && <p className="muted py-6">滚动到这里时加载内容…</p>}
@@ -350,14 +341,13 @@ const STATUS: Record<string, string> = { running: '进行中', done: '完成', c
  * The AI chat of a folder: a message goes out with every document of the folder
  * as its scope. Changes come back as pending suggestions in the documents.
  */
-function FolderAi({ folderId, changes, decided, blockText, onDecide, onFocus, canDecide, disabled }: {
+function FolderAi({ folderId, changes, decided, blockText, onDecide, onFocus, disabled }: {
   folderId: string
   changes: PendingChange[]
   decided: DecidedChange[]
   blockText: (id: string) => string
   onDecide: (ids: string[], d: 'accept' | 'reject') => void
   onFocus: (id: string) => void
-  canDecide: boolean
   disabled: boolean
 }) {
   const [models, setModels] = useState<ModelsResponse | null>(null)
@@ -428,7 +418,7 @@ function FolderAi({ folderId, changes, decided, blockText, onDecide, onFocus, ca
   }
   const past = history.filter((r) => r.id !== live?.runId)
   const review = (runId: string) => (
-    <RunChanges decided={decided.filter((c) => c.runId === runId)} changes={changes.filter((c) => c.runId === runId)} blockText={blockText} onDecide={onDecide} onFocus={onFocus} canDecide={canDecide} />
+    <RunChanges decided={decided.filter((c) => c.runId === runId)} changes={changes.filter((c) => c.runId === runId)} blockText={blockText} onDecide={onDecide} onFocus={onFocus} />
   )
 
   return (

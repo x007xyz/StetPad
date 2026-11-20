@@ -1,3 +1,4 @@
+import { blocksToMarkdown, domToBlocks, embedPlayerUrl, isSafeSrc, type Block } from '@stetpad/clip'
 import {
   blockIdOf,
   blocks as yBlocks,
@@ -6,146 +7,50 @@ import {
   compact,
   content,
   decide,
+  footnoteAttr,
+  footnotesOf,
   insertBlock,
   listChanges,
   newBlockId,
+  type FootnoteInfo,
   type RichBlock,
 } from '@stetpad/crdt'
 import { Readability } from '@mozilla/readability'
 import { parseHTML } from 'linkedom'
 import mammoth from 'mammoth'
 import { marked } from 'marked'
-import { AlignmentType, Document as DocxDocument, ExternalHyperlink, HeadingLevel, LevelFormat, Packer, Paragraph as DocxParagraph, Table as DocxTable, TableCell, TableRow, TextRun, WidthType } from 'docx'
+import { AlignmentType, Document as DocxDocument, ExternalHyperlink, FootnoteReferenceRun, HeadingLevel, ImageRun, LevelFormat, Packer, Paragraph as DocxParagraph, Table as DocxTable, TableCell, TableRow, TextRun, WidthType } from 'docx'
 import * as Y from 'yjs'
+import { mathToSvg, svgToPng } from './render'
 
-/** The one simple format every import is reduced to. */
-export interface Block {
-  type: string
-  attrs: Record<string, unknown>
-  delta: { insert: string; attributes?: Record<string, unknown> }[]
-}
+export type { Block }
+export { blocksToMarkdown }
 
 const text = (b: Block): string => b.delta.map((d) => d.insert).join('')
 const para = (s: string): Block => ({ type: 'paragraph', attrs: {}, delta: s ? [{ insert: s }] : [] })
 
 // ---------- HTML -> blocks ----------
 
-const MARKS: Record<string, string> = {
-  STRONG: 'bold', B: 'bold', EM: 'italic', I: 'italic', U: 'underline',
-  S: 'strike', DEL: 'strike', STRIKE: 'strike', CODE: 'code', MARK: 'highlight',
-}
-const BLOCK_TAGS = new Set(['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'PRE', 'HR', 'TABLE', 'IMG', 'SECTION', 'ARTICLE', 'MAIN', 'HEADER', 'FOOTER', 'FIGURE', 'FIGCAPTION', 'BR'])
-const safeHref = (h: string | null): string | null => (h && /^(https?:|mailto:)/i.test(h.trim()) ? h.trim() : null)
-const safeSrc = (s: string | null): string | null =>
-  s && (/^https?:/i.test(s) || /^\/files\/[\w-]+$/.test(s) || (/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(s) && s.length < 400_000)) ? s : null
-
 /**
  * Reduce arbitrary HTML to whitelisted blocks. Nothing from the source is
  * passed through as HTML: only text, a fixed set of marks, and checked URLs.
  */
-export function htmlToBlocks(html: string): Block[] {
+export function htmlToBlocks(html: string, baseUrl?: string): Block[] {
   const { document } = parseHTML(`<!doctype html><html><body>${html}</body></html>`)
-  const out: Block[] = []
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const inline = (node: any, marks: Record<string, unknown>, delta: Block['delta']): void => {
-    for (const child of node.childNodes) {
-      if (child.nodeType === 3) {
-        const s = String(child.textContent).replace(/\s+/g, ' ')
-        if (!s) continue
-        const attributes = Object.keys(marks).length ? { ...marks } : undefined
-        delta.push(attributes ? { insert: s, attributes } : { insert: s })
-      } else if (child.nodeType === 1) {
-        const tag = String(child.tagName).toUpperCase()
-        if (tag === 'BR') delta.push({ insert: ' ' })
-        else if (tag === 'SCRIPT' || tag === 'STYLE') continue
-        else if (tag === 'A') {
-          const href = safeHref(child.getAttribute('href'))
-          inline(child, href ? { ...marks, link: { href } } : marks, delta)
-        } else if (MARKS[tag]) inline(child, { ...marks, [MARKS[tag]!]: {} }, delta)
-        else inline(child, marks, delta)
-      }
-    }
-  }
-  const trimmed = (delta: Block['delta']): Block['delta'] => {
-    if (delta[0]) delta[0].insert = delta[0].insert.replace(/^\s+/, '')
-    const last = delta[delta.length - 1]
-    if (last) last.insert = last.insert.replace(/\s+$/, '')
-    return delta.filter((d) => d.insert.length > 0)
-  }
-  const push = (type: string, attrs: Record<string, unknown>, node: unknown): void => {
-    const delta: Block['delta'] = []
-    inline(node, {}, delta)
-    const t = trimmed(delta)
-    if (t.length) out.push({ type, attrs, delta: t })
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const hasBlockChild = (el: any): boolean =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    [...el.children].some((c: any) => BLOCK_TAGS.has(String(c.tagName).toUpperCase()) && c.tagName !== 'BR')
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const list = (el: any, ordered: boolean, indent: number): void => {
-    for (const li of el.children) {
-      if (String(li.tagName).toUpperCase() !== 'LI') continue
-      const clone = li.cloneNode(true)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const nested of [...clone.querySelectorAll('ul,ol')] as any[]) nested.remove()
-      const box = clone.querySelector('input[type=checkbox]')
-      if (box) push('taskItem', { checked: box.hasAttribute('checked'), indent }, clone)
-      else push(ordered ? 'orderedItem' : 'bulletItem', { indent }, clone)
-      for (const nested of li.children) {
-        const t = String(nested.tagName).toUpperCase()
-        if (t === 'UL' || t === 'OL') list(nested, t === 'OL', Math.min(indent + 1, 4))
-      }
-    }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const walk = (el: any): void => {
-    for (const node of el.childNodes) {
-      if (node.nodeType === 3) {
-        const s = String(node.textContent).trim()
-        if (s) out.push(para(s))
-        continue
-      }
-      if (node.nodeType !== 1) continue
-      const tag = String(node.tagName).toUpperCase()
-      if (['SCRIPT', 'STYLE', 'NAV', 'NOSCRIPT', 'IFRAME', 'FORM', 'SVG'].includes(tag)) continue
-      if (/^H[1-6]$/.test(tag)) push('heading', { level: Math.min(Number(tag[1]), 3) }, node)
-      else if (tag === 'UL' || tag === 'OL') list(node, tag === 'OL', 0)
-      else if (tag === 'BLOCKQUOTE') {
-        if (hasBlockChild(node)) for (const c of node.children) push('quote', {}, c)
-        else push('quote', {}, node)
-      } else if (tag === 'PRE') {
-        const s = String(node.textContent).replace(/\n$/, '')
-        if (s) out.push({ type: 'codeBlock', attrs: {}, delta: [{ insert: s }] })
-      } else if (tag === 'HR') out.push({ type: 'divider', attrs: {}, delta: [] })
-      else if (tag === 'IMG') {
-        const src = safeSrc(node.getAttribute('src'))
-        if (src) out.push({ type: 'image', attrs: { src, alt: node.getAttribute('alt') ?? '' }, delta: [] })
-      } else if (tag === 'TABLE') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const rows = [...node.querySelectorAll('tr')].map((tr: any) =>
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          [...tr.querySelectorAll('th,td')].map((c: any) => String(c.textContent).replace(/\s+/g, ' ').trim()),
-        ).filter((r) => r.length)
-        if (rows.length) out.push({ type: 'table', attrs: { rows: JSON.stringify(rows) }, delta: [] })
-      } else if (tag === 'P' || !hasBlockChild(node)) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const img of [...node.querySelectorAll('img')] as any[]) {
-          const src = safeSrc(img.getAttribute('src'))
-          if (src) out.push({ type: 'image', attrs: { src, alt: img.getAttribute('alt') ?? '' }, delta: [] })
-        }
-        push('paragraph', {}, node)
-      } else walk(node)
-    }
-  }
-  walk(document.body)
-  return out
+  return domToBlocks(document.body, { baseUrl })
 }
 
 // ---------- files -> blocks ----------
+
+/**
+ * `$$` display formulas on their own lines become ```math fences, so marked
+ * emits them as `<pre><code class="language-math">`.
+ */
+export function mathToFence(md: string): string {
+  return md
+    .replace(/^[ \t]*\$\$[ \t]*\n([\s\S]*?)\n[ \t]*\$\$[ \t]*$/gm, (_m, body: string) => '```math\n' + body.replace(/\n+$/, '') + '\n```')
+    .replace(/^[ \t]*\$\$(.+?)\$\$[ \t]*$/gm, (_m, body: string) => '```math\n' + body.trim() + '\n```')
+}
 
 export type Ocr = (png: Uint8Array, page: number) => Promise<string>
 
@@ -187,6 +92,39 @@ async function ocrPdf(pdf: { numPages: number; getPage: (n: number) => Promise<a
     texts.push(await ocr(new Uint8Array(canvas.toBuffer('image/png')), p))
   }
   return textToBlocks(texts.join('\n\n'))
+}
+
+/** One page of a PDF as PNG (for attachment previews), with the page count. Null when the page does not exist. */
+export async function renderPdfPage(data: Uint8Array, pageNumber: number, scale = 1.5): Promise<{ png: Uint8Array; pages: number } | null> {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const task = pdfjs.getDocument({ data, useSystemFonts: true })
+  const pdf = await task.promise
+  try {
+    if (pageNumber < 1 || pageNumber > pdf.numPages) return null
+    const { createCanvas } = await import('@napi-rs/canvas')
+    const page = await pdf.getPage(pageNumber)
+    const viewport = page.getViewport({ scale })
+    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height))
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await page.render({ canvas: canvas as any, canvasContext: ctx as any, viewport }).promise
+    return { png: new Uint8Array(canvas.toBuffer('image/png')), pages: pdf.numPages }
+  } finally {
+    await task.destroy()
+  }
+}
+
+/** Page count of a PDF. */
+export async function pdfPageCount(data: Uint8Array): Promise<number> {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const task = pdfjs.getDocument({ data, useSystemFonts: true })
+  try {
+    return (await task.promise).numPages
+  } finally {
+    await task.destroy()
+  }
 }
 
 async function pdfToBlocks(data: Uint8Array, ocr?: Ocr): Promise<Block[]> {
@@ -258,7 +196,11 @@ export async function fileToBlocks(name: string, data: Uint8Array, opts: { ocr?:
   }
   if (ext === 'pdf') return pdfToBlocks(data, opts.ocr)
   const str = new TextDecoder().decode(data)
-  if (ext === 'md' || ext === 'markdown') return htmlToBlocks(await marked.parse(str, { gfm: true }))
+  if (ext === 'md' || ext === 'markdown') {
+    const { body, defs } = splitMdFootnotes(str)
+    const { body: safe, tex } = protectInlineMath(mathToFence(body))
+    return restoreInlineMath(applyMdFootnotes(htmlToBlocks(await marked.parse(safe, { gfm: true })), defs), tex)
+  }
   if (ext === 'html' || ext === 'htm') {
     const { document } = parseHTML(str)
     let article: { content?: string | null; title?: string | null } | null = null
@@ -274,6 +216,130 @@ export async function fileToBlocks(name: string, data: Uint8Array, opts: { ocr?:
   }
   if (ext === 'txt') return str.split(/\n\s*\n/).map((s) => para(s.replace(/\s*\n\s*/g, ' ').trim())).filter((b) => b.delta.length)
   throw new Error(`不支持的文件类型：.${ext}`)
+}
+
+// ---------- Markdown footnotes ----------
+
+const FN_DEF = /^\[\^([^\]\s]+)\]:[ \t]*(.*)$/
+/** Punctuation that ends the word a footnote marker attaches to. */
+const FN_STOP = /[\s，。！？；：、,.;:!?()（）「」“”"'《》]/
+
+/** Take `[^label]: text` definitions out of Markdown. They are applied after parsing. */
+export function splitMdFootnotes(src: string): { body: string; defs: Map<string, string> } {
+  const defs = new Map<string, string>()
+  const kept: string[] = []
+  for (const line of src.split('\n')) {
+    const m = line.match(FN_DEF)
+    if (m) defs.set(m[1]!, m[2]!.trim())
+    else kept.push(line)
+  }
+  return { body: kept.join('\n'), defs }
+}
+
+/**
+ * Turn each `[^label]` marker into a footnote mark over the word before it.
+ * A marker with no definition, or with nothing before it, is dropped.
+ */
+export function applyMdFootnotes(list: Block[], defs: Map<string, string>): Block[] {
+  for (const b of list) {
+    if (!b.delta.some((d) => d.insert.includes('[^'))) continue
+    const chars: { ch: string; attributes?: Record<string, unknown> }[] = []
+    for (const d of b.delta) for (const ch of d.insert) chars.push({ ch, attributes: d.attributes })
+    const re = /\[\^([^\]\s]+)\]/
+    let s = chars.map((c) => c.ch).join('')
+    let m: RegExpExecArray | null
+    while ((m = re.exec(s))) {
+      const at = m.index
+      let start = at
+      while (start > 0 && !FN_STOP.test(chars[start - 1]!.ch)) start--
+      const note = defs.get(m[1]!)
+      if (note !== undefined && start < at) {
+        const id = 'fn_' + Math.random().toString(36).slice(2, 10)
+        for (let k = start; k < at; k++) chars[k]!.attributes = { ...chars[k]!.attributes, footnote: { id, note } }
+      }
+      chars.splice(at, m[0].length)
+      s = chars.map((c) => c.ch).join('')
+    }
+    const delta: Block['delta'] = []
+    for (const c of chars) {
+      const attributes = c.attributes && Object.keys(c.attributes).length ? c.attributes : undefined
+      const last = delta[delta.length - 1]
+      if (last && JSON.stringify(last.attributes ?? null) === JSON.stringify(attributes ?? null)) last.insert += c.ch
+      else delta.push(attributes ? { insert: c.ch, attributes } : { insert: c.ch })
+    }
+    b.delta = delta.filter((d) => d.insert.length > 0)
+  }
+  return list
+}
+
+// ---------- Markdown inline math ----------
+
+/** `$…$` on one line, with the editor's input rule: no space inside the ends, no `$` inside, not before a digit. */
+const INLINE_TEX = /(?<![\\$])\$(?=[^\s$])([^$\n]*?[^\s$\\])\$(?![\d$])/g
+const TOKEN = /(\d+)/g
+
+/**
+ * Replaces inline `$…$` with placeholders before Markdown parsing, so that `*` and `_` inside a
+ * formula are not read as emphasis. Code (fenced blocks, code spans), tables and lines with links or
+ * images are left alone. `restoreInlineMath` puts the formulas back as math-marked text.
+ */
+export function protectInlineMath(md: string): { body: string; tex: string[] } {
+  const tex: string[] = []
+  let fence: string | null = null
+  const body = md
+    .split('\n')
+    .map((line) => {
+      if (fence !== null) {
+        const t = line.trim()
+        if (t.length >= fence.length && [...t].every((c) => c === fence![0])) fence = null
+        return line
+      }
+      const open = /^\s*(`{3,}|~{3,})/.exec(line)
+      if (open) {
+        fence = open[1]!
+        return line
+      }
+      if (/^\s*\|/.test(line) || line.includes('](') || line.includes('![')) return line
+      // Odd parts of a split on code spans are code; only the others are scanned.
+      return line
+        .split(/(`[^`]*`)/)
+        .map((part, i) =>
+          i % 2
+            ? part
+            : part.replace(INLINE_TEX, (_m, src: string) => {
+                tex.push(src)
+                return `${tex.length - 1}`
+              }),
+        )
+        .join('')
+    })
+    .join('\n')
+  return { body, tex }
+}
+
+/** Puts back the formulas of `protectInlineMath` as runs with the `math` mark. Stray placeholders become plain `$…$`. */
+export function restoreInlineMath(list: Block[], tex: string[]): Block[] {
+  if (!tex.length) return list
+  for (const b of list) {
+    const delta: Block['delta'] = []
+    const push = (insert: string, attributes?: Record<string, unknown>): void => {
+      if (!insert) return
+      const last = delta[delta.length - 1]
+      if (last && JSON.stringify(last.attributes ?? null) === JSON.stringify(attributes ?? null)) last.insert += insert
+      else delta.push(attributes ? { insert, attributes } : { insert })
+    }
+    for (const d of b.delta) {
+      d.insert.split(/(\d+)/).forEach((part, i) => {
+        if (i % 2) push(tex[Number(part)] ?? '', { math: true })
+        else push(part, d.attributes)
+      })
+    }
+    b.delta = delta
+    for (const [k, v] of Object.entries(b.attrs)) {
+      if (typeof v === 'string' && v.includes('')) b.attrs[k] = v.replace(TOKEN, (_m, n: string) => `$${tex[Number(n)] ?? ''}$`)
+    }
+  }
+  return list
 }
 
 // ---------- blocks <-> Y.Doc ----------
@@ -341,23 +407,43 @@ export function applyBlocks(doc: Y.Doc, target: RichBlock[]): void {
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-function inlineMd(delta: Block['delta']): string {
-  return delta.map((d) => {
-    let s = d.insert
-    const a = d.attributes ?? {}
-    if (a.code) s = '`' + s + '`'
-    if (a.bold) s = `**${s}**`
-    if (a.italic) s = `*${s}*`
-    if (a.strike) s = `~~${s}~~`
-    const href = (a.link as { href?: string } | undefined)?.href
-    if (href) s = `[${s}](${href})`
-    return s
-  }).join('')
+/**
+ * Footnote numbers are in reading order. Each footnote gets one reference
+ * marker, placed after the last run of its id, as a synthetic run that the
+ * inline writers turn into their own reference syntax.
+ */
+function withFootnoteRefs(input: Block[]): { blocks: Block[]; notes: FootnoteInfo[] } {
+  const notes = footnotesOf(input)
+  const number = new Map(notes.map((n) => [n.id, n.number]))
+  // Position "block:run" of the last run of each id.
+  const last = new Map<string, string>()
+  input.forEach((b, bi) => b.delta.forEach((d, di) => {
+    const f = footnoteAttr(d.attributes)
+    if (f) last.set(f.id, `${bi}:${di}`)
+  }))
+  const blocks = input.map((b, bi) => ({
+    ...b,
+    delta: b.delta.flatMap((d, di) => {
+      const ids = [...last].filter(([, at]) => at === `${bi}:${di}`).map(([id]) => id)
+      return [d, ...ids.map((id) => ({ insert: '', attributes: { footnoteRef: number.get(id) } }))]
+    }),
+  }))
+  return { blocks, notes }
 }
+
 function inlineHtml(delta: Block['delta']): string {
   return delta.map((d) => {
     let s = esc(d.insert)
     const a = d.attributes ?? {}
+    if (a.footnoteRef) {
+      const n = Number(a.footnoteRef)
+      return `<sup><a href="#fn-${n}" id="fnref-${n}">${n}</a></sup>`
+    }
+    // Inline math is not combined with other marks: the formula is drawn as its own svg.
+    if (a.math) {
+      const svg = mathToSvg(d.insert, { display: false })
+      return svg ? `<span class="math-inline">${svg}</span>` : esc(`$${d.insert}$`)
+    }
     if (a.code) s = `<code>${s}</code>`
     if (a.bold) s = `<strong>${s}</strong>`
     if (a.italic) s = `<em>${s}</em>`
@@ -377,39 +463,29 @@ const tableRows = (b: Block): string[][] => {
   }
 }
 
-export function blocksToMarkdown(list: Block[]): string {
-  const out: string[] = []
-  let n = 0
-  for (const b of list) {
-    const pad = '  '.repeat(Number(b.attrs.indent ?? 0))
-    n = b.type === 'orderedItem' ? n + 1 : 0
-    switch (b.type) {
-      case 'heading': out.push('#'.repeat(Number(b.attrs.level ?? 1)) + ' ' + inlineMd(b.delta)); break
-      case 'bulletItem': out.push(`${pad}- ${inlineMd(b.delta)}`); break
-      case 'orderedItem': out.push(`${pad}${n}. ${inlineMd(b.delta)}`); break
-      case 'taskItem': out.push(`${pad}- [${b.attrs.checked ? 'x' : ' '}] ${inlineMd(b.delta)}`); break
-      case 'quote': out.push('> ' + inlineMd(b.delta)); break
-      case 'callout': out.push('> [!NOTE] ' + inlineMd(b.delta)); break
-      case 'codeBlock': out.push('```\n' + text(b) + '\n```'); break
-      case 'divider': out.push('---'); break
-      case 'image': out.push(`![${String(b.attrs.alt ?? '')}](${String(b.attrs.src ?? '')})`); break
-      case 'table': {
-        const rows = tableRows(b)
-        if (rows[0]) {
-          out.push('| ' + rows[0].join(' | ') + ' |', '| ' + rows[0].map(() => '---').join(' | ') + ' |',
-            ...rows.slice(1).map((r) => '| ' + r.join(' | ') + ' |'))
-        }
-        break
-      }
-      default: out.push(inlineMd(b.delta))
-    }
-    const listItem = ['bulletItem', 'orderedItem', 'taskItem'].includes(b.type)
-    if (!listItem) out.push('')
-  }
-  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n'
+/**
+ * `renders`: block id -> inline SVG the browser made for a mermaid or math block.
+ * The SVG is written as it is: the caller must produce it, not user input.
+ */
+export interface HtmlOptions {
+  renders?: Record<string, string>
 }
 
-export function blocksToHtml(list: Block[], title: string): string {
+/** A byte count for people: 980 B, 1.5 KB, 12.3 MB. */
+export function humanSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 ** 2) return `${Math.round(bytes / 102.4) / 10} KB`
+  if (bytes < 1024 ** 3) return `${Math.round(bytes / 1024 ** 2 * 10) / 10} MB`
+  return `${Math.round(bytes / 1024 ** 3 * 10) / 10} GB`
+}
+const FILE_SRC = /^\/files\/[\w-]+$/
+const WEB_URL = /^https?:\/\//i
+
+const figure = (inner: string, caption: string): string =>
+  `<figure>${inner}${caption ? `<figcaption>${esc(caption)}</figcaption>` : ''}</figure>`
+
+export function blocksToHtml(input: Block[], title: string, opts: HtmlOptions = {}): string {
+  const { blocks: list, notes } = withFootnoteRefs(input)
   const body: string[] = []
   let open: string | null = null
   const close = (): void => {
@@ -430,22 +506,152 @@ export function blocksToHtml(list: Block[], title: string): string {
       case 'taskItem': body.push(`<li><input type="checkbox" disabled${b.attrs.checked ? ' checked' : ''}> ${inlineHtml(b.delta)}</li>`); break
       case 'quote': body.push(`<blockquote>${inlineHtml(b.delta)}</blockquote>`); break
       case 'callout': body.push(`<aside>${inlineHtml(b.delta)}</aside>`); break
-      case 'codeBlock': body.push(`<pre><code>${esc(text(b))}</code></pre>`); break
+      case 'codeBlock': {
+        const lang = String(b.attrs.language ?? '')
+        const svg = (lang === 'mermaid' || lang === 'math') && b.blockId ? opts.renders?.[b.blockId] : undefined
+        if (svg && /^<svg[\s>]/i.test(svg.trim()) && !/<script/i.test(svg)) body.push(`<figure class="diagram">${svg}</figure>`)
+        else {
+          const cls = lang.replace(/[^\w+#.-]/g, '')
+          body.push(`<pre><code${cls ? ` class="language-${cls}"` : ''}>${esc(text(b))}</code></pre>`)
+        }
+        break
+      }
       case 'divider': body.push('<hr>'); break
-      case 'image': body.push(`<img src="${esc(String(b.attrs.src ?? ''))}" alt="${esc(String(b.attrs.alt ?? ''))}">`); break
+      case 'image': {
+        const width = Math.min(100, Math.max(10, Number(b.attrs.width ?? 100)))
+        body.push(figure(`<img src="${esc(String(b.attrs.src ?? ''))}" alt="${esc(String(b.attrs.alt ?? ''))}" style="width:${width}%">`, String(b.attrs.caption ?? '')))
+        break
+      }
+      case 'video': {
+        const src = String(b.attrs.src ?? '')
+        const t = esc(String(b.attrs.title ?? ''))
+        const caption = String(b.attrs.caption ?? '')
+        const embed = b.attrs.kind === 'embed'
+        const player = embed ? embedPlayerUrl(src) : null
+        if (player) body.push(figure(`<iframe src="${esc(player)}" title="${t}" allowfullscreen></iframe>`, caption))
+        else if (!embed && (/^\/files\/[\w-]+$/.test(src) || /^https:/i.test(src))) {
+          const poster = String(b.attrs.poster ?? '')
+          const posterAttr = /^\/files\/[\w-]+$/.test(poster) ? ` poster="${esc(poster)}"` : ''
+          const captions = String(b.attrs.captions ?? '')
+          const track = /^\/files\/[\w-]+$/.test(captions) ? `<track kind="subtitles" src="${esc(captions)}" srclang="zh" label="字幕" default>` : ''
+          body.push(figure(`<video controls${posterAttr} src="${esc(src)}" title="${t}">${track}</video>`, caption))
+        }
+        else body.push(`<p>[视频] ${t}</p>`)
+        break
+      }
+      case 'drawio': {
+        const preview = String(b.attrs.preview ?? '')
+        const caption = String(b.attrs.caption ?? '')
+        if (preview && isSafeSrc(preview)) body.push(figure(`<img src="${esc(preview)}" alt="${esc(caption || 'draw.io')}">`, caption))
+        else body.push(`<p>[draw.io 图]${caption ? ' ' + esc(caption) : ''}</p>`)
+        break
+      }
+      case 'file': {
+        const src = String(b.attrs.src ?? '')
+        const name = String(b.attrs.name ?? '')
+        const size = Number(b.attrs.size ?? 0)
+        const sizeText = size > 0 ? ` (${humanSize(size)})` : ''
+        if (FILE_SRC.test(src)) body.push(`<p class="attachment"><a href="${esc(src)}" download="${esc(name)}">${esc(name || '附件')}</a>${sizeText}</p>`)
+        else body.push(`<p class="attachment">[附件] ${esc(name)}${sizeText}</p>`)
+        break
+      }
+      case 'linkCard': {
+        const url = String(b.attrs.url ?? '')
+        const title = esc(String(b.attrs.title ?? '') || url)
+        const desc = b.attrs.description ? `<span class="link-card-desc">${esc(String(b.attrs.description))}</span>` : ''
+        const site = b.attrs.site ? `<small>${esc(String(b.attrs.site))}</small>` : ''
+        const image = String(b.attrs.image ?? '')
+        const pic = FILE_SRC.test(image) ? `<img src="${esc(image)}" alt="">` : ''
+        if (WEB_URL.test(url)) body.push(`<a class="link-card" href="${esc(url)}" target="_blank" rel="noopener noreferrer"><span class="link-card-body"><strong>${title}</strong>${desc}${site}</span>${pic}</a>`)
+        else body.push(`<p>[链接] ${title}</p>`)
+        break
+      }
       case 'table': body.push('<table>' + tableRows(b).map((r, i) => '<tr>' + r.map((c) => `<t${i ? 'd' : 'h'}>${esc(c)}</t${i ? 'd' : 'h'}>`).join('') + '</tr>').join('') + '</table>'); break
       default: body.push(`<p${level ? ` data-indent="${level}" style="margin-left:${level * 2}em"` : ''}>${inlineHtml(b.delta)}</p>`)
     }
   }
   close()
-  return `<!doctype html>\n<html><head><meta charset="utf-8"><title>${esc(title)}</title></head>\n<body>\n${body.join('\n')}\n</body></html>\n`
+  const foot = notes.length
+    ? `<section class="footnotes"><ol>${notes.map((n) => `<li id="fn-${n.number}">${esc(n.note)} <a href="#fnref-${n.number}">↩</a></li>`).join('')}</ol></section>`
+    : ''
+  return `<!doctype html>\n<html><head><meta charset="utf-8"><title>${esc(title)}</title></head>\n<body>\n${body.join('\n')}\n${foot}</body></html>\n`
+}
+
+export interface DocxOptions {
+  /** Loads an image by its `src` (`/files/<id>` or https). Null when it cannot be loaded. */
+  loadAsset?: (src: string) => Promise<{ mime: string; data: Uint8Array } | null>
+  /** Block id -> rendered PNG for mermaid and math blocks, with its pixel size. */
+  renders?: Record<string, { png: Uint8Array; width: number; height: number }>
+}
+
+type Picture = { type: 'png' | 'jpg' | 'gif'; data: Uint8Array; width: number; height: number }
+
+/** Format and pixel size of a PNG, JPEG or GIF, read from its header. Null for anything else. */
+export function pictureSize(data: Uint8Array): Picture | null {
+  const u16be = (i: number): number => (data[i]! << 8) | data[i + 1]!
+  const u32be = (i: number): number => ((data[i]! << 24) >>> 0) + ((data[i + 1]! << 16) | (data[i + 2]! << 8) | data[i + 3]!)
+  if (data.length >= 24 && data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) {
+    return { type: 'png', data, width: u32be(16), height: u32be(20) }
+  }
+  if (data.length >= 10 && data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x38) {
+    return { type: 'gif', data, width: data[6]! | (data[7]! << 8), height: data[8]! | (data[9]! << 8) }
+  }
+  if (data.length > 4 && data[0] === 0xff && data[1] === 0xd8) {
+    let i = 2
+    while (i + 9 < data.length) {
+      if (data[i] !== 0xff) return null
+      const marker = data[i + 1]!
+      if (marker === 0xff) {
+        i++
+        continue
+      }
+      // Start-of-frame markers carry the size; C4, C8 and CC are not frames.
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        return { type: 'jpg', data, height: u16be(i + 5), width: u16be(i + 7) }
+      }
+      if (marker === 0x01 || marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
+        i += 2
+        continue
+      }
+      i += 2 + u16be(i + 2)
+    }
+  }
+  return null
+}
+
+/** Display size in Word: at most 600 px wide, scaled by a percentage, aspect ratio kept. */
+const fitPicture = (pic: Picture, pct = 100): { width: number; height: number } => {
+  const width = Math.max(1, Math.round((Math.min(pic.width, 600) * pct) / 100))
+  const height = Math.max(1, Math.round((pic.height * width) / Math.max(1, pic.width)))
+  return { width, height }
 }
 
 /** Word export. Pending changes are resolved by the caller's choice of projection. */
-export async function blocksToDocx(list: Block[], title: string): Promise<Uint8Array> {
-  const runs = (delta: Block['delta']): (TextRun | ExternalHyperlink)[] =>
+export async function blocksToDocx(input: Block[], title: string, opts: DocxOptions = {}): Promise<Uint8Array> {
+  const { blocks: list, notes } = withFootnoteRefs(input)
+  const picture = async (src: string): Promise<Picture | null> => {
+    if (!opts.loadAsset) return null
+    const got = await opts.loadAsset(src).catch(() => null)
+    const pic = got ? pictureSize(got.data) : null
+    return pic && pic.width > 0 && pic.height > 0 ? pic : null
+  }
+  const imagePara = (pic: Picture, pct = 100): DocxParagraph => {
+    const { width, height } = fitPicture(pic, pct)
+    return new DocxParagraph({
+      alignment: AlignmentType.CENTER,
+      children: [new ImageRun({ type: pic.type, data: pic.data, transformation: { width, height } })],
+    })
+  }
+  const captionPara = (s: string): DocxParagraph =>
+    new DocxParagraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: s, italics: true })] })
+  const runs = (delta: Block['delta']): (TextRun | ExternalHyperlink | FootnoteReferenceRun | ImageRun)[] =>
     delta.map((d) => {
       const a = d.attributes ?? {}
+      if (a.footnoteRef) return new FootnoteReferenceRun(Number(a.footnoteRef))
+      if (a.math) {
+        const r = maths.get(d.insert)
+        return r ? new ImageRun({ type: 'png', data: r.png, transformation: { width: r.width, height: r.height } }) : new TextRun(`$${d.insert}$`)
+      }
       const run = new TextRun({
         text: d.insert,
         bold: !!a.bold,
@@ -458,6 +664,15 @@ export async function blocksToDocx(list: Block[], title: string): Promise<Uint8A
       const href = (a.link as { href?: string } | undefined)?.href
       return href ? new ExternalHyperlink({ link: href, children: [run] }) : run
     })
+  // Inline formulas become PNG pictures sized to the text line (the svg height is about the ex height x 8 px).
+  const maths = new Map<string, { png: Uint8Array; width: number; height: number } | null>()
+  for (const b of list) {
+    for (const d of b.delta) {
+      if (!d.attributes?.math || maths.has(d.insert)) continue
+      const svg = mathToSvg(d.insert, { display: false })
+      maths.set(d.insert, svg ? await svgToPng(svg, 2) : null)
+    }
+  }
   const headings = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3]
   const children: (DocxParagraph | DocxTable)[] = []
   for (const b of list) {
@@ -468,9 +683,60 @@ export async function blocksToDocx(list: Block[], title: string): Promise<Uint8A
       case 'orderedItem': children.push(new DocxParagraph({ numbering: { reference: 'ol', level }, children: runs(b.delta) })); break
       case 'taskItem': children.push(new DocxParagraph({ bullet: { level }, children: [new TextRun(b.attrs.checked ? '☑ ' : '☐ '), ...runs(b.delta)] })); break
       case 'quote': case 'callout': children.push(new DocxParagraph({ indent: { left: 480 }, children: runs(b.delta) })); break
-      case 'codeBlock': for (const line of text(b).split('\n')) children.push(new DocxParagraph({ children: [new TextRun({ text: line, font: 'Menlo', size: 20 })] })); break
+      case 'codeBlock': {
+        const lang = String(b.attrs.language ?? '')
+        const r = (lang === 'mermaid' || lang === 'math') && b.blockId ? opts.renders?.[b.blockId] : undefined
+        if (r && r.width > 0 && r.height > 0) children.push(imagePara({ type: 'png', data: r.png, width: r.width, height: r.height }))
+        else for (const line of text(b).split('\n')) children.push(new DocxParagraph({ children: [new TextRun({ text: line, font: 'Menlo', size: 20 })] }))
+        break
+      }
       case 'divider': children.push(new DocxParagraph({ alignment: AlignmentType.CENTER, children: [new TextRun('———')] })); break
-      case 'image': children.push(new DocxParagraph({ children: [new TextRun(`[图片] ${String(b.attrs.alt ?? '')}`)] })); break
+      case 'image': {
+        const alt = String(b.attrs.alt ?? '')
+        const pic = await picture(String(b.attrs.src ?? ''))
+        if (pic) children.push(imagePara(pic, Number(b.attrs.width ?? 100)))
+        else children.push(new DocxParagraph({ children: [new TextRun(`[图片] ${alt}`)] }))
+        if (b.attrs.caption) children.push(captionPara(String(b.attrs.caption)))
+        break
+      }
+      case 'video': {
+        const src = String(b.attrs.src ?? '')
+        const title = String(b.attrs.title ?? '')
+        const poster = b.attrs.poster ? await picture(String(b.attrs.poster)) : null
+        if (poster) children.push(imagePara(poster))
+        const link: (TextRun | ExternalHyperlink)[] = [new TextRun(`[视频] ${title ? title + ' ' : ''}`)]
+        if (/^https:/i.test(src)) link.push(new ExternalHyperlink({ link: src, children: [new TextRun({ text: src, underline: {} })] }))
+        else link.push(new TextRun(src))
+        children.push(new DocxParagraph({ children: link }))
+        if (b.attrs.caption) children.push(captionPara(String(b.attrs.caption)))
+        break
+      }
+      case 'drawio': {
+        const preview = String(b.attrs.preview ?? '')
+        const pic = preview ? await picture(preview) : null
+        if (pic) children.push(imagePara(pic))
+        else children.push(new DocxParagraph({ children: [new TextRun('[draw.io 图]')] }))
+        if (b.attrs.caption) children.push(captionPara(String(b.attrs.caption)))
+        break
+      }
+      case 'file': {
+        const name = String(b.attrs.name ?? '') || '附件'
+        const size = Number(b.attrs.size ?? 0)
+        children.push(new DocxParagraph({ children: [new TextRun(`[附件] ${name}${size > 0 ? ` (${humanSize(size)})` : ''}`)] }))
+        break
+      }
+      case 'linkCard': {
+        const url = String(b.attrs.url ?? '')
+        const title = String(b.attrs.title ?? '') || url
+        const link = WEB_URL.test(url)
+          ? new ExternalHyperlink({ link: url, children: [new TextRun({ text: title, bold: true, underline: {} })] })
+          : new TextRun({ text: title, bold: true })
+        children.push(new DocxParagraph({ children: [link] }))
+        if (b.attrs.description) children.push(new DocxParagraph({ children: [new TextRun(String(b.attrs.description))] }))
+        const pic = b.attrs.image ? await picture(String(b.attrs.image)) : null
+        if (pic) children.push(imagePara(pic, 30))
+        break
+      }
       case 'table': {
         const rows = tableRows(b)
         if (rows.length) {
@@ -484,9 +750,12 @@ export async function blocksToDocx(list: Block[], title: string): Promise<Uint8A
       default: children.push(new DocxParagraph({ ...(level ? { indent: { left: 480 * level } } : {}), children: runs(b.delta) }))
     }
   }
+  // Real Word footnotes: the reference runs above point at these ids.
+  const footnotes = Object.fromEntries(notes.map((n) => [n.number, { children: [new DocxParagraph({ children: [new TextRun(n.note)] })] }]))
   const doc = new DocxDocument({
     title,
     numbering: { config: [{ reference: 'ol', levels: [0, 1, 2, 3, 4].map((l) => ({ level: l, format: LevelFormat.DECIMAL, text: `%${l + 1}.`, alignment: AlignmentType.START, style: { paragraph: { indent: { left: 480 * (l + 1), hanging: 360 } } } })) }] },
+    ...(notes.length ? { footnotes } : {}),
     sections: [{ children }],
   })
   return new Uint8Array(await Packer.toBuffer(doc))

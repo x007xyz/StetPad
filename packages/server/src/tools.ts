@@ -2,9 +2,12 @@ import {
   blockIdOf,
   blockIndex,
   blocks,
+  buildIndex,
   changes,
   changesInBlock,
   commentOnBlock,
+  footnoteAttr,
+  footnotesOf,
   listComments,
   replyToComment,
   resolveComment,
@@ -18,10 +21,12 @@ import {
   readBlock,
   trackedDeleteBlock,
   trackedInsertBlock,
+  viewBlock,
   type Baseline,
   type Meta,
   type RichBlock,
 } from '@stetpad/crdt'
+import { isEmbedUrl, isSafeSrc } from '@stetpad/clip'
 import type * as Y from 'yjs'
 
 /**
@@ -36,9 +41,25 @@ export interface ParsedBlock {
   text: string
 }
 
+export { isEmbedUrl, isSafeSrc }
+
+/** Blocks with no text of their own: an edit to them is a whole-block suggestion. */
+export const ATOM_TYPES = new Set(['image', 'video', 'drawio', 'table', 'divider', 'file', 'linkCard'])
+const DRAWIO_PLACEHOLDER = /^\[draw\.io diagram, \d+ chars — not shown\]$/
+/** draw.io XML longer than this is not sent to the agent; the placeholder stands in for it. */
+export const DRAWIO_SHOW_LIMIT = 30000
+
+const IMAGE_LINE = /^!\[([^\]\n]*)\]\(([^)\s"]+)(?:\s+"([^"\n]*)")?\)$/
+const VIDEO_LINE = /^!video\[([^\]\n]*)\]\(([^)\s"]+)(?:\s+"([^"\n]*)")?\)$/
+const FILE_LINE = /^!file\[([^\]\n]*)\]\(([^)\s]+)\)$/
+const LINK_LINE = /^!link\[([^\]\n]*)\]\(([^)\s]+)\)$/
+const FENCE = /^```([\w+#.-]*)[ \t]*\n?([\s\S]*?)\n?```$/
+const MATH = /^\$\$\n?([\s\S]*?)\n?\$\$$/
+
 /** One line of the block notation agents read and write. */
 export function parseBlock(content: string): ParsedBlock {
   const s = content.replace(/^\[[\w-]+\]\s*/, '')
+  const t = s.trim()
   let m: RegExpMatchArray | null
   if ((m = s.match(/^(#{1,3})\s+(.*)$/s))) return { type: 'heading', attrs: { level: m[1]!.length }, text: m[2]! }
   if ((m = s.match(/^[-*]\s+\[( |x|X)\]\s+(.*)$/s))) return { type: 'taskItem', attrs: { checked: m[1] !== ' ' }, text: m[2]! }
@@ -46,37 +67,214 @@ export function parseBlock(content: string): ParsedBlock {
   if ((m = s.match(/^\d+[.)]\s+(.*)$/s))) return { type: 'orderedItem', attrs: {}, text: m[1]! }
   if ((m = s.match(/^>\s*\[!NOTE\]\s*(.*)$/s))) return { type: 'callout', attrs: {}, text: m[1]! }
   if ((m = s.match(/^>\s?(.*)$/s))) return { type: 'quote', attrs: {}, text: m[1]! }
-  if ((m = s.match(/^```\w*\n?([\s\S]*?)\n?```$/))) return { type: 'codeBlock', attrs: {}, text: m[1]! }
-  if (/^---+$/.test(s.trim())) return { type: 'divider', attrs: {}, text: '' }
+  if ((m = t.match(IMAGE_LINE)) && isSafeSrc(m[2]!)) {
+    return { type: 'image', attrs: { src: m[2]!, alt: m[1] ?? '', caption: m[3] ?? '' }, text: '' }
+  }
+  if ((m = t.match(VIDEO_LINE))) {
+    const src = m[2]!
+    const attrs = { src, title: m[1] ?? '', caption: m[3] ?? '' }
+    if (/^\/files\/[\w-]+$/.test(src)) return { type: 'video', attrs: { ...attrs, kind: 'file' }, text: '' }
+    if (isEmbedUrl(src)) return { type: 'video', attrs: { ...attrs, kind: 'embed' }, text: '' }
+  }
+  if ((m = t.match(FILE_LINE)) && /^\/files\/[\w-]+$/.test(m[2]!)) {
+    return { type: 'file', attrs: { src: m[2]!, name: m[1] ?? '' }, text: '' }
+  }
+  if ((m = t.match(LINK_LINE)) && /^https?:\/\//i.test(m[2]!)) {
+    return { type: 'linkCard', attrs: { url: m[2]!, title: m[1] ?? '' }, text: '' }
+  }
+  if ((m = t.match(FENCE))) {
+    const lang = m[1] ?? ''
+    const body = m[2] ?? ''
+    if (lang === 'drawio') {
+      // A placeholder means "the diagram was too large to show": keep the stored XML.
+      const xml = body.trim()
+      return { type: 'drawio', attrs: DRAWIO_PLACEHOLDER.test(xml) ? {} : { xml }, text: '' }
+    }
+    return { type: 'codeBlock', attrs: { language: lang }, text: body }
+  }
+  if ((m = t.match(MATH))) return { type: 'codeBlock', attrs: { language: 'math' }, text: m[1]! }
+  if (/^---+$/.test(t)) return { type: 'divider', attrs: {}, text: '' }
+  const lines = t.split('\n').map((l) => l.trim())
+  if (lines.length && lines.every((l) => l.length > 1 && l.startsWith('|') && l.endsWith('|'))) {
+    const cells = (l: string): string[] => l.slice(1, -1).split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, '|'))
+    const rows = lines.filter((l) => !/^\|(\s*:?-{3,}:?\s*\|)+$/.test(l)).map(cells)
+    const width = Math.max(...rows.map((r) => r.length))
+    const grid = rows.map((r) => Array.from({ length: width }, (_, i) => r[i] ?? ''))
+    return { type: 'table', attrs: { rows: JSON.stringify(grid) }, text: '' }
+  }
   return { type: 'paragraph', attrs: {}, text: s }
 }
 
+/** Text placed inside a `![...]`, `"..."` or `!video[...]` part of the notation. */
+const oneLine = (s: string): string => s.replace(/[\r\n]+/g, ' ')
+const quoted = (s: string): string => oneLine(s).replace(/"/g, "'")
+const bracketed = (s: string): string => oneLine(s).replace(/[[\]]/g, '')
+const PIPE = (s: string): string => oneLine(s).replace(/\|/g, '\\|')
+
 export function formatBlock(b: { type: string; attrs: Record<string, unknown>; text: string }): string {
+  const a = b.attrs
   switch (b.type) {
     case 'heading':
-      return `${'#'.repeat(Number(b.attrs.level ?? 1))} ${b.text}`
+      return `${'#'.repeat(Number(a.level ?? 1))} ${b.text}`
     case 'bulletItem':
       return `- ${b.text}`
     case 'orderedItem':
       return `1. ${b.text}`
     case 'taskItem':
-      return `- [${b.attrs.checked ? 'x' : ' '}] ${b.text}`
+      return `- [${a.checked ? 'x' : ' '}] ${b.text}`
     case 'quote':
       return `> ${b.text}`
     case 'callout':
       return `> [!NOTE] ${b.text}`
-    case 'codeBlock':
-      return '```\n' + b.text + '\n```'
+    case 'codeBlock': {
+      const lang = String(a.language ?? '')
+      if (lang === 'math') return `$$\n${b.text}\n$$`
+      return '```' + lang + '\n' + b.text + '\n```'
+    }
     case 'divider':
       return '---'
-    case 'image':
-      return `![image](${String(b.attrs.src ?? '')})`
+    case 'image': {
+      const caption = quoted(String(a.caption ?? ''))
+      return `![${bracketed(String(a.alt ?? ''))}](${String(a.src ?? '')}${caption ? ` "${caption}"` : ''})`
+    }
+    case 'video': {
+      const caption = quoted(String(a.caption ?? ''))
+      return `!video[${bracketed(String(a.title ?? ''))}](${String(a.src ?? '')}${caption ? ` "${caption}"` : ''})`
+    }
+    case 'file':
+      return `!file[${bracketed(String(a.name ?? ''))}](${String(a.src ?? '')})`
+    case 'linkCard':
+      return `!link[${bracketed(String(a.title ?? ''))}](${String(a.url ?? '')})`
+    case 'drawio': {
+      const xml = String(a.xml ?? '')
+      const body = xml.length > DRAWIO_SHOW_LIMIT ? `[draw.io diagram, ${xml.length} chars — not shown]` : xml
+      return '```drawio\n' + body + '\n```'
+    }
+    case 'table': {
+      let rows: string[][] = []
+      try {
+        rows = JSON.parse(String(a.rows ?? '[]')) as string[][]
+      } catch {
+        rows = []
+      }
+      if (!rows[0]) return ''
+      const row = (r: string[]): string => '| ' + r.map(PIPE).join(' | ') + ' |'
+      return [row(rows[0]), '| ' + rows[0].map(() => '---').join(' | ') + ' |', ...rows.slice(1).map(row)].join('\n')
+    }
     default:
       return b.text
   }
 }
 
-const line = (b: RichBlock): string => `[${b.blockId}] ${formatBlock(b)}`
+/** Blocks whose text is inline notation: inline formulas show as `$…$`. */
+export const TEXT_TYPES = new Set(['paragraph', 'heading', 'bulletItem', 'orderedItem', 'taskItem', 'quote', 'callout'])
+
+type Run = { insert: string; attributes?: Record<string, unknown> }
+
+/** A literal `$` is `\$`; a backslash is doubled only where it would otherwise join the next `$` or `\`. */
+const encodePlain = (s: string): string => {
+  let out = ''
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]!
+    if (c === '$') out += '\\$'
+    else if (c === '\\') {
+      const n = s[i + 1]
+      out += n === undefined || n === '\\' || n === '$' ? '\\\\' : '\\'
+    } else out += c
+  }
+  return out
+}
+
+/**
+ * Plain text with its inline math shown as `$…$`. A `$` inside math is `\$`.
+ * Only the `math` mark changes the notation.
+ */
+export function deltaToNotation(delta: Run[]): string {
+  return delta
+    .map((r) => {
+      if (!r.insert) return ''
+      if (!r.attributes?.math) return encodePlain(r.insert)
+      // Spaces at either end stay outside the dollars: `$ x$` would read back as plain text (see notationToText).
+      const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(r.insert)!
+      return m[2] ? m[1] + '$' + m[2]!.replace(/\$/g, () => '\\$') + '$' + m[3] : r.insert
+    })
+    .join('')
+}
+
+/**
+ * The inverse of `deltaToNotation`: plain text and the math ranges in plain-text
+ * offsets. A `$` with no closing `$`, or whose formula would start or end with a space or be followed by a
+ * digit, is a literal dollar sign.
+ */
+export function notationToText(s: string): { text: string; math: Array<[number, number]> } {
+  let text = ''
+  const math: Array<[number, number]> = []
+  let open: { at: number; textAt: number } | null = null
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]!
+    if (c === '\\' && i + 1 < s.length) {
+      const n = s[i + 1]!
+      if (n === '$') {
+        text += '$'
+        i++
+        continue
+      }
+      if (n === '\\' && !open) {
+        text += '\\'
+        i++
+        continue
+      }
+    }
+    if (c === '$') {
+      if (!open) open = { at: i, textAt: text.length }
+      else {
+        const body = text.slice(open.textAt)
+        // As when typing a formula: no space just inside the dollars, and no digit right after the closing one,
+        // so an unescaped price such as "$5 and $6" stays text.
+        if (/^\s|\s$/.test(body) || /\d/.test(s[i + 1] ?? '')) {
+          return notationToText(s.slice(0, open.at) + '\\$' + s.slice(open.at + 1))
+        }
+        if (body) math.push([open.textAt, text.length])
+        open = null
+      }
+      continue
+    }
+    text += c
+  }
+  if (open) {
+    // The opening dollar has no partner, so it is text. Read the rest again with it escaped.
+    return notationToText(s.slice(0, open.at) + '\\$' + s.slice(open.at + 1))
+  }
+  return { text, math }
+}
+
+/** Math ranges, in plain-text offsets, of a delta. */
+export function mathRangesOf(delta: Run[]): Array<[number, number]> {
+  const out: Array<[number, number]> = []
+  let at = 0
+  for (const r of delta) {
+    const n = r.insert.length
+    if (n && r.attributes?.math) {
+      const last = out[out.length - 1]
+      if (last && last[1] === at) last[1] = at + n
+      else out.push([at, at + n])
+    }
+    at += n
+  }
+  return out
+}
+
+/** The text of a block as the AI reads it: inline formulas as `$…$`. */
+const shownText = (b: RichBlock): string => {
+  if (!TEXT_TYPES.has(b.type) || !b.delta.length) return b.text
+  return b.delta.map((d) => d.insert).join('') === b.text ? deltaToNotation(b.delta) : b.text
+}
+
+/** Plain text and math ranges of notation the AI wrote for a block. Other blocks are taken as they are. */
+const plainOf = (type: string, notation: string): { text: string; math: Array<[number, number]> } =>
+  TEXT_TYPES.has(type) ? notationToText(notation) : { text: notation, math: [] }
+
+const line = (b: RichBlock): string => `[${b.blockId}] ${formatBlock({ type: b.type, attrs: b.attrs, text: shownText(b) })}`
 
 export class DocTools {
   /** What the agent last saw of each block. Proposals are anchored to it. */
@@ -122,6 +320,16 @@ export class DocTools {
     return { words: count, blocks: all.length, outline: rows.join('\n') }
   }
 
+  /** The `/files/<id>` url of an image block of the revised document, or why there is none. */
+  imageSource(blockId: string): { ok: true; src: string } | { ok: false; error: string } {
+    const b = this.revised().find((x) => x.blockId === blockId)
+    if (!b) return { ok: false, error: '(no such block)' }
+    if (b.type !== 'image') return { ok: false, error: '这个段落不是图片' }
+    const src = String(b.attrs.src ?? '')
+    if (!/^\/files\/[\w-]+$/.test(src)) return { ok: false, error: '图片地址不是文档文件' }
+    return { ok: true, src }
+  }
+
   readBlocks(args: { block_ids?: string[]; from?: string; to?: string }): string {
     const all = this.revised()
     let picked: RichBlock[]
@@ -133,7 +341,62 @@ export class DocTools {
       picked = i < 0 ? [] : all.slice(i, (j < 0 ? all.length - 1 : j) + 1)
     }
     for (const b of picked) this.remember(b.blockId)
-    return picked.length ? picked.map(line).join('\n') : '(no such blocks)'
+    if (!picked.length) return '(no such blocks)'
+    const notes = this.footnoteLines(picked)
+    return notes ? `${picked.map(line).join('\n')}\n\nFootnotes:\n${notes}` : picked.map(line).join('\n')
+  }
+
+  /**
+   * Footnotes of the given blocks, listed apart from the text so they are never
+   * written back into a block. `[^n]` is the number the document export uses.
+   */
+  private footnoteLines(picked: RichBlock[]): string {
+    const numbers = new Map(footnotesOf(this.revised()).map((f) => [f.id, f.number]))
+    const rows: string[] = []
+    for (const b of picked) {
+      const here = new Map<string, { note: string; phrase: string }>()
+      for (const d of b.delta) {
+        const f = footnoteAttr(d.attributes)
+        if (!f) continue
+        const e = here.get(f.id)
+        if (e) e.phrase += d.insert
+        else here.set(f.id, { note: f.note, phrase: d.insert })
+      }
+      for (const [id, e] of here) rows.push(`[${b.blockId}] [^${numbers.get(id)}] "${e.phrase}" → ${e.note}`)
+    }
+    return rows.join('\n')
+  }
+
+  /**
+   * Attach a footnote to an exact phrase in one block. The phrase must occur
+   * once in the text the user sees. Footnotes are formatting, not suggestions.
+   */
+  addFootnote(blockId: string, phrase: string, note: string) {
+    const el = findBlock(this.doc, blockId)
+    if (!el) return { ok: false as const, error: `block ${blockId} does not exist` }
+    if (!phrase) return { ok: false as const, error: 'phrase is empty' }
+    if (!note.trim()) return { ok: false as const, error: 'note is empty' }
+    const visible = viewBlock(this.doc, el, buildIndex(this.doc)).filter((c) => !c.removed && c.del.length === 0)
+    const shown = visible.map((c) => c.ch).join('')
+    const first = shown.indexOf(phrase)
+    if (first < 0) return { ok: false as const, error: 'phrase was not found in the block' }
+    if (shown.indexOf(phrase, first + 1) >= 0) {
+      return { ok: false as const, error: 'phrase occurs more than once; use a longer phrase' }
+    }
+    // Characters of the phrase, grouped into runs of one Y.Text. A character pending
+    // deletion between two of them breaks the run, so it is not formatted.
+    const runs: { text: (typeof visible)[number]['text']; index: number; len: number }[] = []
+    for (const c of visible.slice(first, first + phrase.length)) {
+      const last = runs[runs.length - 1]
+      if (last && last.text === c.text && last.index + last.len === c.index) last.len++
+      else runs.push({ text: c.text, index: c.index, len: 1 })
+    }
+    const id = 'fn_' + Math.random().toString(36).slice(2, 10)
+    this.doc.transact(() => {
+      for (const r of runs) r.text.format(r.index, r.len, { footnote: { id, note: note.trim() } })
+    })
+    this.remember(blockId)
+    return { ok: true as const, footnote_id: id }
   }
 
   readAll(): string {
@@ -157,10 +420,11 @@ export class DocTools {
     }))
   }
 
-  private proposal(blockId: string, newText: string, reason?: string) {
+  private proposal(blockId: string, newText: string, reason?: string, math: Array<[number, number]> = []) {
     const base = this.baselines.get(blockId) ?? readBlock(this.doc, blockId)
     if (!base) return { ok: false as const, error: `block ${blockId} does not exist` }
     const r = proposeReplace(this.doc, base, newText, { ...this.meta, reason })
+    this.markMath(blockId, newText, math)
     this.remember(blockId)
     return {
       ok: true as const,
@@ -174,45 +438,128 @@ export class DocTools {
     }
   }
 
+  /** The element's attributes, without the block id. */
+  private attrsOf(el: Y.XmlElement): Record<string, unknown> {
+    const { blockId: _b, ...attrs } = el.getAttributes() as Record<string, unknown>
+    return attrs
+  }
+
+  /**
+   * Format the characters in the `math` ranges as inline math. Formatting is not a
+   * suggestion. It is applied only when the block's visible text is exactly `text`,
+   * so a concurrent edit makes it a no-op.
+   */
+  private markMath(blockId: string, text: string, math: Array<[number, number]>): void {
+    if (!math.length) return
+    const el = findBlock(this.doc, blockId)
+    if (!el) return
+    const visible = viewBlock(this.doc, el, buildIndex(this.doc)).filter((c) => !c.removed && c.del.length === 0)
+    if (visible.map((c) => c.ch).join('') !== text) return
+    const mathAt = new Map<Y.Text, Set<number>>()
+    const isMath = (c: (typeof visible)[number]): boolean => {
+      let set = mathAt.get(c.text)
+      if (!set) {
+        set = new Set()
+        let i = 0
+        for (const op of c.text.toDelta() as { insert?: unknown; attributes?: Record<string, unknown> }[]) {
+          const n = typeof op.insert === 'string' ? op.insert.length : 1
+          if (op.attributes?.math) for (let k = 0; k < n; k++) set.add(i + k)
+          i += n
+        }
+        mathAt.set(c.text, set)
+      }
+      return set.has(c.index)
+    }
+    const runs: { text: (typeof visible)[number]['text']; index: number; len: number }[] = []
+    for (const [a, b] of math) {
+      for (let i = a; i < b; i++) {
+        const c = visible[i]
+        if (!c || isMath(c)) continue
+        const last = runs[runs.length - 1]
+        if (last && last.text === c.text && last.index + last.len === c.index) last.len++
+        else runs.push({ text: c.text, index: c.index, len: 1 })
+      }
+    }
+    if (!runs.length) return
+    this.doc.transact(() => {
+      for (const r of runs) r.text.format(r.index, r.len, { math: true })
+    })
+  }
+
+  /**
+   * Propose a new block with the given type, attributes and text in place of `el`,
+   * and the removal of `el`. One change id covers both, so they are accepted or rejected together.
+   */
+  private replaceWithNew(
+    el: Y.XmlElement,
+    type: string,
+    attrs: Record<string, unknown>,
+    text: string,
+    reason?: string,
+    math: Array<[number, number]> = [],
+  ) {
+    const oldId = blockIdOf(el)
+    if (!this.revised().some((b) => b.blockId === oldId)) return { ok: false as const, error: `block ${oldId} is pending deletion` }
+    const changeId = newChangeId()
+    const id = newBlockId()
+    const meta = { ...this.meta, reason }
+    this.doc.transact(() => {
+      trackedInsertBlock(this.doc, blockIndex(this.doc, el) + 1, id, text, meta, { changeId, type, attrs })
+      trackedDeleteBlock(this.doc, el, meta, { changeId })
+    })
+    this.markMath(id, text, math)
+    this.remember(id)
+    return { ok: true as const, change_ids: [changeId], new_block_id: id, not_applied: [], current_text: text }
+  }
+
   replaceBlock(blockId: string, content: string, reason?: string) {
     const el = findBlock(this.doc, blockId)
     if (!el) return { ok: false as const, error: `block ${blockId} does not exist` }
     const next = parseBlock(content)
+    const conv = plainOf(next.type, next.text)
     if (next.type !== el.nodeName) {
       // The node type cannot change in place: propose a new block and the removal of the old one.
-      const changeId = newChangeId()
-      const id = newBlockId()
-      const meta = { ...this.meta, reason }
-      this.doc.transact(() => {
-        trackedInsertBlock(this.doc, blockIndex(this.doc, el) + 1, id, next.text, meta, {
-          changeId,
-          type: next.type,
-          attrs: next.attrs,
-        })
-        trackedDeleteBlock(this.doc, el, meta, { changeId })
-      })
-      this.remember(id)
-      return { ok: true as const, change_ids: [changeId], new_block_id: id, not_applied: [], current_text: next.text }
+      return this.replaceWithNew(el, next.type, next.attrs, conv.text, reason, conv.math)
+    }
+    const cur = this.attrsOf(el)
+    if (ATOM_TYPES.has(el.nodeName)) {
+      // Atom blocks have no text, so an attribute change is proposed as a replacement block, not applied in place.
+      const changed = Object.entries(next.attrs).some(([k, v]) => cur[k] !== v)
+      if (!changed) return { ok: true as const, change_ids: [], not_applied: [], current_text: '' }
+      const merged: Record<string, unknown> = { ...cur, ...next.attrs }
+      // A new diagram source has no rendered preview yet; the old PNG would show the old diagram.
+      if (el.nodeName === 'drawio' && 'xml' in next.attrs && next.attrs.xml !== cur.xml) merged.preview = ''
+      return this.replaceWithNew(el, el.nodeName, merged, '', reason)
+    }
+    if (el.nodeName === 'codeBlock' && String(next.attrs.language ?? '') !== String(cur.language ?? '')) {
+      // The language decides how the block renders, so it is a suggestion like any other change.
+      return this.replaceWithNew(el, 'codeBlock', { ...cur, language: String(next.attrs.language ?? '') }, next.text, reason)
     }
     for (const [k, v] of Object.entries(next.attrs)) {
+      if (el.nodeName === 'codeBlock' && k === 'language') continue
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (el.getAttribute(k) !== v) el.setAttribute(k, v as any)
     }
-    return this.proposal(blockId, next.text, reason)
+    return this.proposal(blockId, conv.text, reason, conv.math)
   }
 
   editText(blockId: string, oldText: string, newText: string, reason?: string) {
     const base = this.baselines.get(blockId) ?? readBlock(this.doc, blockId)
     if (!base) return { ok: false as const, error: `block ${blockId} does not exist` }
-    const first = base.text.indexOf(oldText)
-    if (!oldText || first < 0) {
+    const type = findBlock(this.doc, blockId)?.nodeName ?? ''
+    // The old text is matched against the plain text, so its `$` delimiters are not part of it.
+    const oldPlain = plainOf(type, oldText).text
+    const nu = plainOf(type, newText)
+    const first = base.text.indexOf(oldPlain)
+    if (!oldPlain || first < 0) {
       return { ok: false as const, error: 'old_text was not found in the block', current_text: base.text }
     }
-    if (base.text.indexOf(oldText, first + 1) >= 0) {
+    if (base.text.indexOf(oldPlain, first + 1) >= 0) {
       return { ok: false as const, error: 'old_text occurs more than once; include more context or use replace_block' }
     }
     this.baselines.set(blockId, base)
-    return this.proposal(blockId, base.text.slice(0, first) + newText + base.text.slice(first + oldText.length), reason)
+    const full = base.text.slice(0, first) + nu.text + base.text.slice(first + oldPlain.length)
+    return this.proposal(blockId, full, reason, nu.math.map(([a, b]) => [a + first, b + first] as [number, number]))
   }
 
   insertBlocks(afterBlockId: string | null, contents: string[], reason?: string) {
@@ -224,13 +571,21 @@ export class DocTools {
     }
     const changeId = newChangeId()
     const ids: string[] = []
+    const maths: Array<Array<[number, number]>> = []
     this.doc.transact(() => {
       contents.forEach((c, i) => {
         const b = parseBlock(c)
+        const conv = plainOf(b.type, b.text)
         const id = newBlockId()
         ids.push(id)
-        trackedInsertBlock(this.doc, index + i, id, b.text, { ...this.meta, reason }, { changeId, type: b.type, attrs: b.attrs })
+        maths.push(conv.math)
+        trackedInsertBlock(this.doc, index + i, id, conv.text, { ...this.meta, reason }, { changeId, type: b.type, attrs: b.attrs })
       })
+    })
+    ids.forEach((id, i) => {
+      const el = findBlock(this.doc, id)
+      const text = el ? viewBlock(this.doc, el, buildIndex(this.doc)).map((c) => c.ch).join('') : ''
+      this.markMath(id, text, maths[i]!)
     })
     ids.forEach((id) => this.remember(id))
     return { ok: true as const, change_ids: [changeId], new_block_ids: ids }
@@ -267,6 +622,8 @@ export class DocTools {
       trackedDeleteBlock(this.doc, el, meta, { changeId })
     })
     if (failed) return { ok: false as const, error: failed }
+    // The moved text keeps its formulas.
+    if (TEXT_TYPES.has(b.type)) this.markMath(id, b.text, mathRangesOf(b.delta))
     this.remember(id)
     return { ok: true as const, change_ids: [changeId], new_block_id: id }
   }

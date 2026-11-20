@@ -10,9 +10,10 @@
     "build": "node build.mjs",
     "start": "npm run build && electron .",
     "smoke:dev": "npm run build && electron . --smoke",
-    "pack": "npm run build && electron-builder --dir",
+    "pack": "npm run build && node scripts/electron-builder.mjs --dir",
     "smoke:packed": "node run-packed.cjs --smoke",
-    "pack:win": "npm run build && electron-builder --win --x64 --dir"
+    "pack:win": "npm run build && node scripts/electron-builder.mjs --win --x64 --dir",
+    "fetch:drawio": "node scripts/fetch-drawio.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.1.1",
@@ -38,6 +39,12 @@
       "**/*.node"
     ],
     "electronDist": "node_modules/electron/dist",
+    "protocols": [
+      {
+        "name": "Stetpad",
+        "schemes": ["stetpad"]
+      }
+    ],
     "mac": {
       "identity": null,
       "target": "dir"

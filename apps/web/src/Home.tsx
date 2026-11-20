@@ -1,6 +1,6 @@
 import { FilePlus2, FileText, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
-import { api, fmtTime, isDesktop, post, type DocMeta, type RichBlock } from './api'
+import { api, fmtTime, getToken, isDesktop, post, type DocMeta, type RichBlock } from './api'
 import { go } from './App'
 import { Button } from './components/ui/button'
 import { Dialog, DialogContent } from './components/ui/dialog'
@@ -9,15 +9,47 @@ import { SidebarToggle, useWorkspace } from './Shell'
 
 interface Preview { title: string; blocks: RichBlock[] }
 
-/** The landing page: recent documents of the current space, plus import by drag and drop. */
+/** The message for an import that left files out: their names, five at most. */
+const droppedNote = (dropped: { name: string | null; mime: string }[]): string => {
+  const names = dropped.slice(0, 5).map((d) => d.name ?? (d.mime || '未命名文件'))
+  return `导入完成，但有 ${dropped.length} 个文件没有带过来：${names.join('、')}${dropped.length > 5 ? '等' : ''}`
+}
+
+/** The landing page: the documents, plus import by drag and drop. */
 export function Home() {
-  const { docs, canCreate, createDoc, current, space } = useWorkspace()
+  const { docs, createDoc } = useWorkspace()
   const [preview, setPreview] = useState<Preview | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
   const file = useRef<HTMLInputElement>(null)
 
+  /** A document package (.stetpad zip, or a .stetpad.json export): the server creates the document from it. */
+  const importPackage = async (f: File): Promise<void> => {
+    setError('')
+    setBusy('正在导入文档包…')
+    try {
+      const res = await fetch('/api/import/package', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${getToken()}`, 'content-type': 'application/octet-stream' },
+        body: f,
+      })
+      if (!res.ok) {
+        const j = (await res.json().catch(() => null)) as { error?: string } | null
+        throw new Error(j?.error ?? `导入失败（${res.status}）`)
+      }
+      const doc = (await res.json()) as DocMeta & { dropped?: { name: string | null; mime: string }[] }
+      go({ page: 'doc', id: doc.id })
+      // Files the package could not bring across are named after the document opens.
+      const dropped = doc.dropped ?? []
+      if (dropped.length > 0) window.setTimeout(() => alert(droppedNote(dropped)), 300)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '导入失败')
+    } finally {
+      setBusy('')
+    }
+  }
   const importFile = async (f: File): Promise<void> => {
+    if (/\.stetpad(\.zip|\.json)?$/i.test(f.name)) return importPackage(f)
     setError('')
     setBusy(`正在解析 ${f.name}…`)
     try {
@@ -32,7 +64,7 @@ export function Home() {
   }
   const confirmImport = async (): Promise<void> => {
     if (!preview) return
-    go({ page: 'doc', id: (await post<DocMeta>('/import/create', { ...preview, spaceId: space || undefined })).id })
+    go({ page: 'doc', id: (await post<DocMeta>('/import/create', preview)).id })
   }
 
   return (
@@ -47,16 +79,15 @@ export function Home() {
     >
       <header className="flex items-center gap-2 px-3 py-2">
         <SidebarToggle />
-        <span className="truncate text-sm text-muted-foreground">{current?.name ?? '个人空间'}</span>
       </header>
       <main className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-3xl px-5 pb-24 pt-10 sm:px-10 sm:pt-16">
-          <h1 className="text-3xl font-bold tracking-tight">{current?.name ?? '个人空间'}</h1>
+          <h1 className="text-3xl font-bold tracking-tight">我的文档</h1>
           <div className="mt-5 flex flex-wrap items-center gap-2">
-            <Button variant="default" disabled={!canCreate} onClick={createDoc}><FilePlus2 />新建文档</Button>
-            <Button disabled={!canCreate} onClick={() => file.current?.click()}><Upload />导入文件</Button>
+            <Button variant="default" onClick={createDoc}><FilePlus2 />新建文档</Button>
+            <Button onClick={() => file.current?.click()}><Upload />导入文件</Button>
           </div>
-          <input ref={file} type="file" hidden accept=".docx,.pdf,.html,.htm,.md,.markdown,.txt" onChange={(e) => {
+          <input ref={file} type="file" hidden accept=".docx,.pdf,.html,.htm,.md,.markdown,.txt,.stetpad,.json" onChange={(e) => {
             const f = e.target.files?.[0]
             e.target.value = ''
             if (f) void importFile(f)

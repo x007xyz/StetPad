@@ -1,11 +1,12 @@
 import { app, BrowserWindow, dialog, Menu, safeStorage, shell } from 'electron'
 import { spawnSync } from 'node:child_process'
 import * as fs from 'node:fs'
+import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { startServer, type RunningServer } from '../../packages/server/src/index'
 
 /**
- * Desktop shell. The whole server runs inside this process, in local mode:
+ * Desktop shell. The whole server runs inside this process as the local single-user server:
  * documents live in a SQLite file under the user data directory, the service
  * listens on loopback only, and the window is the only holder of its token.
  */
@@ -20,6 +21,30 @@ if (SMOKE) {
 }
 
 let server: RunningServer | null = null
+const pendingDeepLinks: string[] = []
+const CLIPPER_PORTS = [27182, 27183, 27184, 27185, 27186]
+
+function canBind(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const srv = createServer()
+    srv.once('error', () => resolve(false))
+    srv.once('listening', () => srv.close(() => resolve(true)))
+    srv.listen(port, '127.0.0.1')
+  })
+}
+
+async function pickPort(candidates: number[]): Promise<number> {
+  for (const p of candidates) {
+    if (await canBind(p)) return p
+  }
+  return 0
+}
+
+/** The bundled draw.io webapp: in the app's resources when packaged, else desktop/drawio. Undefined when absent. */
+function drawioFolder(): string | undefined {
+  const dir = app.isPackaged ? join(process.resourcesPath, 'drawio') : join(__dirname, '..', 'drawio')
+  return fs.existsSync(join(dir, 'index.html')) ? dir : undefined
+}
 
 const secrets = {
   encrypt: (plain: string): string =>
@@ -28,8 +53,8 @@ const secrets = {
     stored.startsWith('enc:') ? safeStorage.decryptString(Buffer.from(stored.slice(4), 'base64')) : stored,
 }
 
-function createWindow(): void {
-  if (!server) return
+function createWindow(): BrowserWindow | null {
+  if (!server) return null
   const origin = `http://127.0.0.1:${server.port}`
   const win = new BrowserWindow({
     width: 1280,
@@ -57,6 +82,68 @@ function createWindow(): void {
     return { action: 'deny' }
   })
   void win.loadURL(origin + '/')
+  return win
+}
+
+function ensureWindow(): BrowserWindow | null {
+  const existing = BrowserWindow.getAllWindows()[0]
+  if (existing) {
+    if (existing.isMinimized()) existing.restore()
+    existing.focus()
+    return existing
+  }
+  return createWindow()
+}
+
+async function confirmClipperPair(deviceName: string): Promise<boolean> {
+  const win = ensureWindow()
+  const opts = {
+    type: 'question' as const,
+    title: '浏览器插件连接请求',
+    message: `允许「${deviceName}」连接本机 Stetpad 吗？`,
+    detail: '授权后，该浏览器插件可将剪藏内容保存到你的本机文档，或触发 AI 生成待审阅的修订建议。你随时可在应用「设置」中撤销授权。',
+    buttons: ['允许连接', '拒绝'],
+    defaultId: 0,
+    cancelId: 1,
+  }
+  const res = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
+  return res.response === 0
+}
+
+async function handleDeepLink(rawUrl: string): Promise<void> {
+  if (!rawUrl.startsWith('stetpad://')) return
+  if (!server) {
+    pendingDeepLinks.push(rawUrl)
+    return
+  }
+  let u: URL
+  try {
+    u = new URL(rawUrl)
+  } catch {
+    return
+  }
+  const action = (u.hostname || u.pathname.replace(/^\/+/, '')).toLowerCase()
+  if (action === 'open') {
+    const win = ensureWindow()
+    if (!win) return
+    const doc = u.searchParams.get('doc')
+    const folder = u.searchParams.get('folder')
+    const hash = doc ? `#/d/${encodeURIComponent(doc)}` : folder ? `#/f/${encodeURIComponent(folder)}` : '#/'
+    void win.loadURL(`http://127.0.0.1:${server.port}/${hash}`)
+    return
+  }
+  if (action === 'pair') {
+    const code = u.searchParams.get('code') ?? ''
+    const challenge = u.searchParams.get('challenge') ?? ''
+    const name = (u.searchParams.get('name') || '浏览器插件').slice(0, 60)
+    if (!code || !challenge) return
+    if (!(await confirmClipperPair(name))) return
+    await fetch(`http://127.0.0.1:${server.port}/api/clipper/pair/approve`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${server.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ code, challenge, deviceName: name }),
+    }).catch((err) => console.error('clipper pair approve failed', err))
+  }
 }
 
 /**
@@ -110,7 +197,7 @@ async function smoke(s: RunningServer): Promise<boolean> {
   await fetch(`${base}/api/docs/${doc.id}`, { method: 'DELETE', headers: auth })
   const checks = {
     unauthorized,
-    localUser: me.user?.id === 'local' && me.mode === 'local',
+    localUser: me.user?.id === 'local',
     importExport: md.includes('# Smoke') && md.includes('**world**') && md.includes('- a'),
     versionOnImport: Array.isArray(versions) && versions.some((v: { trigger: string }) => v.trigger === 'import'),
     servesWebApp: page.includes('<div id="root">'),
@@ -127,17 +214,20 @@ async function smoke(s: RunningServer): Promise<boolean> {
 if (!app.requestSingleInstanceLock() && !SMOKE) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
-    const win = BrowserWindow.getAllWindows()[0]
-    if (win) {
-      if (win.isMinimized()) win.restore()
-      win.focus()
-    } else createWindow()
+  app.on('open-url', (event, url) => {
+    event.preventDefault()
+    void handleDeepLink(url)
+  })
+  app.on('second-instance', (_event, argv) => {
+    ensureWindow()
+    const deep = argv.find((a) => a.startsWith('stetpad://'))
+    if (deep) void handleDeepLink(deep)
   })
   void app.whenReady().then(async () => {
     try {
       // The product was renamed from "AI Writer", which moved Electron's userData dir. Copy the old data over once; the old copy is kept.
       if (!SMOKE) {
+        if (app.isPackaged) app.setAsDefaultProtocolClient('stetpad')
         try {
           const oldData = join(app.getPath('appData'), 'AI Writer', 'data')
           const newData = join(app.getPath('userData'), 'data')
@@ -147,11 +237,13 @@ if (!app.requestSingleInstanceLock() && !SMOKE) {
         }
       }
       server = await startServer({
-        mode: 'local',
         dataDir: join(app.getPath('userData'), SMOKE ? 'smoke-data' : 'data'),
-        port: 0,
+        port: SMOKE ? 0 : await pickPort(CLIPPER_PORTS),
         staticDir: join(__dirname, '..', 'web'),
+        // draw.io served offline from the folder fetched by `npm run fetch:drawio`, when it was bundled.
+        drawioDir: drawioFolder(),
         secrets,
+        onPairRequest: ({ deviceName }) => confirmClipperPair(deviceName),
         // External agents start this bridge themselves; Electron runs it as plain Node.
         mcpCommand: { command: process.execPath, args: [join(__dirname, 'mcp.mjs')], env: { ELECTRON_RUN_AS_NODE: '1' } },
       })
@@ -163,6 +255,9 @@ if (!app.requestSingleInstanceLock() && !SMOKE) {
       }
       if (process.platform !== 'darwin') Menu.setApplicationMenu(null)
       createWindow()
+      const startupUrl = process.argv.find((a) => a.startsWith('stetpad://'))
+      if (startupUrl) pendingDeepLinks.push(startupUrl)
+      while (pendingDeepLinks.length) void handleDeepLink(pendingDeepLinks.shift()!)
       void checkForUpdates()
     } catch (err) {
       console.error(err)

@@ -1,6 +1,10 @@
 import { Extension, Node, mergeAttributes, textblockTypeInputRule } from '@tiptap/core'
 import { Plugin, TextSelection } from '@tiptap/pm/state'
 import { ySyncPluginKey } from '@tiptap/y-tiptap'
+import { AI_DIAGRAM_NEW_EVENT, codeBlockView, diagramEditingPlugin, type AiDiagramNewRequest } from './diagram'
+import { DRAWIO_PREVIEW, drawioNodeView } from './drawio'
+import { describeImage, freshBlockId, IMAGE_ACTION_EVENT, type ImageAction } from './media'
+import { validVideo, videoNodeView } from './video'
 
 /**
  * The document schema: a flat list of blocks, the way Notion and Feishu
@@ -8,7 +12,7 @@ import { ySyncPluginKey } from '@tiptap/y-tiptap'
  */
 
 export const TEXT_BLOCKS = ['paragraph', 'heading', 'bulletItem', 'orderedItem', 'taskItem', 'quote', 'callout', 'codeBlock']
-export const ALL_BLOCKS = [...TEXT_BLOCKS, 'divider', 'image', 'table']
+export const ALL_BLOCKS = [...TEXT_BLOCKS, 'divider', 'image', 'table', 'video', 'drawio', 'file', 'linkCard']
 const LIST = ['bulletItem', 'orderedItem', 'taskItem']
 const INDENTABLE = [...LIST, 'paragraph']
 
@@ -106,12 +110,32 @@ export const CodeBlock = Node.create({
   marks: '',
   code: true,
   defining: true,
+  addAttributes() {
+    return {
+      // '' for plain code; 'mermaid' and 'math' get a rendered preview (see diagram.ts).
+      language: {
+        default: '',
+        parseHTML: (el: HTMLElement) =>
+          el.getAttribute('data-language') ?? el.querySelector('code')?.className.match(/language-([\w-]+)/)?.[1] ?? '',
+        renderHTML: (attrs: { language?: string }) => (attrs.language ? { 'data-language': attrs.language } : {}),
+      },
+    }
+  },
   parseHTML: () => [{ tag: 'pre', preserveWhitespace: 'full' as const }],
   renderHTML({ HTMLAttributes }) {
     return ['pre', mergeAttributes(HTMLAttributes, { class: 'blk code' }), ['code', 0]]
   },
+  addNodeView() {
+    return codeBlockView
+  },
+  addProseMirrorPlugins() {
+    return [diagramEditingPlugin]
+  },
   addInputRules() {
-    return [textblockTypeInputRule({ find: /^```\s$/, type: this.type })]
+    return [
+      textblockTypeInputRule({ find: /^```([\w-]*)\s$/, type: this.type, getAttributes: (match) => ({ language: match[1] ?? '' }) }),
+      textblockTypeInputRule({ find: /^\$\$\s$/, type: this.type, getAttributes: () => ({ language: 'math' }) }),
+    ]
   },
 })
 export const Divider = Node.create({
@@ -124,20 +148,212 @@ export const Divider = Node.create({
     return ['hr', mergeAttributes(HTMLAttributes, { class: 'blk divider' })]
   },
 })
+/** Only web, data-image and our own `/files/<id>` urls are allowed into the DOM. */
+const safeSrc = (src: string): boolean => /^https?:/i.test(src) || /^data:image\//i.test(src) || /^\/files\/[\w-]+$/.test(src)
+const clampWidth = (n: number): number => (Number.isFinite(n) && n > 0 ? Math.min(100, Math.max(10, Math.round(n))) : 100)
+
 export const Image = Node.create({
   name: 'image',
   group: 'block',
   atom: true,
   selectable: true,
   draggable: true,
-  addAttributes: () => ({ src: { default: '' }, alt: { default: '' } }),
-  parseHTML: () => [{ tag: 'img[src]' }],
-  renderHTML({ HTMLAttributes }) {
-    const src = String(HTMLAttributes.src ?? '')
-    const ok = /^https?:/i.test(src) || /^data:image\//i.test(src) || /^\/files\/[\w-]+$/.test(src)
-    return ['img', mergeAttributes(HTMLAttributes, { class: 'blk image', src: ok ? src : '' })]
+  // The document the image belongs to; the AI buttons need it.
+  addOptions: () => ({ docId: '' }),
+  addAttributes: () => ({
+    src: { default: '' },
+    alt: { default: '' },
+    caption: {
+      default: '',
+      // From a figure's figcaption; a bare img has none.
+      parseHTML: (el: HTMLElement) => el.querySelector('figcaption')?.textContent?.trim() ?? '',
+    },
+    // Percent of the content column.
+    width: {
+      default: 100,
+      parseHTML: (el: HTMLElement) => clampWidth(Number(el.getAttribute('data-width'))),
+    },
+  }),
+  parseHTML: () => [{ tag: 'figure:has(img)' }, { tag: 'img[src]' }],
+  renderHTML({ node }) {
+    const src = String(node.attrs.src ?? '')
+    const alt = String(node.attrs.alt ?? '')
+    const caption = String(node.attrs.caption ?? '')
+    const figure: Record<string, string> = { class: 'blk image', 'data-width': String(clampWidth(Number(node.attrs.width))) }
+    if (node.attrs.blockId) figure['data-block-id'] = String(node.attrs.blockId)
+    const img = ['img', { src: safeSrc(src) ? src : '', alt }] as const
+    return caption ? ['figure', figure, img, ['figcaption', {}, caption]] : ['figure', figure, img]
+  },
+  /**
+   * An image with an optional caption and a handle on its right edge. The
+   * handle changes the width live and commits once on mouseup; the caption
+   * commits on blur or Enter. Both are typed in place, so events there stay
+   * with the node.
+   */
+  addNodeView() {
+    const docId = this.options.docId
+    return ({ node, editor, getPos }) => {
+      let current = node
+      const dom = document.createElement('figure')
+      dom.className = 'blk image-wrap'
+      if (editor.isEditable) dom.classList.add('editable')
+      const frame = document.createElement('div')
+      frame.className = 'image-frame'
+      const img = document.createElement('img')
+      img.draggable = false
+      frame.appendChild(img)
+      const cap = document.createElement('figcaption')
+      dom.append(frame, cap)
+
+      const widthOf = (): number => clampWidth(Number(current.attrs.width))
+      const paint = (): void => {
+        const { src, alt, caption, blockId } = current.attrs as { src: string; alt: string; caption: string; blockId?: string | null }
+        if (blockId) dom.setAttribute('data-block-id', String(blockId))
+        else dom.removeAttribute('data-block-id')
+        if (safeSrc(String(src ?? ''))) img.setAttribute('src', String(src))
+        else img.removeAttribute('src')
+        img.alt = String(alt ?? '')
+        img.title = String(alt ?? '')
+        frame.style.width = widthOf() + '%'
+        // Leave the caption alone while the user is typing in it.
+        if (document.activeElement !== cap) cap.textContent = String(caption ?? '')
+        cap.hidden = !editor.isEditable && !caption
+      }
+
+      if (editor.isEditable) {
+        // Buttons on hover or selection: describe with AI, crop or edit with AI. A click never reaches the editor.
+        const tools = document.createElement('div')
+        tools.className = 'image-tools'
+        tools.contentEditable = 'false'
+        const button = (label: string, onClick: (b: HTMLButtonElement) => void): HTMLButtonElement => {
+          const b = document.createElement('button')
+          b.type = 'button'
+          b.textContent = label
+          b.addEventListener('mousedown', (e) => e.preventDefault())
+          b.addEventListener('click', (e) => {
+            e.preventDefault()
+            onClick(b)
+          })
+          return b
+        }
+        const describeBtn = button('AI 描述', (b) => {
+          const src = String(current.attrs.src ?? '')
+          if (!docId || !src) return
+          b.disabled = true
+          b.textContent = '描述中…'
+          describeImage(docId, src)
+            .then((alt) => {
+              const pos = getPos()
+              if (typeof pos === 'number' && alt && editor.isEditable && String(current.attrs.src ?? '') === src) {
+                editor.view.dispatch(editor.view.state.tr.setNodeAttribute(pos, 'alt', alt))
+              }
+            })
+            .catch((e: unknown) => alert(e instanceof Error ? e.message : '描述失败'))
+            .finally(() => {
+              b.disabled = false
+              b.textContent = 'AI 描述'
+            })
+        })
+        describeBtn.hidden = !docId
+        const actionBtn = (label: string, action: ImageAction): HTMLButtonElement =>
+          button(label, () => {
+            const pos = getPos()
+            const src = String(current.attrs.src ?? '')
+            if (typeof pos !== 'number' || !src) return
+            // Images inserted by an older path may have no block id yet; the dialogs find the image by it.
+            let blockId = current.attrs.blockId as string | null | undefined
+            if (!blockId) {
+              blockId = freshBlockId()
+              editor.view.dispatch(editor.view.state.tr.setNodeAttribute(pos, 'blockId', blockId))
+            }
+            window.dispatchEvent(new CustomEvent(IMAGE_ACTION_EVENT, { detail: { blockId, src, action } }))
+          })
+        tools.append(describeBtn, actionBtn('编辑', 'crop'), actionBtn('AI 改图', 'ai-edit'))
+        frame.appendChild(tools)
+
+        // Read-only views show the caption as plain text.
+        cap.contentEditable = 'plaintext-only'
+        cap.dataset.placeholder = '添加图注'
+        const handle = document.createElement('div')
+        handle.className = 'image-handle'
+        handle.contentEditable = 'false'
+        frame.appendChild(handle)
+        handle.addEventListener('mousedown', (e) => {
+          e.preventDefault()
+          const parentWidth = dom.parentElement?.getBoundingClientRect().width || 1
+          const startX = e.clientX
+          const startW = widthOf()
+          let next = startW
+          dom.classList.add('resizing')
+          const move = (ev: MouseEvent): void => {
+            next = clampWidth(startW + ((ev.clientX - startX) / parentWidth) * 100)
+            frame.style.width = next + '%'
+          }
+          const up = (): void => {
+            window.removeEventListener('mousemove', move)
+            window.removeEventListener('mouseup', up)
+            dom.classList.remove('resizing')
+            frame.style.width = widthOf() + '%'
+            const pos = getPos()
+            if (typeof pos === 'number' && editor.isEditable && next !== widthOf()) {
+              editor.view.dispatch(editor.view.state.tr.setNodeAttribute(pos, 'width', next))
+            }
+          }
+          window.addEventListener('mousemove', move)
+          window.addEventListener('mouseup', up)
+        })
+        cap.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.isComposing) {
+            e.preventDefault()
+            cap.blur()
+          }
+        })
+        cap.addEventListener('blur', () => {
+          const pos = getPos()
+          if (typeof pos !== 'number' || !editor.isEditable) return
+          const text = (cap.textContent ?? '').replace(/\s+/g, ' ').trim()
+          if (text !== String(current.attrs.caption ?? '')) editor.view.dispatch(editor.view.state.tr.setNodeAttribute(pos, 'caption', text))
+        })
+      }
+      paint()
+      return {
+        dom,
+        update(next) {
+          if (next.type !== current.type) return false
+          const a = current.attrs
+          const b = next.attrs
+          const changed = a.src !== b.src || a.alt !== b.alt || a.caption !== b.caption || a.width !== b.width || a.blockId !== b.blockId
+          current = next
+          if (changed) paint()
+          return true
+        },
+        selectNode() {
+          dom.classList.add('selected')
+        },
+        deselectNode() {
+          dom.classList.remove('selected')
+        },
+        stopEvent: (e) => {
+          const t = e.target as HTMLElement | null
+          return t?.closest?.('figcaption, .image-handle, .image-tools') != null
+        },
+        ignoreMutation: () => true,
+      }
+    }
   },
 })
+/** A table as a Markdown table: the first row is the header. Pipes and line breaks in cells are escaped or flattened. */
+export function tableMarkdown(rows: string[][]): string {
+  const cell = (s: string): string => s.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim()
+  const width = Math.max(1, ...rows.map((r) => r.length))
+  const line = (r: string[]): string => `| ${Array.from({ length: width }, (_, j) => cell(r[j] ?? '')).join(' | ')} |`
+  const [head = [], ...body] = rows
+  return [line(head), `| ${Array.from({ length: width }, () => '---').join(' | ')} |`, ...body.map(line)].join('\n')
+}
+
+/** The prompt of a table's "生成图表" button. */
+const TABLE_CHART_PROMPT = '根据这张表格的数据画一张合适的图表（柱状图或折线图用 xychart-beta，占比用 pie），标题用表格的主题'
+
 export const Table = Node.create({
   name: 'table',
   group: 'block',
@@ -227,6 +443,16 @@ export const Table = Node.create({
           button('+ 列', (r) => r.map((row) => [...row, '']))
           button('− 行', (r) => (r.length > 1 ? r.slice(0, -1) : r))
           button('− 列', (r) => (r[0]!.length > 1 ? r.map((row) => row.slice(0, -1)) : r))
+          const chart = document.createElement('button')
+          chart.type = 'button'
+          chart.textContent = '生成图表'
+          chart.addEventListener('mousedown', (e) => e.preventDefault())
+          chart.addEventListener('click', () => {
+            const detail: AiDiagramNewRequest = { kind: 'mermaid', prompt: TABLE_CHART_PROMPT, context: tableMarkdown(parse()) }
+            if (current.attrs.blockId) detail.afterBlockId = String(current.attrs.blockId)
+            window.dispatchEvent(new CustomEvent(AI_DIAGRAM_NEW_EVENT, { detail }))
+          })
+          bar.appendChild(chart)
           dom.appendChild(bar)
         }
         if (focus) dom.querySelector<HTMLElement>(`[data-cell="${focus}"]`)?.focus()
@@ -246,6 +472,115 @@ export const Table = Node.create({
         ignoreMutation: () => true,
       }
     }
+  },
+})
+
+/**
+ * An imported video, not edited here: `kind` 'file' is an uploaded `/files/<id>`,
+ * 'embed' is the original B 站 / YouTube / Vimeo page URL. Only the node view
+ * knows how to turn either into a player (see video.ts).
+ */
+export const Video = Node.create({
+  name: 'video',
+  group: 'block',
+  atom: true,
+  selectable: true,
+  draggable: true,
+  // The document the video belongs to; the transcribe button and the poster frame need it.
+  addOptions: () => ({ docId: '' }),
+  addAttributes: () => ({
+    src: { default: '' },
+    kind: { default: 'file' },
+    title: { default: '' },
+    caption: { default: '' },
+    // A JPEG of the document's files: the frame shown before the video plays.
+    poster: { default: '' },
+    // WebVTT subtitles of the document's files, from transcription.
+    captions: { default: '' },
+  }),
+  parseHTML: () => [
+    {
+      tag: 'figure.blk.video[data-src]',
+      getAttrs: (el: HTMLElement) => {
+        const src = el.getAttribute('data-src') ?? ''
+        const kind = el.getAttribute('data-kind') === 'embed' ? 'embed' : 'file'
+        if (!validVideo(kind, src)) return false
+        return {
+          src,
+          kind,
+          title: el.querySelector('video, iframe')?.getAttribute('title') ?? '',
+          caption: el.querySelector('figcaption')?.textContent?.trim() ?? '',
+        }
+      },
+    },
+  ],
+  renderHTML({ node }) {
+    const src = String(node.attrs.src ?? '')
+    const kind = node.attrs.kind === 'embed' ? 'embed' : 'file'
+    const title = String(node.attrs.title ?? '')
+    const caption = String(node.attrs.caption ?? '')
+    const figure: Record<string, string> = { class: 'blk video', 'data-kind': kind, 'data-src': validVideo(kind, src) ? src : '' }
+    if (node.attrs.blockId) figure['data-block-id'] = String(node.attrs.blockId)
+    // The copy carries the page link; the player is rebuilt from it.
+    const poster = String(node.attrs.poster ?? '')
+    const media =
+      kind === 'embed'
+        ? ['iframe', { src: '', title, allowfullscreen: 'true', loading: 'lazy' }]
+        : ['video', { src: '', controls: 'true', preload: 'metadata', playsinline: 'true', title, ...(FILE_SRC_RE.test(poster) ? { poster } : {}) }]
+    return caption ? ['figure', figure, media, ['figcaption', {}, caption]] : ['figure', figure, media]
+  },
+  addNodeView() {
+    return videoNodeView(this.options.docId)
+  },
+})
+
+const FILE_SRC_RE = /^\/files\/[\w-]+$/
+
+/** The XML must be an mxGraphModel or an mxfile; anything else is dropped on parse. */
+const drawioXml = (s: string): string => (/<mx(GraphModel|file)[\s>]/.test(s) ? s : '')
+
+/**
+ * A draw.io diagram. `xml` is the source the draw.io editor loads; `preview` is
+ * a PNG of it (`/files/<id>`), drawn by the hidden renderer in drawio.ts.
+ */
+export const Drawio = Node.create({
+  name: 'drawio',
+  group: 'block',
+  atom: true,
+  selectable: true,
+  draggable: true,
+  addOptions: () => ({ docId: '' }),
+  addAttributes: () => ({
+    xml: {
+      default: '',
+      parseHTML: (el: HTMLElement) => drawioXml(el.getAttribute('data-xml') ?? ''),
+    },
+    preview: {
+      default: '',
+      parseHTML: (el: HTMLElement) => {
+        const src = el.querySelector('img')?.getAttribute('src') ?? ''
+        return DRAWIO_PREVIEW.test(src) ? src : ''
+      },
+    },
+    caption: {
+      default: '',
+      parseHTML: (el: HTMLElement) => el.querySelector('figcaption')?.textContent?.trim() ?? '',
+    },
+  }),
+  // Ahead of the image rule: a drawio figure also contains an img.
+  parseHTML: () => [{ tag: 'figure.blk.drawio', priority: 200 }],
+  renderHTML({ node }) {
+    const xml = String(node.attrs.xml ?? '')
+    const preview = String(node.attrs.preview ?? '')
+    const caption = String(node.attrs.caption ?? '')
+    const figure: Record<string, string> = { class: 'blk drawio' }
+    if (xml) figure['data-xml'] = xml
+    if (node.attrs.blockId) figure['data-block-id'] = String(node.attrs.blockId)
+    const img = ['img', { src: DRAWIO_PREVIEW.test(preview) ? preview : '', alt: 'draw.io 图' }] as const
+    return caption ? ['figure', figure, img, ['figcaption', {}, caption]] : ['figure', figure, img]
+  },
+  addNodeView() {
+    return drawioNodeView(this.options.docId)
   },
 })
 
@@ -436,7 +771,16 @@ export const SLASH_ITEMS: { label: string; hint: string; type: string; attrs?: R
   { label: '引用', hint: '> 空格', type: 'quote', keys: 'quote yinyong' },
   { label: '高亮块', hint: '提示或备注', type: 'callout', keys: 'callout note gaoliang' },
   { label: '代码块', hint: '``` 空格', type: 'codeBlock', keys: 'code daima' },
+  { label: '公式', hint: '$$ 空格，LaTeX 实时预览', type: 'codeBlock', attrs: { language: 'math' }, keys: 'math formula gongshi latex' },
+  { label: 'Mermaid 图表', hint: '```mermaid 空格，流程图等', type: 'codeBlock', attrs: { language: 'mermaid' }, keys: 'mermaid diagram tubiao flowchart liuchengtu' },
+  { label: 'AI 生成图表', hint: '用一句话描述，AI 画出来', type: '__ai_diagram', keys: 'ai diagram tubiao chart' },
+  { label: 'draw.io 图', hint: '在 draw.io 里画图', type: '__drawio', keys: 'drawio diagram huatu liuchengtu jiagou' },
   { label: '分割线', hint: '---', type: 'divider', keys: 'divider hr fenge' },
   { label: '表格', hint: '可编辑的简单表格', type: 'table', keys: 'table biaoge' },
   { label: '图片', hint: '从电脑选择', type: '__image', keys: 'image tupian picture' },
+  { label: 'AI 生成图片', hint: '描述画面，AI 画出来', type: '__ai_image', keys: 'ai image tupian huatu draw picture shengcheng' },
+  { label: '视频', hint: '上传本地视频（最大 1GB）', type: '__video', keys: 'video shipin mp4 upload' },
+  { label: '嵌入视频', hint: 'B 站 / YouTube / Vimeo 链接', type: '__video_embed', keys: 'video embed bilibili youtube shipin lianjie' },
+  { label: '附件', hint: '上传 PDF、Office、压缩包等文件', type: '__file', keys: 'file attachment fujian pdf zip' },
+  { label: '链接卡片', hint: '粘贴网址生成预览卡片', type: '__link_card', keys: 'link card url lianjie kapian bookmark' },
 ]

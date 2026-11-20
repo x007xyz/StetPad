@@ -1,0 +1,35 @@
+{
+  "name": "@stetpad/clipper",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build -b chrome && wxt build -b firefox && wxt build -b safari",
+    "build:chrome": "wxt build -b chrome",
+    "build:firefox": "wxt build -b firefox",
+    "build:safari": "wxt build -b safari",
+    "zip": "wxt zip -b chrome && wxt zip -b firefox",
+    "xcode:safari": "node scripts/pack-safari.mjs",
+    "test": "vitest run",
+    "typecheck": "wxt prepare && tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@stetpad/clip": "workspace:*",
+    "defuddle": "^0.6.0",
+    "lucide-react": "^1.73.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.1.4",
+    "linkedom": "^0.18.15",
+    "tailwindcss": "^4",
+    "wxt": "^0.20.0"
+  }
+}

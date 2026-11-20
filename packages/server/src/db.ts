@@ -1,13 +1,12 @@
-import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 
 export interface User { id: string; email: string }
-/** What a share link lets its holder do. `suggest`: edits are recorded as suggestions. */
-export type ShareRole = 'edit' | 'suggest' | 'view'
-export type SpaceRole = 'owner' | 'editor' | 'viewer'
+export interface ClipperTokenRow { id: string; user_id: string; name: string; created_at: number; last_used_at: number }
+/** `space_id` is a legacy column from the team-space era: it is always null for new rows and is no longer used for scoping. */
 export interface DocRow { id: string; user_id: string; space_id: string | null; folder_id: string | null; title: string; created_at: number; updated_at: number }
-/** A single-level group of documents. Scoped like documents: to its creator, or to a space. */
+/** A single-level group of documents, owned by its creator. */
 export interface FolderRow { id: string; user_id: string; space_id: string | null; name: string; created_at: number }
 export interface VersionRow {
   id: string; document_id: string; label: string | null; trigger: string; author: string
@@ -19,7 +18,10 @@ export interface RunRow {
 }
 /** One conversation with the AI about a document. An empty title means "not named yet". */
 export interface ChatRow { id: string; document_id: string; title: string; created_at: number; updated_at: number; n?: number }
-export interface SpaceRow { id: string; name: string; owner_id: string; role: SpaceRole }
+/** A document in the trash, with when it was deleted (ms). */
+export type TrashedDocRow = DocRow & { deleted_at: number }
+/** One search hit. `snippet` is '' when only the title matched. */
+export interface SearchHit { id: string; title: string; space_id: string | null; folder_id: string | null; updated_at: number; snippet: string; titleMatch: boolean }
 type Bytes = Uint8Array
 
 /** The few things the store needs from a database. `?` marks a parameter. */
@@ -28,7 +30,7 @@ export interface Sql {
   run(sql: string, params?: unknown[]): Promise<void>
   all<T>(sql: string, params?: unknown[]): Promise<T[]>
   close(): Promise<void>
-  /** Column types that differ between engines. */
+  /** Column types for the SQLite engine. */
   types: { blob: string; serial: string; int: string }
 }
 
@@ -56,47 +58,22 @@ export async function sqliteSql(dataDir: string): Promise<Sql> {
   }
 }
 
-const numbered = (sql: string): string => {
-  let i = 0
-  return sql.replace(/\?/g, () => `$${++i}`)
-}
-
-/** PostgreSQL, through any client with a `query(text, params)` method (pg Pool, PGlite). */
-export function postgresSql(client: { query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }>; end?: () => Promise<void>; close?: () => Promise<void> }): Sql {
-  // bigint columns arrive as strings from pg; every one we store fits a double.
-  const fix = <T>(rows: unknown[]): T[] =>
-    rows.map((r) => {
-      const o = r as Record<string, unknown>
-      for (const k of Object.keys(o)) {
-        if ((typeof o[k] === 'string' || typeof o[k] === 'bigint') && /^(created_at|updated_at|seq|word_count|input_tokens|output_tokens|runs|n)$/.test(k)) o[k] = Number(o[k])
-      }
-      return o as T
-    })
-  return {
-    types: { blob: 'bytea', serial: 'bigserial primary key', int: 'bigint' },
-    exec: async (sql) => {
-      for (const stmt of sql.split(';').map((s) => s.trim()).filter(Boolean)) await client.query(stmt)
-    },
-    run: async (sql, params) => void (await client.query(numbered(sql), params)),
-    all: async <T>(sql: string, params?: unknown[]) => fix<T>((await client.query(numbered(sql), params)).rows),
-    close: async () => void (await (client.end ?? client.close)?.call(client)),
-  }
-}
-
-export async function openPostgres(url: string): Promise<Sql> {
-  const { default: pg } = await import('pg')
-  return postgresSql(new pg.Pool({ connectionString: url }))
-}
-
 /** A short title taken from the first message of a chat. */
 export function chatTitle(instruction: string): string {
   const t = instruction.replace(/\s+/g, ' ').trim()
   return t.length > 30 ? t.slice(0, 30) + '…' : t
 }
 
+/** About 100 characters of `text` around a match at `at` (length `len`), with ellipses where cut. */
+export function snippetAround(text: string, at: number, len: number): string {
+  const start = Math.max(0, at - 40)
+  const end = Math.min(text.length, at + len + 60)
+  return (start > 0 ? '…' : '') + text.slice(start, end).replace(/\s+/g, ' ').trim() + (end < text.length ? '…' : '')
+}
+
 /**
  * Storage. Every query goes through this class; the engine underneath is
- * SQLite (desktop, single-node) or PostgreSQL (cloud).
+ * SQLite, embedded in the desktop app.
  */
 export class Store {
   private last = 0
@@ -115,9 +92,6 @@ export class Store {
     const { blob, serial, int } = this.sql.types
     await this.sql.exec(`
       create table if not exists users(id text primary key, email text unique not null, pw_hash text, created_at ${int} not null);
-      create table if not exists sessions(token text primary key, user_id text not null, created_at ${int} not null);
-      create table if not exists spaces(id text primary key, name text not null, owner_id text not null, created_at ${int} not null);
-      create table if not exists memberships(space_id text not null, user_id text not null, role text not null, primary key(space_id, user_id));
       create table if not exists documents(id text primary key, user_id text not null, space_id text, title text not null, state ${blob}, created_at ${int} not null, updated_at ${int} not null);
       create table if not exists doc_updates(seq ${serial}, document_id text not null, data ${blob} not null);
       create index if not exists doc_updates_doc on doc_updates(document_id, seq);
@@ -128,12 +102,11 @@ export class Store {
       create table if not exists ai_chats(id text primary key, document_id text not null, title text not null, created_at ${int} not null, updated_at ${int} not null);
       create index if not exists chats_doc on ai_chats(document_id, updated_at);
       create table if not exists ai_events(run_id text not null, seq ${int} not null, type text not null, payload_json text not null, created_at ${int} not null, primary key(run_id, seq));
-      create table if not exists shares(token text primary key, document_id text not null, role text not null, created_at ${int} not null);
       create table if not exists assets(id text primary key, document_id text not null, mime text not null, data ${blob} not null, created_at ${int} not null);
       create table if not exists usage_ledger(user_id text not null, day text not null, model text not null, input_tokens ${int} not null, output_tokens ${int} not null, runs ${int} not null, primary key(user_id, day, model));
-      create table if not exists sync_links(document_id text primary key, cloud_url text not null, cloud_doc_id text not null, token text not null);
       create table if not exists settings(user_id text not null, key text not null, value text not null, primary key(user_id, key));
-      create table if not exists folders(id text primary key, user_id text not null, space_id text, name text not null, created_at ${int} not null)
+      create table if not exists folders(id text primary key, user_id text not null, space_id text, name text not null, created_at ${int} not null);
+      create table if not exists clipper_tokens(id text primary key, user_id text not null, name text not null, token_hash text unique not null, created_at ${int} not null, last_used_at ${int} not null)
     `)
     // Columns added after the first release. Each statement fails harmlessly when the column exists.
     for (const stmt of [
@@ -141,9 +114,19 @@ export class Store {
       'alter table documents add column folder_id text',
       'alter table ai_runs add column chat_id text',
       'create index if not exists runs_chat on ai_runs(chat_id, created_at)',
+      // Asset bytes moved to the filesystem (storage 'fs'). Legacy rows keep storage null and their bytes in `data`.
+      `alter table assets add column size ${int}`,
+      'alter table assets add column name text',
+      'alter table assets add column storage text',
+      'alter table assets add column sha256 text',
+      // Trash (soft delete) and the plain text kept for search.
+      `alter table documents add column deleted_at ${int}`,
+      'alter table documents add column text_content text',
     ]) {
       await this.sql.exec(stmt).catch(() => {})
     }
+    // After the column above exists, so the index can be built on it. Repeats are harmless.
+    await this.sql.exec('create index if not exists assets_sha256 on assets(sha256)').catch(() => {})
     await this.migrateRunsToChats()
   }
   /** Runs from before conversations existed go into one chat per document. Safe to repeat. */
@@ -162,106 +145,123 @@ export class Store {
     return this.sql.close()
   }
 
-  // --- users and sessions
-  private hash(pw: string, salt = randomBytes(16).toString('hex')): string {
-    return salt + ':' + scryptSync(pw, salt, 32).toString('hex')
-  }
+  // --- the local user
   async ensureLocalUser(): Promise<User> {
     const u = await this.one<User>('select id, email from users where id = ?', ['local'])
     if (u) return u
     await this.sql.run('insert into users(id, email, created_at) values (?, ?, ?)', ['local', 'local@device', this.now()])
     return { id: 'local', email: 'local@device' }
   }
-  async register(email: string, password: string): Promise<User | null> {
-    if (await this.one('select 1 as x from users where email = ?', [email])) return null
-    const id = randomUUID()
-    await this.sql.run('insert into users(id, email, pw_hash, created_at) values (?, ?, ?, ?)', [id, email, this.hash(password), this.now()])
-    return { id, email }
-  }
-  async login(email: string, password: string): Promise<User | null> {
-    const row = await this.one<User & { pw_hash: string | null }>('select id, email, pw_hash from users where email = ?', [email])
-    if (!row?.pw_hash) return null
-    const [salt, want] = row.pw_hash.split(':') as [string, string]
-    return timingSafeEqual(scryptSync(password, salt, 32), Buffer.from(want, 'hex')) ? { id: row.id, email: row.email } : null
-  }
-  userByEmail(email: string): Promise<User | null> {
-    return this.one<User>('select id, email from users where email = ?', [email])
-  }
-  async createSession(userId: string): Promise<string> {
-    const token = randomBytes(32).toString('hex')
-    await this.sql.run('insert into sessions(token, user_id, created_at) values (?, ?, ?)', [token, userId, this.now()])
-    return token
-  }
-  deleteSession(token: string): Promise<void> {
-    return this.sql.run('delete from sessions where token = ?', [token])
-  }
-  userBySession(token: string): Promise<User | null> {
-    return this.one<User>('select u.id, u.email from sessions s join users u on u.id = s.user_id where s.token = ?', [token])
-  }
-
-  // --- team spaces
-  async createSpace(ownerId: string, name: string): Promise<string> {
-    const id = randomUUID()
-    await this.sql.run('insert into spaces(id, name, owner_id, created_at) values (?, ?, ?, ?)', [id, name, ownerId, this.now()])
-    await this.sql.run('insert into memberships(space_id, user_id, role) values (?, ?, ?)', [id, ownerId, 'owner'])
-    return id
-  }
-  listSpaces(userId: string): Promise<SpaceRow[]> {
-    return this.sql.all<SpaceRow>('select s.id, s.name, s.owner_id, m.role from spaces s join memberships m on m.space_id = s.id where m.user_id = ? order by s.created_at', [userId])
-  }
-  async spaceRole(spaceId: string, userId: string): Promise<SpaceRole | null> {
-    return (await this.one<{ role: SpaceRole }>('select role from memberships where space_id = ? and user_id = ?', [spaceId, userId]))?.role ?? null
-  }
-  listMembers(spaceId: string): Promise<{ user_id: string; email: string; role: SpaceRole }[]> {
-    return this.sql.all('select m.user_id, u.email, m.role from memberships m join users u on u.id = m.user_id where m.space_id = ? order by u.email', [spaceId])
-  }
-  setMember(spaceId: string, userId: string, role: SpaceRole): Promise<void> {
-    return this.sql.run('insert into memberships(space_id, user_id, role) values (?, ?, ?) on conflict(space_id, user_id) do update set role = excluded.role', [spaceId, userId, role])
-  }
-  removeMember(spaceId: string, userId: string): Promise<void> {
-    return this.sql.run('delete from memberships where space_id = ? and user_id = ?', [spaceId, userId])
-  }
 
   // --- documents
   private static DOC = 'id, user_id, space_id, folder_id, title, created_at, updated_at'
-  listDocs(userId: string, spaceId: string | null): Promise<DocRow[]> {
-    return spaceId
-      ? this.sql.all<DocRow>(`select ${Store.DOC} from documents where space_id = ? order by updated_at desc`, [spaceId])
-      : this.sql.all<DocRow>(`select ${Store.DOC} from documents where user_id = ? and space_id is null order by updated_at desc`, [userId])
+  /** The user's documents that are not in the trash. */
+  listDocs(userId: string): Promise<DocRow[]> {
+    return this.sql.all<DocRow>(`select ${Store.DOC} from documents where user_id = ? and deleted_at is null order by updated_at desc`, [userId])
   }
+  /** A live (not trashed) document. */
   getDoc(id: string): Promise<DocRow | null> {
-    return this.one<DocRow>(`select ${Store.DOC} from documents where id = ?`, [id])
+    return this.one<DocRow>(`select ${Store.DOC} from documents where id = ? and deleted_at is null`, [id])
   }
-  async createDoc(userId: string, title: string, state: Bytes, spaceId: string | null = null): Promise<DocRow> {
+  /** A document whether or not it is in the trash. For restore, purge and the collector. */
+  getDocAny(id: string): Promise<(DocRow & { deleted_at: number | null }) | null> {
+    return this.one(`select ${Store.DOC}, deleted_at from documents where id = ?`, [id])
+  }
+  /** Moves a document to the trash. Its content, versions and assets stay until it is purged. */
+  async trashDoc(id: string): Promise<void> {
+    await this.sql.run('update documents set deleted_at = ? where id = ?', [this.now(), id])
+  }
+  /** Takes a document out of the trash. A folder that no longer exists is dropped. */
+  async restoreDoc(id: string): Promise<void> {
+    await this.sql.run('update documents set deleted_at = null, updated_at = ? where id = ?', [this.now(), id])
+    await this.sql.run('update documents set folder_id = null where id = ? and folder_id is not null and folder_id not in (select id from folders)', [id])
+  }
+  /** The user's trash: their deleted documents, newest deletion first. */
+  listTrash(userId: string): Promise<TrashedDocRow[]> {
+    return this.sql.all<TrashedDocRow>(`select ${Store.DOC}, deleted_at from documents where user_id = ? and deleted_at is not null order by deleted_at desc`, [userId])
+  }
+  /** Ids of documents trashed before `cutoff` (ms): the auto-purge candidates. */
+  async trashedBefore(cutoff: number): Promise<string[]> {
+    return (await this.sql.all<{ id: string }>('select id from documents where deleted_at is not null and deleted_at < ?', [cutoff])).map((r) => r.id)
+  }
+
+  // --- search and plain text
+  /** The documents a user may read: their own. */
+  private static SCOPE = 'user_id = ?'
+  /** Stores the plain text of a document, as saved by the collaboration service. */
+  setDocText(id: string, text: string): Promise<void> {
+    return this.sql.run('update documents set text_content = ? where id = ?', [text, id])
+  }
+  /** Stores plain text only if none is stored yet, so a computed value never replaces a fresher one. */
+  fillDocText(id: string, text: string): Promise<void> {
+    return this.sql.run('update documents set text_content = ? where id = ? and text_content is null', [text, id])
+  }
+  /** Live documents the user can read whose plain text has never been stored. */
+  async docsMissingText(userId: string): Promise<string[]> {
+    return (await this.sql.all<{ id: string }>(`select id from documents where text_content is null and deleted_at is null and ${Store.SCOPE}`, [userId])).map((r) => r.id)
+  }
+  /**
+   * Live documents the user can read whose title or text contains `q` (case-insensitive substring).
+   * Title matches first, then most recently updated. At most 30.
+   */
+  async searchDocs(userId: string, q: string): Promise<SearchHit[]> {
+    const ql = q.toLowerCase()
+    const like = `%${ql.replace(/[\\%_]/g, (ch) => '\\' + ch)}%`
+    const rows = await this.sql.all<DocRow & { text_content: string | null }>(
+      `select ${Store.DOC}, text_content from documents where deleted_at is null and ${Store.SCOPE} and (lower(title) like ? escape '\\' or lower(text_content) like ? escape '\\')`,
+      [userId, like, like],
+    )
+    const hits: SearchHit[] = []
+    for (const r of rows) {
+      const titleMatch = r.title.toLowerCase().includes(ql)
+      const body = r.text_content ?? ''
+      const at = body.toLowerCase().indexOf(ql)
+      if (!titleMatch && at < 0) continue
+      hits.push({
+        id: r.id, title: r.title, space_id: r.space_id, folder_id: r.folder_id, updated_at: r.updated_at,
+        snippet: at >= 0 ? snippetAround(body, at, ql.length) : '',
+        titleMatch,
+      })
+    }
+    hits.sort((a, b) => Number(b.titleMatch) - Number(a.titleMatch) || b.updated_at - a.updated_at)
+    return hits.slice(0, 30)
+  }
+
+  async createDoc(userId: string, title: string, state: Bytes): Promise<DocRow> {
     const id = randomUUID()
     const now = this.now()
-    await this.sql.run('insert into documents(id, user_id, space_id, title, state, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)', [id, userId, spaceId, title, state, now, now])
-    return { id, user_id: userId, space_id: spaceId, folder_id: null, title, created_at: now, updated_at: now }
+    await this.sql.run('insert into documents(id, user_id, title, state, created_at, updated_at) values (?, ?, ?, ?, ?, ?)', [id, userId, title, state, now, now])
+    return { id, user_id: userId, space_id: null, folder_id: null, title, created_at: now, updated_at: now }
   }
   renameDoc(id: string, title: string): Promise<void> {
     return this.sql.run('update documents set title = ?, updated_at = ? where id = ?', [title, this.now(), id])
   }
-  async deleteDoc(id: string): Promise<void> {
+  /**
+   * Deletes the document. Its asset rows stay: whether a file is still in use is decided by the garbage
+   * collector (gc.ts), which needs to see every document. Returns the ids of its filesystem assets so the
+   * caller can run a targeted collection.
+   */
+  async deleteDoc(id: string): Promise<string[]> {
+    const assetIds = await this.listAssetIds(id)
     await this.sql.run('delete from ai_events where run_id in (select id from ai_runs where document_id = ?)', [id])
-    for (const t of ['ai_runs', 'ai_chats', 'versions', 'shares', 'doc_updates', 'assets', 'sync_links']) await this.sql.run(`delete from ${t} where document_id = ?`, [id])
+    for (const t of ['ai_runs', 'ai_chats', 'versions', 'doc_updates']) await this.sql.run(`delete from ${t} where document_id = ?`, [id])
     await this.sql.run('delete from documents where id = ?', [id])
+    return assetIds
   }
 
   // --- folders
   private static FOLDER = 'id, user_id, space_id, name, created_at'
-  async createFolder(userId: string, name: string, spaceId: string | null = null): Promise<FolderRow> {
+  async createFolder(userId: string, name: string): Promise<FolderRow> {
     const id = randomUUID()
     const now = this.now()
-    await this.sql.run('insert into folders(id, user_id, space_id, name, created_at) values (?, ?, ?, ?, ?)', [id, userId, spaceId, name, now])
-    return { id, user_id: userId, space_id: spaceId, name, created_at: now }
+    await this.sql.run('insert into folders(id, user_id, name, created_at) values (?, ?, ?, ?)', [id, userId, name, now])
+    return { id, user_id: userId, space_id: null, name, created_at: now }
   }
   getFolder(id: string): Promise<FolderRow | null> {
     return this.one<FolderRow>(`select ${Store.FOLDER} from folders where id = ?`, [id])
   }
-  listFolders(userId: string, spaceId: string | null): Promise<FolderRow[]> {
-    return spaceId
-      ? this.sql.all<FolderRow>(`select ${Store.FOLDER} from folders where space_id = ? order by created_at`, [spaceId])
-      : this.sql.all<FolderRow>(`select ${Store.FOLDER} from folders where user_id = ? and space_id is null order by created_at`, [userId])
+  listFolders(userId: string): Promise<FolderRow[]> {
+    return this.sql.all<FolderRow>(`select ${Store.FOLDER} from folders where user_id = ? order by created_at`, [userId])
   }
   renameFolder(id: string, name: string): Promise<void> {
     return this.sql.run('update folders set name = ? where id = ?', [name, id])
@@ -276,7 +276,7 @@ export class Store {
   }
   /** The documents of a folder in reading order. */
   listFolderDocs(folderId: string): Promise<DocRow[]> {
-    return this.sql.all<DocRow>(`select ${Store.DOC} from documents where folder_id = ? order by created_at, id`, [folderId])
+    return this.sql.all<DocRow>(`select ${Store.DOC} from documents where folder_id = ? and deleted_at is null order by created_at, id`, [folderId])
   }
 
   /**
@@ -301,11 +301,16 @@ export class Store {
   }
 
   // --- versions
-  async addVersion(v: { documentId: string; state: Bytes; content: unknown; label?: string | null; trigger: string; author: string; wordCount: number }): Promise<string> {
+  async addVersion(v: { documentId: string; state: Bytes; content: unknown; label?: string | null; trigger: string; author: string; wordCount: number; createdAt?: number }): Promise<string> {
     const id = randomUUID()
     await this.sql.run('insert into versions(id, document_id, state, content_json, label, trigger, author, word_count, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, v.documentId, v.state, JSON.stringify(v.content), v.label ?? null, v.trigger, v.author, v.wordCount, this.now()])
+      [id, v.documentId, v.state, JSON.stringify(v.content), v.label ?? null, v.trigger, v.author, v.wordCount, v.createdAt ?? this.now()])
     return id
+  }
+  /** The CRDT state saved with a version (null for versions without one). */
+  async getVersionState(id: string): Promise<Bytes | null> {
+    const r = await this.one<{ state: Bytes | null }>('select state from versions where id = ?', [id])
+    return r?.state ? new Uint8Array(r.state) : null
   }
   private static VER = 'id, document_id, label, trigger, author, word_count, created_at'
   listVersions(documentId: string): Promise<VersionRow[]> {
@@ -414,26 +419,11 @@ export class Store {
     const from = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10)
     return this.sql.all('select day, model, input_tokens, output_tokens, runs from usage_ledger where user_id = ? and day >= ? order by day desc, model', [userId, from])
   }
+  /** Tokens the user has used today (UTC day), for the usage page. */
   async tokensToday(userId: string): Promise<number> {
     const day = new Date().toISOString().slice(0, 10)
     const rows = await this.sql.all<{ input_tokens: number; output_tokens: number }>('select input_tokens, output_tokens from usage_ledger where user_id = ? and day = ?', [userId, day])
     return rows.reduce((n, r) => n + r.input_tokens + r.output_tokens, 0)
-  }
-
-  // --- share links
-  async createShare(documentId: string, role: ShareRole): Promise<string> {
-    const token = randomBytes(24).toString('base64url')
-    await this.sql.run('insert into shares(token, document_id, role, created_at) values (?, ?, ?, ?)', [token, documentId, role, this.now()])
-    return token
-  }
-  getShare(token: string): Promise<{ token: string; document_id: string; role: ShareRole } | null> {
-    return this.one('select token, document_id, role from shares where token = ?', [token])
-  }
-  listShares(documentId: string): Promise<{ token: string; role: ShareRole; created_at: number }[]> {
-    return this.sql.all('select token, role, created_at from shares where document_id = ? order by created_at', [documentId])
-  }
-  deleteShare(token: string): Promise<void> {
-    return this.sql.run('delete from shares where token = ?', [token])
   }
 
   // --- images
@@ -446,19 +436,86 @@ export class Store {
     const r = await this.one<{ mime: string; data: Bytes }>('select mime, data from assets where id = ?', [id])
     return r ? { mime: r.mime, data: new Uint8Array(r.data) } : null
   }
-
-  // --- cloud sync links (desktop)
-  setSyncLink(documentId: string, cloudUrl: string, cloudDocId: string, token: string): Promise<void> {
-    return this.sql.run('insert into sync_links(document_id, cloud_url, cloud_doc_id, token) values (?, ?, ?, ?) on conflict(document_id) do update set cloud_url = excluded.cloud_url, cloud_doc_id = excluded.cloud_doc_id, token = excluded.token', [documentId, cloudUrl, cloudDocId, token])
+  /** Metadata of an asset. `storage` is 'fs' for files on disk, 'db' for legacy rows whose bytes are in the table. */
+  async getAssetMeta(id: string): Promise<{ id: string; document_id: string; mime: string; size: number; name: string | null; storage: 'fs' | 'db' } | null> {
+    const r = await this.one<{ id: string; document_id: string; mime: string; size: unknown; name: string | null; storage: string | null }>(
+      "select id, document_id, mime, coalesce(size, length(data)) as size, name, storage from assets where id = ?",
+      [id],
+    )
+    if (!r) return null
+    return { id: r.id, document_id: r.document_id, mime: r.mime, size: Number(r.size), name: r.name, storage: r.storage === 'fs' ? 'fs' : 'db' }
   }
-  getSyncLink(documentId: string): Promise<{ document_id: string; cloud_url: string; cloud_doc_id: string; token: string } | null> {
-    return this.one('select * from sync_links where document_id = ?', [documentId])
+  /** Bytes of a legacy asset whose data lives in the table. Null for filesystem assets and unknown ids. */
+  async getAssetData(id: string): Promise<Bytes | null> {
+    const r = await this.one<{ data: Bytes }>("select data from assets where id = ? and coalesce(storage, 'db') = 'db'", [id])
+    return r ? new Uint8Array(r.data) : null
   }
-  listSyncLinks(): Promise<{ document_id: string; cloud_url: string; cloud_doc_id: string; token: string }[]> {
-    return this.sql.all('select * from sync_links')
+  /** Ids of the filesystem assets of a document. */
+  async listAssetIds(documentId: string): Promise<string[]> {
+    return (await this.sql.all<{ id: string }>("select id from assets where document_id = ? and storage = 'fs'", [documentId])).map((r) => r.id)
   }
-  deleteSyncLink(documentId: string): Promise<void> {
-    return this.sql.run('delete from sync_links where document_id = ?', [documentId])
+  /** Records an asset whose bytes were already written to disk under `id`. `sha256` enables per-user dedup. */
+  async addAssetRecord(documentId: string, a: { id: string; mime: string; size: number; name: string | null; sha256?: string | null }): Promise<void> {
+    await this.sql.run(
+      "insert into assets(id, document_id, mime, data, created_at, size, name, storage, sha256) values (?, ?, ?, ?, ?, ?, ?, 'fs', ?)",
+      [a.id, documentId, a.mime, new Uint8Array(0), this.now(), a.size, a.name, a.sha256 ?? null],
+    )
+  }
+  /** A filesystem asset of one user's documents with these bytes, if any. The caller checks the file still exists. */
+  async findAssetByHash(userId: string, sha256: string): Promise<{ id: string } | null> {
+    return this.one<{ id: string }>(
+      "select a.id from assets a join documents d on d.id = a.document_id where d.user_id = ? and a.sha256 = ? and a.storage = 'fs' limit 1",
+      [userId, sha256],
+    )
+  }
+  /** Marks an asset as recently used, so the collector's grace period starts again. */
+  touchAsset(id: string): Promise<void> {
+    return this.sql.run('update assets set created_at = ? where id = ?', [this.now(), id])
+  }
+  /** Assets created before `before` (ms): the collector's candidates. `storage` is 'db' for legacy rows. */
+  listAssetCandidates(before: number): Promise<{ id: string; storage: string }[]> {
+    return this.sql.all<{ id: string; storage: string }>("select id, coalesce(storage, 'db') as storage from assets where created_at < ?", [before])
+  }
+  /** The given assets, by id (missing ids are skipped). */
+  /** These assets, optionally only those created (or last reused) before `before` (ms). */
+  assetsByIds(ids: string[], before?: number): Promise<{ id: string; storage: string }[]> {
+    if (ids.length === 0) return Promise.resolve([])
+    const age = before === undefined ? '' : ' and created_at < ?'
+    return this.sql.all<{ id: string; storage: string }>(
+      `select id, coalesce(storage, 'db') as storage from assets where id in (${ids.map(() => '?').join(', ')})${age}`,
+      before === undefined ? ids : [...ids, before],
+    )
+  }
+  deleteAssetRow(id: string): Promise<void> {
+    return this.sql.run('delete from assets where id = ?', [id])
+  }
+  /**
+   * Every byte blob that can name an asset, one document at a time: its snapshot, its pending updates and its
+   * versions (the saved state and the content JSON). Pages through document ids so memory stays bounded.
+   */
+  async *documentBytes(): AsyncGenerator<Uint8Array[]> {
+    let after = ''
+    for (;;) {
+      const page = await this.sql.all<{ id: string }>('select id from documents where id > ? order by id limit 50', [after])
+      if (page.length === 0) return
+      for (const { id } of page) {
+        after = id
+        yield await this.docBytes(id)
+      }
+    }
+  }
+  /** The byte blobs of one document (see documentBytes). */
+  async docBytes(id: string): Promise<Uint8Array[]> {
+    const enc = new TextEncoder()
+    const parts: Uint8Array[] = []
+    const row = await this.one<{ state: Bytes | null }>('select state from documents where id = ?', [id])
+    if (row?.state) parts.push(new Uint8Array(row.state))
+    for (const u of await this.sql.all<{ data: Bytes }>('select data from doc_updates where document_id = ?', [id])) parts.push(new Uint8Array(u.data))
+    for (const v of await this.sql.all<{ state: Bytes | null; content_json: string }>('select state, content_json from versions where document_id = ?', [id])) {
+      if (v.state) parts.push(new Uint8Array(v.state))
+      parts.push(enc.encode(v.content_json))
+    }
+    return parts
   }
 
   // --- settings
@@ -467,5 +524,40 @@ export class Store {
   }
   setSetting(userId: string, key: string, value: string): Promise<void> {
     return this.sql.run('insert into settings(user_id, key, value) values (?, ?, ?) on conflict(user_id, key) do update set value = excluded.value', [userId, key, value])
+  }
+
+  // --- browser clipper tokens
+  private static hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex')
+  }
+  async createClipperToken(userId: string, name: string): Promise<{ id: string; token: string; name: string; created_at: number }> {
+    const id = randomUUID()
+    const token = 'clp_' + randomBytes(24).toString('base64url')
+    const clean = name.trim().slice(0, 60) || '浏览器插件'
+    const now = this.now()
+    await this.sql.run(
+      'insert into clipper_tokens(id, user_id, name, token_hash, created_at, last_used_at) values (?, ?, ?, ?, ?, ?)',
+      [id, userId, clean, Store.hashToken(token), now, now],
+    )
+    return { id, token, name: clean, created_at: now }
+  }
+  async userByClipperToken(token: string): Promise<User | null> {
+    if (!token.startsWith('clp_')) return null
+    const row = await this.one<{ id: string; email: string; token_id: string }>(
+      'select u.id, u.email, t.id as token_id from clipper_tokens t join users u on u.id = t.user_id where t.token_hash = ?',
+      [Store.hashToken(token)],
+    )
+    if (!row) return null
+    await this.sql.run('update clipper_tokens set last_used_at = ? where id = ?', [this.now(), row.token_id])
+    return { id: row.id, email: row.email }
+  }
+  listClipperTokens(userId: string): Promise<ClipperTokenRow[]> {
+    return this.sql.all<ClipperTokenRow>(
+      'select id, user_id, name, created_at, last_used_at from clipper_tokens where user_id = ? order by created_at desc',
+      [userId],
+    )
+  }
+  deleteClipperToken(userId: string, id: string): Promise<void> {
+    return this.sql.run('delete from clipper_tokens where id = ? and user_id = ?', [id, userId])
   }
 }

@@ -9,6 +9,7 @@ import {
   listChanges,
   originalDoc,
   originalText,
+  projectBlocks,
   proposeReplace,
   rawChars,
   readBlock,
@@ -230,6 +231,35 @@ describe('blocks', () => {
     decide(server, del, 'reject')
     compact(server)
     expect(revisedDoc(server)).toEqual([{ blockId: 'b1', text: 'one more' }])
+  })
+
+  it('proposes rich-text blocks with delta and atom blocks under one change id', () => {
+    for (const [decision, expectedCount] of [['accept', 4], ['reject', 1]] as const) {
+      const { server } = setup('intro')
+      const delta = [
+        { insert: 'Bold ', attributes: { bold: {} } },
+        { insert: 'link', attributes: { link: { href: 'https://example.com' } } },
+        { insert: ' code', attributes: { code: {} } },
+      ]
+      const cid = trackedInsertBlock(server, 1, 'd1', '', ANN, { type: 'divider' })
+      trackedInsertBlock(server, 2, 'p2', '', ANN, { changeId: cid, type: 'paragraph', delta })
+      trackedInsertBlock(server, 3, 'img1', '', ANN, { changeId: cid, type: 'image', attrs: { src: '/files/abc', alt: 'pic', caption: 'cap' } })
+
+      expect(projectBlocks(server, 'original').map((b) => b.blockId)).toEqual(['b1'])
+      const rev = projectBlocks(server, 'revised')
+      expect(rev.map((b) => b.blockId)).toEqual(['b1', 'd1', 'p2', 'img1'])
+      expect(rev[1]).toMatchObject({ type: 'divider', state: 'ins' })
+      expect(rev[2]).toMatchObject({ type: 'paragraph', state: 'ins', delta })
+      expect(rev[3]).toMatchObject({ type: 'image', state: 'ins', attrs: { src: '/files/abc', alt: 'pic', caption: 'cap' } })
+
+      decide(server, cid, decision)
+      compact(server)
+      expect(projectBlocks(server, 'revised')).toHaveLength(expectedCount)
+      expect(listChanges(server)).toEqual([])
+      if (decision === 'accept') {
+        expect(projectBlocks(server, 'revised')[2]!.delta).toEqual(delta)
+      }
+    }
   })
 })
 

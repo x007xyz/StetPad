@@ -20,7 +20,7 @@ const agent = (over: Record<string, unknown> = {}) => ({
 type Known = { id: string; label: string; command: string; args: string[]; installed: boolean; builtin: boolean }
 type ModelsBody = { externalAgents: { id: string; label: string }[]; externalAgentsAll?: Known[] }
 
-describe('external agents, local mode', () => {
+describe('external agents', () => {
   let server: RunningServer
   let dir: string
   let base = ''
@@ -34,7 +34,7 @@ describe('external agents, local mode', () => {
   const put = (externalAgents: unknown) => call('/api/settings', { method: 'PUT', body: JSON.stringify({ externalAgents }) })
   const models = async () => (await call('/api/models')).body as ModelsBody
   const start = async () => {
-    server = await startServer({ mode: 'local', dataDir: dir, port: 0, token: LOCAL_TOKEN, mcpCommand: MCP_BRIDGE })
+    server = await startServer({ dataDir: dir, port: 0, token: LOCAL_TOKEN, mcpCommand: MCP_BRIDGE })
     base = `http://127.0.0.1:${server.port}`
   }
 
@@ -122,48 +122,5 @@ describe('external agents, local mode', () => {
     await server.close()
     await start()
     expect((await models()).externalAgentsAll!.find((a) => a.id === 'my-agent')).toMatchObject({ label: 'My Agent', builtin: false })
-  })
-})
-
-describe('external agents, web mode', () => {
-  let server: RunningServer
-  let dir: string
-  let base = ''
-  let token = ''
-  const call = async (path: string, init: RequestInit = {}) => {
-    const res = await fetch(base + path, {
-      ...init,
-      headers: { authorization: `Bearer ${token}`, ...(init.body ? { 'content-type': 'application/json' } : {}), ...init.headers },
-    })
-    return { status: res.status, body: (await res.json()) as Record<string, any> }
-  }
-
-  beforeAll(async () => {
-    dir = mkdtempSync(join(tmpdir(), 'aiw-ext-web-'))
-    server = await startServer({ mode: 'web', dataDir: dir, port: 0, mcpCommand: MCP_BRIDGE })
-    base = `http://127.0.0.1:${server.port}`
-    const r = await fetch(base + '/api/auth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'ext@example.com', password: 'password1' }) })
-    token = (await r.json()).token
-  })
-  afterAll(async () => {
-    await server.close()
-    rmSync(dir, { recursive: true, force: true })
-  })
-
-  it('refuses to save external agents', async () => {
-    const res = await call('/api/settings', { method: 'PUT', body: JSON.stringify({ externalAgents: [agent()] }) })
-    expect(res.status).toBe(403)
-    // An empty list is refused too: the field is not accepted at all.
-    expect((await call('/api/settings', { method: 'PUT', body: JSON.stringify({ externalAgents: [] }) })).status).toBe(403)
-  })
-
-  it('does not list or offer external agents', async () => {
-    const body = (await call('/api/models')).body as ModelsBody
-    expect(body.externalAgents).toEqual([])
-    expect(body.externalAgentsAll).toBeUndefined()
-  })
-
-  it('still saves other settings', async () => {
-    expect((await call('/api/settings', { method: 'PUT', body: JSON.stringify({ preferences: '短句' }) })).status).toBe(200)
   })
 })

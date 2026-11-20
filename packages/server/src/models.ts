@@ -24,6 +24,55 @@ export interface ModelInfo {
   verified: boolean
   /** False when the user switched the model, or its whole provider, off. */
   enabled: boolean
+  caps: Capability[]
+}
+
+/** What a model can do. Chosen by the user per model; a model with no choice has DEFAULT_CAPS. */
+export type Capability = 'text' | 'vision' | 'image' | 'imageEdit' | 'audio'
+export const CAPABILITIES: readonly Capability[] = ['text', 'vision', 'image', 'imageEdit', 'audio']
+export const DEFAULT_CAPS: Capability[] = ['text', 'vision']
+
+/** The jobs a model can be chosen for in the settings. `text` is the default chat model. */
+export type Role = 'text' | 'vision' | 'image' | 'imageEdit' | 'transcribe' | 'diagram'
+
+/** Validates a list of capabilities: a subset of CAPABILITIES, deduplicated. Throws a generic message. */
+export function parseCaps(input: unknown): Capability[] {
+  if (!Array.isArray(input) || input.length > CAPABILITIES.length * 2) throw new Error('能力的格式不正确')
+  const out: Capability[] = []
+  for (const v of input) {
+    if (typeof v !== 'string' || !(CAPABILITIES as readonly string[]).includes(v)) throw new Error('能力的格式不正确')
+    if (!out.includes(v as Capability)) out.push(v as Capability)
+  }
+  return out
+}
+
+/** Built-in model capabilities, keyed by full model id ("deepseek:deepseek-flash"). Only built-in ids are accepted. */
+export function parseModelCaps(input: unknown): Record<string, Capability[]> {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('模型能力的格式不正确')
+  const entries = Object.entries(input as Record<string, unknown>)
+  if (entries.length > 500) throw new Error('模型能力的格式不正确')
+  const out: Record<string, Capability[]> = {}
+  for (const [id, caps] of entries) {
+    const colon = id.indexOf(':')
+    if (id.length > 200 || colon < 1 || !PROVIDERS[id.slice(0, colon)]) throw new Error(`「${id}」不是内置模型，不能设置能力`)
+    try {
+      out[id] = parseCaps(caps)
+    } catch {
+      throw new Error(`模型「${id}」的能力不正确`)
+    }
+  }
+  return out
+}
+
+/** The capabilities of a model: from its entry for a custom provider, from the user's settings for a built-in one. */
+export function capsOf(modelId: string, scope: ModelScope = NO_SCOPE): Capability[] {
+  const [provider, ...rest] = modelId.split(':')
+  if (provider?.startsWith('custom-')) {
+    const p = scope.custom.find((c) => `custom-${c.id}` === provider)
+    const m = p?.models.find((x) => x.id === rest.join(':'))
+    return m ? [...(m.caps ?? DEFAULT_CAPS)] : []
+  }
+  return [...(scope.caps?.[modelId] ?? DEFAULT_CAPS)]
 }
 
 interface ProviderDef {
@@ -107,6 +156,8 @@ export interface CustomModel {
   id: string
   label?: string
   price?: { input: number; output: number }
+  /** What the model can do. Absent: DEFAULT_CAPS (text and vision). */
+  caps?: Capability[]
 }
 
 /** What one user may use: saved keys, and the user's own custom providers. */
@@ -121,6 +172,8 @@ export interface ModelScope {
   extra?: Record<string, { id: string; label?: string }[]>
   /** Prices of built-in models, per million tokens. */
   prices?: Record<string, { input: number; output: number }>
+  /** Capabilities of built-in models, keyed by full model id. Absent ids have DEFAULT_CAPS. */
+  caps?: Record<string, Capability[]>
 }
 
 const NO_SCOPE: ModelScope = { key: () => null, custom: [] }
@@ -139,8 +192,8 @@ const MAX_CUSTOM_MODELS = 50
 export type CustomProviderInput = CustomProvider & { apiKey?: string }
 
 /**
- * Hosts a web deployment must not send requests to: the server itself and its
- * private network. Literal addresses only; names are not resolved here.
+ * Literal addresses of this machine and its private network. Link previews refuse to fetch them (SSRF guard).
+ * Names are not resolved here.
  */
 export function isPrivateHost(hostname: string): boolean {
   const h = hostname.toLowerCase().replace(/^\[|\]$/g, '')
@@ -162,9 +215,9 @@ export function isPrivateHost(hostname: string): boolean {
 
 /**
  * Validates a complete custom provider list. Throws an Error whose message is
- * shown to the user. `blockPrivate` applies the web-mode address guard.
+ * shown to the user.
  */
-export function parseCustomProviders(input: unknown, blockPrivate: boolean): CustomProviderInput[] {
+export function parseCustomProviders(input: unknown): CustomProviderInput[] {
   if (!Array.isArray(input)) throw new Error('自定义提供商的格式不正确')
   if (input.length > MAX_CUSTOM_PROVIDERS) throw new Error(`最多只能添加 ${MAX_CUSTOM_PROVIDERS} 个自定义提供商`)
   const seen = new Set<string>()
@@ -188,9 +241,6 @@ export function parseCustomProviders(input: unknown, blockPrivate: boolean): Cus
     if (!url || (url.protocol !== 'http:' && url.protocol !== 'https:')) {
       throw new Error(`提供商「${name}」的端点必须是有效的 http(s) 地址`)
     }
-    if (blockPrivate && isPrivateHost(url.hostname)) {
-      throw new Error(`提供商「${name}」的端点指向本机或内网地址，网页版不允许这样设置`)
-    }
     if (!Array.isArray(p.models) || p.models.length === 0) throw new Error(`提供商「${name}」至少需要一个模型`)
     if (p.models.length > MAX_CUSTOM_MODELS) throw new Error(`提供商「${name}」最多只能有 ${MAX_CUSTOM_MODELS} 个模型`)
     const models: CustomModel[] = []
@@ -200,6 +250,14 @@ export function parseCustomProviders(input: unknown, blockPrivate: boolean): Cus
       const label = (m as { label?: unknown }).label
       const entry: CustomModel = { id: mid }
       if (typeof label === 'string' && label.trim()) entry.label = label.trim()
+      const caps = (m as { caps?: unknown }).caps
+      if (caps !== undefined) {
+        try {
+          entry.caps = parseCaps(caps)
+        } catch {
+          throw new Error(`提供商「${name}」中模型「${mid}」的能力不正确`)
+        }
+      }
       const price = (m as { price?: { input?: unknown; output?: unknown } }).price
       if (price && typeof price === 'object') {
         const pin = Number(price.input)
@@ -232,7 +290,7 @@ export function parseCustomProviders(input: unknown, blockPrivate: boolean): Cus
 export function parseStoredProviders(raw: string | null): CustomProvider[] {
   if (!raw) return []
   try {
-    return parseCustomProviders(JSON.parse(raw), false).map(({ id, name, baseURL, currency, preset, models }) => ({ id, name, baseURL, ...(currency ? { currency } : {}), ...(preset ? { preset } : {}), models }))
+    return parseCustomProviders(JSON.parse(raw)).map(({ id, name, baseURL, currency, preset, models }) => ({ id, name, baseURL, ...(currency ? { currency } : {}), ...(preset ? { preset } : {}), models }))
   } catch {
     return []
   }
@@ -274,7 +332,7 @@ export function listModels(scope: ModelScope = NO_SCOPE, opts: { all?: boolean }
   const push = (provider: string, m: { id: string; label: string; verified: boolean }): void => {
     const id = `${provider}:${m.id}`
     const enabled = !scope.disabledProviders?.has(provider) && !scope.disabledModels?.has(id)
-    if (enabled || opts.all) out.push({ id, provider, label: m.label, verified: m.verified, enabled })
+    if (enabled || opts.all) out.push({ id, provider, label: m.label, verified: m.verified, enabled, caps: capsOf(id, scope) })
   }
   for (const [provider, def] of Object.entries(providers())) {
     if (!keyFor(def, scope.key)) continue
@@ -314,7 +372,7 @@ export interface ProviderSummary {
   preset: string | null
   /** Where the user creates or copies the key, from the catalog entry of `preset`. */
   keyUrl: string | null
-  models: { id: string; rawId: string; label: string; enabled: boolean; verified: boolean; added: boolean; price: { input: number; output: number } | null }[]
+  models: { id: string; rawId: string; label: string; enabled: boolean; verified: boolean; added: boolean; price: { input: number; output: number } | null; caps: Capability[] }[]
 }
 
 const keyUrlOf = (preset: string | null): string | null => (preset ? catalogEntry(preset)?.keyUrl ?? null : null)
@@ -351,6 +409,7 @@ export function describeProviders(scope: ModelScope): ProviderSummary[] {
         verified: m.verified,
         added: extraIds.has(m.id),
         price: scope.prices?.[`${provider}:${m.id}`] ?? null,
+        caps: capsOf(`${provider}:${m.id}`, scope),
       })),
     })
   }
@@ -378,6 +437,7 @@ export function describeProviders(scope: ModelScope): ProviderSummary[] {
         verified: false,
         added: false,
         price: m.price ?? null,
+        caps: capsOf(`${provider}:${m.id}`, scope),
       })),
     })
   }
@@ -407,6 +467,19 @@ export function resolveModel(id: string, scope: ModelScope = NO_SCOPE): Language
 export function builtinKey(provider: string, scope: ModelScope): string | undefined {
   const def = PROVIDERS[provider]
   return def ? keyFor(def, scope.key) : undefined
+}
+
+/**
+ * A model that accepts images, for alt text and OCR: a built-in Anthropic, OpenAI or Google model, or an
+ * OpenRouter model of a vision-capable family. Undefined when none is usable.
+ */
+export function visionModelFor(scope: ModelScope = NO_SCOPE): string | undefined {
+  return listModels(scope).find((m) => isVisionModelId(m.id))?.id
+}
+
+/** Whether a model id names a model family that takes images. */
+export function isVisionModelId(id: string): boolean {
+  return /^(anthropic|openai|google):/.test(id) || /^openrouter:(anthropic\/|openai\/gpt-4|openai\/gpt-5|google\/gemini)/.test(id)
 }
 
 /** The saved or typed key of a custom provider, if any. */

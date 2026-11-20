@@ -5,6 +5,7 @@ import { Dialog, DialogContent } from '../components/ui/dialog'
 import { Switch } from '../components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { AddProvider, type AddDraft, type CatalogEntry } from './AddProvider'
+import { CapsPicker, DEFAULT_CAPS, normalizeCaps, type Capability } from './caps'
 
 /** A model row as it is being edited. Prices are text so a half-typed number survives. */
 interface ModelRow {
@@ -17,6 +18,7 @@ interface ModelRow {
   added: boolean
   input: string
   output: string
+  caps: Capability[]
 }
 
 interface ProviderRow {
@@ -50,7 +52,7 @@ interface ServerProvider {
   currency: string
   preset: string | null
   keyUrl: string | null
-  models: { id: string; rawId: string; label: string; enabled: boolean; verified: boolean; added: boolean; price: { input: number; output: number } | null }[]
+  models: { id: string; rawId: string; label: string; enabled: boolean; verified: boolean; added: boolean; caps?: Capability[]; price: { input: number; output: number } | null }[]
 }
 
 interface UsageDay { day: string; model: string; input_tokens: number; output_tokens: number; runs: number; cost: number | null; currency: string | null }
@@ -97,6 +99,7 @@ const toRow = (p: ServerProvider): ProviderRow => ({
     added: m.added,
     input: m.price ? String(m.price.input) : '',
     output: m.price ? String(m.price.output) : '',
+    caps: normalizeCaps(m.caps),
   })),
 })
 
@@ -205,7 +208,7 @@ export function Providers({ onClose, onChanged }: { onClose: () => void; onChang
         body: JSON.stringify({ provider: current.id, baseURL: current.builtin ? undefined : current.baseURL, apiKey: current.apiKey }),
       })
       const have = new Set(current.models.map((m) => m.rawId))
-      const fresh = r.models.filter((m) => !have.has(m.id)).map((m): ModelRow => ({ id: `${current.id}:${m.id}`, rawId: m.id, label: m.label ?? m.id, enabled: true, verified: false, added: true, input: '', output: '' }))
+      const fresh = r.models.filter((m) => !have.has(m.id)).map((m): ModelRow => ({ id: `${current.id}:${m.id}`, rawId: m.id, label: m.label ?? m.id, enabled: true, verified: false, added: true, input: '', output: '', caps: [...DEFAULT_CAPS] }))
       edit({ models: [...current.models, ...fresh] })
       setMessage(`从接口读取到 ${r.models.length} 个模型，新增 ${fresh.length} 个。`)
     } catch (err) {
@@ -218,7 +221,7 @@ export function Providers({ onClose, onChanged }: { onClose: () => void; onChang
   const addModel = (): void => {
     const raw = customModel.trim()
     if (!current || !raw || current.models.some((m) => m.rawId === raw)) return
-    edit({ models: [...current.models, { id: `${current.id}:${raw}`, rawId: raw, label: raw, enabled: true, verified: false, added: true, input: '', output: '' }] })
+    edit({ models: [...current.models, { id: `${current.id}:${raw}`, rawId: raw, label: raw, enabled: true, verified: false, added: true, input: '', output: '', caps: [...DEFAULT_CAPS] }] })
     setCustomModel('')
   }
   const removeModel = (id: string): void => {
@@ -237,7 +240,7 @@ export function Providers({ onClose, onChanged }: { onClose: () => void; onChang
 
   /** Applies the picker's draft to the rows and saves at once. The new provider is selected afterwards. */
   const addProvider = (draft: AddDraft): void => {
-    const newModel = (rowId: string, m: { id: string; label?: string }): ModelRow => ({ id: `${rowId}:${m.id}`, rawId: m.id, label: m.label ?? m.id, enabled: true, verified: false, added: true, input: '', output: '' })
+    const newModel = (rowId: string, m: { id: string; label?: string; caps?: Capability[] }): ModelRow => ({ id: `${rowId}:${m.id}`, rawId: m.id, label: m.label ?? m.id, enabled: true, verified: false, added: true, input: '', output: '', caps: normalizeCaps(m.caps) })
     let id: string
     let nextRows: ProviderRow[]
     if (draft.kind === 'builtin') {
@@ -302,22 +305,25 @@ export function Providers({ onClose, onChanged }: { onClose: () => void; onChang
         baseURL: r.baseURL.trim(),
         ...(r.currency.trim() ? { currency: r.currency.trim() } : {}),
         ...(r.preset ? { preset: r.preset } : {}),
-        models: r.models.map((m) => ({ id: m.rawId, ...(m.label && m.label !== m.rawId ? { label: m.label } : {}), ...(priceOf(m) ? { price: priceOf(m) } : {}) })),
+        models: r.models.map((m) => ({ id: m.rawId, ...(m.label && m.label !== m.rawId ? { label: m.label } : {}), ...(priceOf(m) ? { price: priceOf(m) } : {}), caps: m.caps })),
         ...(r.apiKey.trim() ? { apiKey: r.apiKey.trim() } : {}),
       }))
     const keys: Record<string, string> = {}
     const extraModels: Record<string, { id: string; label?: string }[]> = {}
     const modelPrices: Record<string, { input: number; output: number }> = {}
+    // Built-in models keep their capabilities in one map keyed by "<provider>:<model>"; it is sent in full every save.
+    const modelCaps: Record<string, Capability[]> = {}
     for (const r of nextRows.filter((x) => x.builtin)) {
       if (r.keyName && r.apiKey.trim()) keys[r.keyName] = r.apiKey.trim()
       const added = r.models.filter((m) => m.added).map((m) => (m.label && m.label !== m.rawId ? { id: m.rawId, label: m.label } : { id: m.rawId }))
       if (added.length) extraModels[r.id] = added
       for (const m of r.models) if (priceOf(m)) modelPrices[m.id] = priceOf(m)!
+      for (const m of r.models) modelCaps[m.id] = m.caps
     }
     const disabledProviders = nextRows.filter((r) => !r.enabled).map((r) => r.id)
     const disabledModels = nextRows.flatMap((r) => r.models.filter((m) => !m.enabled).map((m) => m.id))
     try {
-      await api('/settings', { method: 'PUT', body: JSON.stringify({ model: nextDefault, keys, customProviders, extraModels, modelPrices, disabledProviders, disabledModels }) })
+      await api('/settings', { method: 'PUT', body: JSON.stringify({ model: nextDefault, keys, customProviders, extraModels, modelPrices, modelCaps, disabledProviders, disabledModels }) })
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败')
       return
@@ -432,7 +438,7 @@ export function Providers({ onClose, onChanged }: { onClose: () => void; onChang
                     {message && <p className="muted small">{message}</p>}
                     <p className="muted small">关闭开关的模型不会出现在选择列表里。</p>
                     <table className="usage">
-                      <thead><tr><th>启用</th><th>模型</th><th></th></tr></thead>
+                      <thead><tr><th>启用</th><th>模型</th><th>能力</th><th></th></tr></thead>
                       <tbody>
                         {shownModels.map((m) => (
                           <tr key={m.id}>
@@ -444,6 +450,9 @@ export function Providers({ onClose, onChanged }: { onClose: () => void; onChang
                               {!current.builtin && (
                                 <input aria-label="显示名" className="prov-label" value={m.label === m.rawId ? '' : m.label} placeholder="显示名" onChange={(e) => editModel(m.id, { label: e.target.value || m.rawId })} />
                               )}
+                            </td>
+                            <td>
+                              <CapsPicker caps={m.caps} onChange={(caps) => editModel(m.id, { caps })} />
                             </td>
                             <td>
                               <Button variant="link" size="sm" disabled={!m.enabled || m.id === defaultModel} onClick={() => setAsDefault(current, m.id)}>设为默认</Button>

@@ -111,9 +111,9 @@ export const CATALOG: CatalogEntry[] = [
   { id: 'llamacpp', name: 'llama.cpp（本机）', region: 'local', baseURL: 'http://localhost:8080/v1', keyOptional: true, currency: '', note: 'llama-server 提供的 OpenAI 兼容接口', models: [] },
 ]
 
-/** The catalog a server mode offers: a web deployment cannot reach the user's machine. */
-export function catalogFor(mode: 'local' | 'web'): CatalogEntry[] {
-  return mode === 'web' ? CATALOG.filter((e) => e.region !== 'local') : CATALOG
+/** The full provider catalog, including the entries for services on this machine. */
+export function catalogFor(): CatalogEntry[] {
+  return CATALOG
 }
 
 export function catalogEntry(id: string): CatalogEntry | undefined {

@@ -16,7 +16,7 @@ import { DocTools } from './tools'
  *
  *   tsx src/mcp.ts --url http://127.0.0.1:8787 --token <token> --doc <id> [--author "Pi"]
  *
- * `--token` is a session token, the desktop app's local token, or `share:<link token>`.
+ * `--token` is the desktop app's local token or a browser clipper token (`clp_...`).
  */
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`)
@@ -57,7 +57,7 @@ const text = (value: unknown) => ({
   content: [{ type: 'text' as const, text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }],
 })
 const reason = z.string().optional().describe('One short sentence on why this change helps')
-const NOTE = ' Blocks are written as `[block_id] content`; headings use #, lists use -, 1. or - [ ], quotes use >. Every edit becomes a pending suggestion for the user to accept or reject.'
+const NOTE = ' Blocks are written as `[block_id] content`; headings use #, lists use -, 1. or - [ ], quotes use >, code uses a fence with a language (```mermaid, ```drawio), math uses $$ lines, images use ![alt](src "caption"), videos use !video[title](src), attachments use !file[name](src), link cards use !link[title](url). Every edit becomes a pending suggestion for the user to accept or reject.'
 
 server.registerTool('document_outline', { description: 'Headings and section sizes of the document.' + NOTE, inputSchema: {} }, async () => text(tools.getOutline()))
 server.registerTool(
@@ -83,6 +83,11 @@ server.registerTool(
   async (a) => text(tools.insertBlocks(a.after_block_id, a.blocks, a.reason)),
 )
 server.registerTool('document_delete_block', { description: 'Propose deleting a block.', inputSchema: { block_id: z.string(), reason } }, async (a) => text(tools.deleteBlock(a.block_id, a.reason)))
+server.registerTool(
+  'document_add_footnote',
+  { description: 'Attach a footnote to a phrase that occurs exactly once in a block. The note is listed at the end of the document. Use it for footnotes, citations or sources.', inputSchema: { block_id: z.string(), phrase: z.string(), note: z.string() } },
+  async (a) => text(tools.addFootnote(a.block_id, a.phrase, a.note)),
+)
 server.registerTool(
   'document_withdraw',
   { description: 'Take back suggestions you made, by change id.', inputSchema: { change_ids: z.array(z.string()).min(1) } },

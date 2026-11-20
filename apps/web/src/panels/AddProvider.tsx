@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { post } from '../api'
 import { Button } from '../components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs'
+import { CapsPicker, DEFAULT_CAPS, normalizeCaps, type Capability } from './caps'
 
 /** One entry of the provider catalog (GET /providers/catalog). */
 export type CatalogRegion = 'cn' | 'global' | 'aggregator' | 'local'
@@ -32,7 +33,8 @@ export interface AddProviderRow {
   keySource: 'saved' | 'dsh' | 'env' | null
 }
 
-interface ModelOpt { id: string; label?: string }
+/** A model in a draft. `caps` is missing for models the server never tagged; those count as the defaults. */
+export interface ModelOpt { id: string; label?: string; caps?: Capability[] }
 
 export type AddDraft =
   | { kind: 'builtin'; provider: string; apiKey: string; models: ModelOpt[]; defaultModel: string }
@@ -142,7 +144,7 @@ function ConfigureProvider({ entry, rows, onBack, onCancel, onDone }: ConfigureP
   const isBuiltin = !!entry?.builtin
   const builtinRow = entry?.builtin ? rows.find((r) => r.id === entry.builtin) : undefined
   const configured = !!builtinRow?.keySource
-  const suggested: ModelOpt[] = entry?.models ?? []
+  const suggested: ModelOpt[] = (entry?.models ?? []).map((m) => ({ ...m, caps: [...DEFAULT_CAPS] }))
 
   const [name, setName] = useState(entry?.name ?? '')
   const [baseURL, setBaseURL] = useState(entry?.baseURL ?? '')
@@ -167,6 +169,9 @@ function ConfigureProvider({ entry, rows, onBack, onCancel, onDone }: ConfigureP
   const togglePick = (id: string, on: boolean): void =>
     setPicked((p) => (on ? [...p.filter((x) => x !== id), id] : p.filter((x) => x !== id)))
 
+  const setCaps = (id: string, caps: Capability[]): void =>
+    setList((l) => l.map((m) => (m.id === id ? { ...m, caps } : m)))
+
   const verify = async (): Promise<void> => {
     setVerifying(true)
     setVerifyOk('')
@@ -177,7 +182,9 @@ function ConfigureProvider({ entry, rows, onBack, onCancel, onDone }: ConfigureP
       const found = r.models ?? []
       const foundIds = new Set(found.map((m) => m.id))
       // Suggested models stay first (the first one is the default), then whatever the endpoint reported.
-      const merged = uniq([...suggested, ...found, ...list.filter((m) => manual.includes(m.id))])
+      // Capabilities the user already set on a model survive a re-verify; new models get the defaults.
+      const editedCaps = new Map(list.map((m) => [m.id, m.caps]))
+      const merged = uniq([...suggested, ...found, ...list.filter((m) => manual.includes(m.id))]).map((m) => ({ ...m, caps: editedCaps.get(m.id) ?? m.caps ?? [...DEFAULT_CAPS] }))
       const hits = suggested.map((m) => m.id).filter((id) => foundIds.has(id))
       const preset = hits.length > 0 ? hits : found[0] ? [found[0].id] : suggested.map((m) => m.id)
       setList(merged)
@@ -196,7 +203,7 @@ function ConfigureProvider({ entry, rows, onBack, onCancel, onDone }: ConfigureP
   const addManual = (): void => {
     const id = manualId.trim()
     if (!id) return
-    setList((l) => (l.some((m) => m.id === id) ? l : [...l, { id }]))
+    setList((l) => (l.some((m) => m.id === id) ? l : [...l, { id, caps: [...DEFAULT_CAPS] }]))
     setPicked((p) => (p.includes(id) ? p : [...p, id]))
     setManual((m) => (m.includes(id) ? m : [...m, id]))
     setManualId('')
@@ -211,7 +218,7 @@ function ConfigureProvider({ entry, rows, onBack, onCancel, onDone }: ConfigureP
 
   const submit = (): void => {
     if (!canSave) return
-    const models = selectedOpts.map((m) => (m.label && m.label !== m.id ? { id: m.id, label: m.label } : { id: m.id }))
+    const models = selectedOpts.map((m) => (m.label && m.label !== m.id ? { id: m.id, label: m.label, caps: normalizeCaps(m.caps) } : { id: m.id, caps: normalizeCaps(m.caps) }))
     if (entry?.builtin) {
       onDone({ kind: 'builtin', provider: entry.builtin, apiKey: apiKey.trim(), models, defaultModel: effDefault })
     } else {
@@ -257,15 +264,19 @@ function ConfigureProvider({ entry, rows, onBack, onCancel, onDone }: ConfigureP
         <div className="row between">
           <span className="muted small">已选 {selectedOpts.length} / 共 {list.length} 个模型</span>
         </div>
+        <p className="muted small addp-hint">能力决定模型出现在哪些用途里，例如"识图"模型可用于图片描述。默认勾选文字和识图，不支持的请取消。</p>
         {list.length > 10 && <input aria-label="筛选模型" placeholder="筛选模型…" value={filter} onChange={(e) => setFilter(e.target.value)} />}
         <div className="addp-model-list">
           {shownModels.length === 0 && <p className="muted small pad">还没有模型。验证密钥或手动添加一个。</p>}
           {shownModels.map((m) => (
-            <label key={m.id} className="row addp-model">
-              <input type="checkbox" checked={picked.includes(m.id)} onChange={(e) => togglePick(m.id, e.target.checked)} />
-              <code>{m.id}</code>
-              {m.label && m.label !== m.id && <span className="muted small">{m.label}</span>}
-            </label>
+            <div key={m.id} className="row addp-model">
+              <label className="row addp-model-main">
+                <input type="checkbox" checked={picked.includes(m.id)} onChange={(e) => togglePick(m.id, e.target.checked)} />
+                <code>{m.id}</code>
+                {m.label && m.label !== m.id && <span className="muted small">{m.label}</span>}
+              </label>
+              <CapsPicker caps={normalizeCaps(m.caps)} disabled={!picked.includes(m.id)} onChange={(caps) => setCaps(m.id, caps)} />
+            </div>
           ))}
         </div>
         <div className="row wrap">

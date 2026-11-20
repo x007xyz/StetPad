@@ -8,3 +8,6 @@ release
 .data
 desktop/web
 desktop/dist
+desktop/drawio
+.output
+.wxt

@@ -150,6 +150,33 @@ function decorate(ydoc: Y.Doc, pm: PMNode): DecorationSet {
   return DecorationSet.create(pm, decos)
 }
 
+/**
+ * Ranges within [from, to) that are pending deletion or removed, as the tracked
+ * plugin decorates them. Sorted by start; the ranges do not overlap. Reads the
+ * plugin state of `state`, so it is current for that state.
+ */
+export function hiddenRanges(state: EditorState, from: number, to: number): Array<[number, number]> {
+  const set = key.getState(state)
+  if (!set) return []
+  const out: Array<[number, number]> = []
+  for (const d of set.find(from, to)) {
+    const cls = String((d as unknown as { type: { attrs?: Record<string, unknown> } }).type.attrs?.class ?? '')
+    if (!/(^|\s)tc-(del|hidden)(\s|$)/.test(cls)) continue
+    const a = Math.max(d.from, from)
+    const b = Math.min(d.to, to)
+    if (b > a) out.push([a, b])
+  }
+  out.sort((x, y) => x[0] - y[0])
+  // Merge overlapping ranges so callers can walk them in order.
+  const merged: Array<[number, number]> = []
+  for (const r of out) {
+    const last = merged[merged.length - 1]
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1])
+    else merged.push([r[0], r[1]])
+  }
+  return merged
+}
+
 /** The Yjs identity of the text between two editor positions, for anchoring a comment. */
 export function anchorBetween(ydoc: Y.Doc, pm: PMNode, from: number, to: number): { ids: CharId[]; quote: string; blockId: string | null } {
   const picked = walk(content(ydoc), pm).chars.filter((c) => c.pos >= from && c.pos < to)

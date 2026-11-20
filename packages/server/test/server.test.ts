@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { startServer, type RunningServer } from '../src'
+import { textPdf } from './pdf-fixture'
 
 const until = async (check: () => boolean, what: string, ms = 8000) => {
   const t = Date.now()
@@ -160,6 +161,41 @@ describe('server', () => {
     expect(md).toContain('# Title')
     expect(md).toContain('- one')
     expect(md).toContain('| a | b |')
+  })
+
+  it.each([500, 501, 503])('reports omitted PDF pages for %i pages before creating a document', async (pages) => {
+    const form = new FormData()
+    form.append('file', new File([Buffer.from(textPdf(pages))], 'long.pdf'))
+    const preview = await call('/api/import/preview', { method: 'POST', body: form })
+    expect(preview.status).toBe(200)
+    expect(preview.body.omittedPageCount).toBe(pages > 500 ? pages - 500 : undefined)
+    expect(preview.body.blocks).toHaveLength(500)
+    const made = await call('/api/import/create', { method: 'POST', body: JSON.stringify(preview.body) })
+    expect(made.status).toBe(200)
+    const exported = await call(`/api/docs/${made.body.id}/export?format=md`)
+    expect(exported.body).toContain('Page 500 line 1.')
+    expect(exported.body).not.toContain('Page 501')
+  })
+
+  it('reports PDF page and block overflow together', async () => {
+    const form = new FormData()
+    form.append('file', new File([Buffer.from(textPdf(501, 5))], 'long.pdf'))
+    const preview = await call('/api/import/preview', { method: 'POST', body: form })
+    expect(preview.status).toBe(200)
+    expect(preview.body.omittedPageCount).toBe(1)
+    expect(preview.body.omittedBlockCount).toBe(500)
+    expect(preview.body.blocks).toHaveLength(2000)
+  })
+
+  it('rejects empty or invalid PDFs instead of returning a truncation preview', async () => {
+    for (const data of [textPdf(501, 0), new TextEncoder().encode('not a PDF')]) {
+      const form = new FormData()
+      form.append('file', new File([Buffer.from(data)], 'empty.pdf'))
+      const preview = await call('/api/import/preview', { method: 'POST', body: form })
+      expect(preview.status).toBe(422)
+      expect(preview.body.error).toEqual(expect.any(String))
+      expect(preview.body.omittedPageCount).toBeUndefined()
+    }
   })
 
   it('reports import overflow before creating a bounded document', async () => {

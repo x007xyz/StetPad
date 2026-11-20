@@ -7,7 +7,7 @@ import { Dialog, DialogContent } from './components/ui/dialog'
 import { Field, Input } from './components/ui/input'
 import { SidebarToggle, useWorkspace } from './Shell'
 
-interface Preview { title: string; blocks: RichBlock[]; omittedBlockCount?: number }
+interface Preview { title: string; blocks: RichBlock[]; omittedBlockCount?: number; omittedPageCount?: number }
 
 /** The message for an import that left files out: their names, five at most. */
 const droppedNote = (dropped: { name: string | null; mime: string }[]): string => {
@@ -129,6 +129,9 @@ export function Home() {
         {preview && (
           <DialogContent title="导入预览" className="max-w-3xl">
             <p className="muted">原文档的排版不会保留，内容已整理成下面的简单格式。共 {preview.blocks.length + omittedBlockCount} 个段落。</p>
+            {(preview.omittedPageCount ?? 0) > 0 && (
+              <p role="alert" className="warn">{`PDF 导入最多保留前 500 页。继续创建将省略最后 ${preview.omittedPageCount} 页。`}</p>
+            )}
             {omittedBlockCount > 0 && (
               <p role="alert" className="warn">{`导入最多保留前 ${preview.blocks.length} 个段落。继续创建将省略最后 ${omittedBlockCount} 个段落。`}</p>
             )}

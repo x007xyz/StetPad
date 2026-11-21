@@ -21,6 +21,7 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
   const [compare, setCompare] = useState<{ left: string; right: string; a: RichBlock[]; b: RichBlock[] } | null>(null)
   const [onlyChanged, setOnlyChanged] = useState(true)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [open, setOpen] = useState(false)
   const latestLoad = useRef<{ docId: string } | null>(null)
 
@@ -50,8 +51,13 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
     const label = await promptText({ title: '给这个版本起个名字（可留空）', confirmLabel: '保存', maxLength: MAX_VERSION_LABEL_LENGTH })
     if (label === null) return
     setError('')
+    setNotice('')
     try {
-      await post(`/docs/${docId}/versions`, { label })
+      const { id } = await post<{ id: string | null }>(`/docs/${docId}/versions`, { label })
+      if (!id) {
+        setNotice('自上个版本以来没有改动，未保存新版本。')
+        setOpen(true)
+      }
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : '保存失败')
@@ -102,7 +108,7 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
 
   return (
     <>
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setNotice('') }}>
       <Tip text="版本历史">
         <PopoverTrigger asChild>
           <Button variant="ghost" size="icon" className="size-7" aria-label="版本历史"><History /></Button>
@@ -117,6 +123,7 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
         </button>
       </div>
       {error && <p className="error pad" role="alert">{error}</p>}
+      {notice && <p className="muted pad" role="status">{notice}</p>}
       {list.length === 0 && <p className="muted pad">还没有版本。AI 操作前后、导入后会自动保存，也可以手动保存。</p>}
       <ul>
         {list.map((v) => (

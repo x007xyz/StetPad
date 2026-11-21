@@ -1528,7 +1528,9 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   api.post('/docs/:id/chats', async (c) => {
     const d = await docFor(c, c.req.param('id'))
     if (!d) return notFound(c)
-    const body = await c.req.json<{ title?: string }>().catch(() => ({}) as { title?: string })
+    const body = await c.req.json<{ title?: unknown }>().catch(() => null)
+    if (!body || typeof body !== 'object') return c.json({ error: 'bad request' }, 400)
+    if (body.title !== undefined && typeof body.title !== 'string') return c.json({ error: '对话标题必须是字符串' }, 400)
     const x = await store.createChat(d.doc.id, (body.title ?? '').trim().slice(0, 80))
     return c.json({ chat: { id: x.id, title: x.title, created_at: x.created_at, updated_at: x.updated_at, runs: 0 } })
   })
@@ -1539,7 +1541,9 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   api.patch('/chats/:cid', async (c) => {
     const x = await chatFor(c, c.req.param('cid'))
     if (!x) return notFound(c)
-    const body = await c.req.json<{ title?: string }>().catch(() => ({}) as { title?: string })
+    const body = await c.req.json<{ title?: unknown }>().catch(() => null)
+    if (!body || typeof body !== 'object') return c.json({ error: 'bad request' }, 400)
+    if (body.title !== undefined && typeof body.title !== 'string') return c.json({ error: '对话标题必须是字符串' }, 400)
     const title = (body.title ?? '').trim().slice(0, 80)
     if (!title) return c.json({ error: '标题不能为空' }, 400)
     await store.renameChat(x.id, title)
@@ -1821,7 +1825,9 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   api.post('/docs/:id/runs', async (c) => {
     const d = await docFor(c, c.req.param('id'))
     if (!d) return notFound(c)
-    const body = await c.req.json<{ chatId?: string; instruction?: string; modelId?: string; preset?: string; selection?: { blockIds: string[]; text?: string }; context?: unknown }>()
+    const body = await c.req.json<{ chatId?: string; instruction?: unknown; modelId?: string; preset?: string; selection?: { blockIds: string[]; text?: string }; context?: unknown }>().catch(() => null)
+    if (!body || typeof body !== 'object') return c.json({ error: 'bad request' }, 400)
+    if (body.instruction !== undefined && typeof body.instruction !== 'string') return c.json({ error: '指令必须是字符串' }, 400)
     const user = c.get('user')
     const modelId = body.modelId ?? (await store.getSetting(user.id, 'model')) ?? listModels(await keysFor(user.id))[0]?.id
     if (!modelId) return c.json({ error: '没有可用的模型，请先在设置里配置密钥' }, 400)
@@ -1861,7 +1867,9 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   api.post('/folders/:id/runs', async (c) => {
     const f = await folderFor(c, c.req.param('id'))
     if (!f) return notFound(c)
-    const body = await c.req.json<{ instruction?: string; modelId?: string; context?: unknown }>()
+    const body = await c.req.json<{ instruction?: unknown; modelId?: string; context?: unknown }>().catch(() => null)
+    if (!body || typeof body !== 'object') return c.json({ error: 'bad request' }, 400)
+    if (body.instruction !== undefined && typeof body.instruction !== 'string') return c.json({ error: '指令必须是字符串' }, 400)
     const user = c.get('user')
     const modelId = body.modelId ?? (await store.getSetting(user.id, 'model')) ?? listModels(await keysFor(user.id))[0]?.id
     if (!modelId) return c.json({ error: '没有可用的模型，请先在设置里配置密钥' }, 400)

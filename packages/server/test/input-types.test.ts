@@ -43,6 +43,47 @@ describe('document input types', () => {
     expect(await call(`/api/docs/${docId}/clip`, 'POST', { blocks, [field]: 4 })).toEqual({ status: 400, body: { error: expect.any(String) } })
   })
 
+  describe('chat titles and run instructions', () => {
+    let chatId: string
+    let folderId: string
+    beforeAll(async () => {
+      chatId = (await call(`/api/docs/${docId}/chats`, 'POST', {})).body.chat.id
+      folderId = (await call('/api/folders', 'POST', { name: 'Runs' })).body.id
+    })
+    const routes = () => [
+      { path: `/api/docs/${docId}/chats`, method: 'POST', field: 'title' },
+      { path: `/api/chats/${chatId}`, method: 'PATCH', field: 'title' },
+      { path: `/api/docs/${docId}/runs`, method: 'POST', field: 'instruction' },
+      { path: `/api/folders/${folderId}/runs`, method: 'POST', field: 'instruction' },
+    ]
+
+    it.each([0, 1, 2, 3])('route %i rejects non-string fields and invalid bodies', async (index) => {
+      const { path, method, field } = routes()[index]!
+      for (const value of [5, {}, false, [], null]) {
+        expect(await call(path, method, { [field]: value, modelId: 'openai:gpt-4o-mini' })).toEqual({ status: 400, body: { error: expect.any(String) } })
+      }
+      for (const body of ['not json', 'null', '5']) {
+        expect(await send(path, method, body)).toEqual({ status: 400, body: { error: expect.any(String) } })
+      }
+    })
+
+    it('accepts and trims string chat titles and permits an omitted create title', async () => {
+      expect((await call(`/api/docs/${docId}/chats`, 'POST', {})).status).toBe(200)
+      const created = await call(`/api/docs/${docId}/chats`, 'POST', { title: ' Chat ' })
+      expect(created).toMatchObject({ status: 200, body: { chat: { title: 'Chat' } } })
+      expect((await call(`/api/chats/${created.body.chat.id}`, 'PATCH', { title: ' Renamed ' })).status).toBe(200)
+      expect((await call(`/api/docs/${docId}/chats`, 'GET', undefined)).body.chats).toContainEqual(expect.objectContaining({ id: created.body.chat.id, title: 'Renamed' }))
+      expect((await call(`/api/chats/${chatId}`, 'PATCH', { title: ' ' })).status).toBe(400)
+    })
+
+    it.each([2, 3])('run route %i rejects empty instructions', async (index) => {
+      const { path, method } = routes()[index]!
+      for (const instruction of [undefined, '', ' ']) {
+        expect(await call(path, method, { instruction, modelId: 'openai:gpt-4o-mini' })).toEqual({ status: 400, body: { error: '请输入指令' } })
+      }
+    })
+  })
+
   describe('version label length', () => {
     it.each([201, 8192])('rejects %i-character labels on create and rename', async (length) => {
       const version = await call(`/api/docs/${docId}/versions`, 'POST', { label: 'Original' })

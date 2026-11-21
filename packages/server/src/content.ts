@@ -285,8 +285,9 @@ export function splitMdFootnotes(src: string): { body: string; defs: Map<string,
 export function applyMdFootnotes(list: Block[], defs: Map<string, string>): Block[] {
   for (const b of list) {
     if (!b.delta.some((d) => d.insert.includes('[^'))) continue
+    // One entry per UTF-16 code unit, so regex match offsets index `chars` directly.
     const chars: { ch: string; attributes?: Record<string, unknown> }[] = []
-    for (const d of b.delta) for (const ch of d.insert) chars.push({ ch, attributes: d.attributes })
+    for (const d of b.delta) for (const ch of d.insert.split('')) chars.push({ ch, attributes: d.attributes })
     const re = /\[\^([^\]\s]+)\]/
     let s = chars.map((c) => c.ch).join('')
     let m: RegExpExecArray | null

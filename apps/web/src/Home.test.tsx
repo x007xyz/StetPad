@@ -3,10 +3,61 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { Home } from './Home'
+import { initI18n } from './i18n'
 import { deferred } from './lib/deferred.test-utils'
 
 vi.mock('./Shell', () => ({ useWorkspace: () => ({ docs: [], createDoc: vi.fn() }), SidebarToggle: () => null }))
 vi.mock('./App', () => ({ go: vi.fn() }))
+
+it.each([
+  { lang: 'en', count: 0 },
+  { lang: 'en', count: 201 },
+  { lang: 'zh', count: 201 },
+])('translates import preview text nodes ($lang, $count blocks)', async ({ lang, count }) => {
+  localStorage.setItem('aiw.lang', lang)
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
+    title: 'Import',
+    blocks: Array.from({ length: count }, () => ({ type: 'paragraph', attrs: {}, delta: [{ insert: 'Hello' }] })),
+    omittedBlockCount: count ? 3 : 0,
+    omittedPageCount: count ? 2 : 0,
+  })))
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const container = document.createElement('div')
+  container.id = 'root'
+  document.body.append(container)
+  const root = createRoot(container)
+  const dialogs = { alert: window.alert, confirm: window.confirm, prompt: window.prompt }
+  try {
+    for (const name of ['alert', 'confirm', 'prompt']) vi.stubGlobal(name, vi.fn())
+    initI18n()
+    await act(async () => root.render(<Home />))
+    const input = container.querySelector('input[type="file"]')!
+    Object.defineProperty(input, 'files', { value: [new File(['Hello'], 'import.md')] })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+    const total = count ? count + 3 : 0
+    await vi.waitFor(() => {
+      const dialog = document.querySelector('[role="dialog"]')!
+      expect(dialog.querySelector('p')?.textContent).toBe(lang === 'en'
+        ? `The original layout is not kept; the content was normalised into the simple format below. ${total} blocks.`
+        : `原文档的排版不会保留，内容已整理成下面的简单格式。共 ${total} 个段落。`)
+      const warnings = Array.from(dialog.querySelectorAll('[role="alert"]'), (p) => p.textContent)
+      expect(warnings).toEqual(!count ? [] : lang === 'en' ? [
+        'This PDF import can keep only the first 500 pages. Creating the document will omit the last 2 pages.',
+        `This import can keep only the first ${count} blocks. Creating the document will omit the last 3 blocks.`,
+      ] : [
+        'PDF 导入最多保留前 500 页。继续创建将省略最后 2 页。',
+        `导入最多保留前 ${count} 个段落。继续创建将省略最后 3 个段落。`,
+      ])
+      if (count) expect(dialog.querySelector('.preview > p')?.textContent).toBe(lang === 'en' ? '…1 more blocks not shown' : '……其余 1 段未显示')
+    })
+  } finally {
+    act(() => root.unmount())
+    document.body.replaceChildren()
+    Object.assign(window, dialogs)
+    localStorage.removeItem('aiw.lang')
+    vi.unstubAllGlobals()
+  }
+})
 
 it.each([false, true])('creates only one document for rapid preview confirmation (empty: %s)', async (empty) => {
   const pending = deferred<Response>()

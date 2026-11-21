@@ -10,6 +10,12 @@ describe('clampPanelWidth', () => {
     expect(clampPanelWidth(760, 784 - 240)).toBe(184)
   })
 
+  it('restores the preferred width when space becomes available again', () => {
+    const preferred = 760
+    expect(clampPanelWidth(preferred, 784)).toBe(424)
+    expect(clampPanelWidth(preferred, 1200)).toBe(760)
+  })
+
   it('bounds ordinary preferences without expanding them on larger windows', () => {
     expect(clampPanelWidth(340, 1440)).toBe(340)
     expect(clampPanelWidth(1000, 1440)).toBe(760)

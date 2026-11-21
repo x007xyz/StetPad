@@ -134,37 +134,33 @@ export function DocPage({ id }: { id: string }) {
   const workspace = useWorkspaceOptional()
   const narrow = useMedia('(max-width: 1023px)')
   const layoutRef = useRef<HTMLDivElement>(null)
+  const editorAreaRef = useRef<HTMLDivElement>(null)
   const pageRef = useRef<HTMLElement>(null)
+  const [available, setAvailable] = useState(Infinity)
   const availableWidth = (): number => {
     const layout = layoutRef.current
+    const editorArea = editorAreaRef.current
     const page = pageRef.current
-    if (!layout || !page) return Infinity
-    return layout.clientWidth - (page.parentElement!.clientWidth - page.clientWidth)
+    if (!layout || !editorArea || !page) return Infinity
+    return layout.clientWidth - (editorArea.clientWidth - page.clientWidth)
   }
   const [panelW, setPanelW] = useState(() => {
     try { return clampPanelWidth(Number(localStorage.getItem('aiw.panelW')), Infinity) } catch { return 340 }
   })
+  const displayedPanelW = clampPanelWidth(panelW, available)
   useLayoutEffect(() => {
     if (narrow || !layoutRef.current || !pageRef.current) return
-    const update = (): void => {
-      setPanelW((width) => {
-        const next = clampPanelWidth(width, availableWidth())
-        if (next !== width) {
-          try { localStorage.setItem('aiw.panelW', String(next)) } catch { /* ignore */ }
-        }
-        return next
-      })
-    }
+    const update = (): void => setAvailable(availableWidth())
     const observer = new ResizeObserver(update)
     observer.observe(layoutRef.current)
     observer.observe(pageRef.current)
     update()
     return () => observer.disconnect()
-  }, [narrow, missing, tocPinned, ready, view])
+  }, [narrow, missing])
   const startResize = (e: React.PointerEvent<HTMLDivElement>): void => {
     e.preventDefault()
     const startX = e.clientX
-    const startW = panelW
+    const startW = displayedPanelW
     let w = startW
     const move = (ev: PointerEvent): void => {
       w = clampPanelWidth(startW + (startX - ev.clientX), availableWidth())
@@ -1230,7 +1226,7 @@ export function DocPage({ id }: { id: string }) {
       </header>
 
       <div ref={layoutRef} className="flex min-h-0 flex-1">
-        <div className="relative flex min-w-0 flex-1">
+        <div ref={editorAreaRef} className="relative flex min-w-0 flex-1">
           <main ref={pageRef} className="page" data-view={view} onMouseMove={trackHandle} onScroll={() => setHandle(null)}>
             {!ready && <p className="muted pad">正在打开文档…</p>}
             <div ref={mount} hidden={view === 'side'} />
@@ -1278,8 +1274,8 @@ export function DocPage({ id }: { id: string }) {
           })()}
         </div>
         {!narrow && panelOpen && (
-          <aside className="relative flex shrink-0 flex-col border-l border-border bg-background" style={{ width: panelW }} aria-label="面板">
-            <div className="panel-resizer" role="separator" aria-orientation="vertical" aria-label="拖动调整面板宽度" onPointerDown={startResize} onDoubleClick={() => { setPanelW(clampPanelWidth(340, availableWidth())); try { localStorage.removeItem('aiw.panelW') } catch { /* ignore */ } }} />
+          <aside className="relative flex shrink-0 flex-col border-l border-border bg-background" style={{ width: displayedPanelW }} aria-label="面板">
+            <div className="panel-resizer" role="separator" aria-orientation="vertical" aria-label="拖动调整面板宽度" onPointerDown={startResize} onDoubleClick={() => { setPanelW(340); try { localStorage.removeItem('aiw.panelW') } catch { /* ignore */ } }} />
             {panel}
           </aside>
         )}

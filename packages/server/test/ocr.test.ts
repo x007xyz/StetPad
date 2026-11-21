@@ -50,8 +50,23 @@ describe('scanned PDF import', () => {
     expect(pages).toEqual([2])
     expect(blocks.map((b) => b.delta.map((d) => d.insert).join(''))).toEqual(['Page 1 line 1.', 'Scanned page two.', 'Page 3 line 1.'])
   })
-  it('rejects a mixed PDF without OCR instead of silently dropping pages', async () => {
-    await expect(fileToBlocks('mixed.pdf', textPdf(2, 1, [2]))).rejects.toThrow('没有文字层')
+  it('reports skipped pages in a mixed PDF without OCR and keeps the text', async () => {
+    let skipped: number[] = []
+    const blocks = await fileToBlocks('mixed.pdf', textPdf(4, 1, [2, 4]), { onSkippedPages: (pages) => { skipped = pages } })
+    expect(skipped).toEqual([2, 4])
+    expect(blocks.map((b) => b.delta[0]?.insert)).toEqual(['Page 1 line 1.', 'Page 3 line 1.'])
+  })
+  it('does not apply the OCR page limit when no OCR is configured', async () => {
+    const pages = Array.from({ length: 41 }, (_, i) => i + 2)
+    let skipped: number[] = []
+    const blocks = await fileToBlocks('mixed.pdf', textPdf(42, 1, pages), { onSkippedPages: (pages) => { skipped = pages } })
+    expect(skipped).toEqual(pages)
+    expect(blocks).toHaveLength(1)
+  })
+  it('does not report skipped pages when every page has text', async () => {
+    let skipped: number[] = []
+    await fileToBlocks('text.pdf', textPdf(2), { onSkippedPages: (pages) => { skipped = pages } })
+    expect(skipped).toEqual([])
   })
   it('propagates OCR failures in mixed PDFs', async () => {
     await expect(fileToBlocks('mixed.pdf', textPdf(2, 1, [2]), {

@@ -1043,7 +1043,8 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
             (await generateText({ model: resolveModel(visionId, keys), messages: [{ role: 'user', content: [{ type: 'file', data: png, mediaType: 'image/png' }, { type: 'text', text: 'Transcribe all text on this page exactly. Output Markdown: use #/##/### for headings, - for bullets, blank lines between paragraphs. Output only the transcription.' }] }] })).text
         : undefined
       let omittedPageCount = 0
-      const blocks = await fileToBlocks(file.name, new Uint8Array(await file.arrayBuffer()), { ocr, onOmittedPages: (count) => { omittedPageCount = count } })
+      let skippedPages: number[] = []
+      const blocks = await fileToBlocks(file.name, new Uint8Array(await file.arrayBuffer()), { ocr, onOmittedPages: (count) => { omittedPageCount = count }, onSkippedPages: (pages) => { skippedPages = pages } })
       if (blocks.length === 0) return c.json({ error: '没有解析出任何内容' }, 422)
       const heading = blocks.find((b) => b.type === 'heading')
       const title = (heading?.delta.map((d) => d.insert).join('') || file.name.replace(/\.[^.]+$/, '')).slice(0, 80)
@@ -1051,6 +1052,7 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
         title, blocks: blocks.slice(0, MAX_IMPORT_BLOCKS),
         ...(blocks.length > MAX_IMPORT_BLOCKS ? { omittedBlockCount: blocks.length - MAX_IMPORT_BLOCKS } : {}),
         ...(omittedPageCount > 0 ? { omittedPageCount } : {}),
+        ...(skippedPages.length > 0 ? { skippedPages } : {}),
       })
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : '解析失败' }, 422)

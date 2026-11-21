@@ -187,12 +187,13 @@ describe('server', () => {
     expect(preview.body.blocks).toHaveLength(2000)
   })
 
-  it('rejects mixed PDFs when no vision model is configured', async () => {
+  it('previews text and reports skipped pages when no vision model is configured', async () => {
     const form = new FormData()
     form.append('file', new File([Buffer.from(textPdf(2, 1, [2]))], 'mixed.pdf'))
     const result = await call('/api/import/preview', { method: 'POST', body: form })
-    expect(result.status).toBe(422)
-    expect(result.body.error).toContain('没有文字层')
+    expect(result.status).toBe(200)
+    expect(result.body.skippedPages).toEqual([2])
+    expect(result.body.blocks[0].delta).toEqual([{ insert: 'Page 1 line 1.' }])
   })
 
   it('rejects empty or invalid PDFs instead of returning a truncation preview', async () => {

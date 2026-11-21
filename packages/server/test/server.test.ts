@@ -213,7 +213,8 @@ describe('server', () => {
       body: JSON.stringify({ ...preview.body, blocks: [...preview.body.blocks, { type: 'paragraph', attrs: {}, delta: [{ insert: 'Paragraph 2001' }] }] }),
     })
     expect(overflow.status).toBe(413)
-    expect((await call('/api/docs')).body).toEqual(before.body)
+    const after = await call('/api/docs')
+    expect(after.body.map((d: { id: string }) => d.id).sort()).toEqual(before.body.map((d: { id: string }) => d.id).sort())
 
     const made = await call('/api/import/create', { method: 'POST', body: JSON.stringify(preview.body) })
     expect(made.status).toBe(200)

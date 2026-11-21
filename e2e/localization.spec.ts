@@ -52,8 +52,9 @@ for (const lang of ['en', 'zh'] as const) {
       await expect.soft(catalog.getByRole('tab').allTextContents()).resolves.toEqual(
         en ? ['All', 'China', 'International', 'Aggregators', 'Local'] : ['全部', '国内', '海外', '聚合平台', '本机'],
       )
-      await search.fill('Qwen')
-      const card = catalog.locator('.prov-card').filter({ hasText: en ? 'Alibaba Cloud Model Studio' : '阿里云百炼' }).first()
+      const name = en ? 'Alibaba Cloud Model Studio' : '阿里云百炼'
+      await search.fill(name)
+      const card = catalog.locator('.prov-card').filter({ hasText: name }).first()
       await expect(card).toContainText(en ? 'Qwen models via an OpenAI-compatible API' : 'Qwen 系列，OpenAI 兼容模式')
       await card.click()
       await expect(catalog.getByRole('button', { name: en ? 'Verify key and fetch models' : '验证密钥并获取模型' })).toBeVisible()

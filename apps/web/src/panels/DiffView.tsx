@@ -78,12 +78,12 @@ function richText(block: NonNullable<DiffRow['left']>): ReactNode {
 }
 
 /** Two versions of a document side by side, aligned block by block. */
-export function DiffView({ rows, leftTitle, rightTitle, onlyChanged }: { rows: DiffRow[]; leftTitle: string; rightTitle: string; onlyChanged?: boolean }) {
+export function DiffView({ rows, leftTitle, rightTitle, onlyChanged, skipTitleTranslation }: { rows: DiffRow[]; leftTitle: string; rightTitle: string; onlyChanged?: boolean; skipTitleTranslation?: boolean }) {
   const shown = onlyChanged ? rows.filter(rowChanged) : rows
   const changed = rows.filter(rowChanged).length
   return (
     <div className="diff">
-      <div className="diff-head">
+      <div className="diff-head" data-i18n-skip={skipTitleTranslation || undefined}>
         <div>{leftTitle}</div>
         <div>{rightTitle}</div>
       </div>

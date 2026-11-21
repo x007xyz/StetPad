@@ -7,8 +7,11 @@ import { Dialog, DialogContent } from '../components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
 import { Tip } from '../components/ui/tooltip'
 import { alignBlocks, DiffView } from './DiffView'
+import { t } from '../i18n'
 
 interface Loaded { meta: VersionMeta; content: { revised: RichBlock[]; original: RichBlock[] } }
+
+export const versionName = (v: VersionMeta): string => v.label || `${t(TRIGGERS[v.trigger] ?? v.trigger)} · ${fmtTime(v.created_at)}`
 
 export function VersionsMenu({ docId, current, refreshKey }: { docId: string; current: () => RichBlock[]; refreshKey: number }) {
   const [list, setList] = useState<VersionMeta[]>([])
@@ -36,7 +39,7 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
     return () => { latestLoad.current = null }
   }, [docId, refreshKey, open, load])
 
-  const name = (v: VersionMeta): string => v.label || `${TRIGGERS[v.trigger] ?? v.trigger} · ${fmtTime(v.created_at)}`
+  const name = versionName
   const fetchOne = async (id: string): Promise<Loaded> => {
     const v = await api<VersionMeta & { content: Loaded['content'] }>(`/versions/${id}`)
     return { meta: v, content: v.content }
@@ -58,7 +61,7 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
     } else if (picked.length === 1) {
       const v = await fetchOne(picked[0]!)
       setOpen(false)
-      setCompare({ left: name(v.meta), right: '当前文档', a: v.content.revised, b: current() })
+      setCompare({ left: name(v.meta), right: t('当前文档'), a: v.content.revised, b: current() })
     }
   }
   const restore = async (v: VersionMeta): Promise<void> => {
@@ -102,8 +105,8 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
             <label className="version">
               <input type="checkbox" checked={picked.includes(v.id)} onChange={() => toggle(v.id)} />
               <span>
-                <span className="v-name">{v.label || TRIGGERS[v.trigger] || v.trigger}</span>
-                <span className="muted small">{fmtTime(v.created_at)} · {v.word_count} 字{v.label ? ` · ${TRIGGERS[v.trigger] ?? v.trigger}` : ''}</span>
+                <span className="v-name" data-i18n-skip={!!v.label || undefined}>{v.label || t(TRIGGERS[v.trigger] || v.trigger)}</span>
+                <span className="muted small">{fmtTime(v.created_at)} · {v.word_count} 字{v.label ? ` · ${t(TRIGGERS[v.trigger] ?? v.trigger)}` : ''}</span>
               </span>
             </label>
             <span className="row">
@@ -120,7 +123,7 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
         {compare && (
           <DialogContent title="版本对比" className="dialog-diff panel min-h-[40vh] max-w-6xl">
             <label className="row mb-2 text-sm"><input type="checkbox" checked={onlyChanged} onChange={(e) => setOnlyChanged(e.target.checked)} /> 只看有变化的段落</label>
-            <DiffView rows={alignBlocks(compare.a, compare.b)} leftTitle={compare.left} rightTitle={compare.right} onlyChanged={onlyChanged} />
+            <DiffView rows={alignBlocks(compare.a, compare.b)} leftTitle={compare.left} rightTitle={compare.right} onlyChanged={onlyChanged} skipTitleTranslation />
           </DialogContent>
         )}
       </Dialog>

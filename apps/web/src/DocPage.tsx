@@ -194,6 +194,11 @@ export function DocPage({ id }: { id: string }) {
   trackingRef.current = tracking
   const slashRef = useRef(slash)
   slashRef.current = slash
+  const slashListRef = useRef<HTMLDivElement>(null)
+  // Keep the highlighted command visible when arrow keys move it past the menu's scroll edge.
+  useLayoutEffect(() => {
+    slashListRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
+  }, [slash?.index, slash?.query])
   const author = '我'
   const ydoc = useMemo(() => new Y.Doc(), [id])
 
@@ -1469,7 +1474,7 @@ export function DocPage({ id }: { id: string }) {
           left: Math.min(slash.x, window.innerWidth - 296),
           // Open upward when the menu (max 340px) would run past the bottom of the window.
           ...(window.innerHeight - slash.y < 350 && slash.above > window.innerHeight - slash.y ? { bottom: window.innerHeight - slash.above } : { top: slash.y }),
-        }} onMouseDown={(e) => e.preventDefault()} role="listbox">
+        }} ref={slashListRef} onMouseDown={(e) => e.preventDefault()} role="listbox">
           {items.map((it, i) => (
             <button key={it.label} role="option" aria-selected={i === slash.index} onMouseEnter={() => setSlash({ ...slash, index: i })} onClick={() => pickSlash(i)}>
               <span>{it.label}</span>

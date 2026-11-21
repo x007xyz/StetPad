@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popove
 import { Tip } from '../components/ui/tooltip'
 import { RunChanges } from './Changes'
 import { Select } from '../components/ui/select'
+import { fmtDate } from '../i18n'
 
 /** Something the user attached to a message: a paragraph, a comment, or selected text. */
 export interface ContextItem { id: string; kind: 'block' | 'comment' | 'text'; label: string; text: string; blockIds: string[] }
@@ -281,13 +282,12 @@ const writeDraft = (key: string, v: string): void => {
   }
 }
 
-const ago = (t: number): string => {
+export const ago = (t: number): string => {
   const m = Math.floor((Date.now() - t) / 60_000)
   if (m < 1) return '刚刚'
   if (m < 60) return `${m} 分钟前`
   if (m < 1440) return `${Math.floor(m / 60)} 小时前`
-  const d = new Date(t)
-  return `${d.getMonth() + 1}月${d.getDate()}日`
+  return fmtDate(t)
 }
 
 /** The chat picker at the top of the panel: switch, start, rename and delete conversations. */

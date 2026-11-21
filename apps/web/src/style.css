@@ -102,6 +102,7 @@ button { cursor: pointer; }
 .prose .ordered[data-indent="6"]::before { content: counter(ol6) "."; }
 .prose .task { display: flex; gap: 8px; padding-left: 4px; }
 .prose .task-box { flex: none; width: 16px; height: 16px; margin-top: 6px; border: 1.5px solid var(--muted-foreground); border-radius: 3px; cursor: pointer; }
+.prose .task-box:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 .prose .task[data-checked="true"] .task-box { background: var(--primary); border-color: var(--primary); }
 .prose .task[data-checked="true"] .task-text { color: var(--muted-foreground); text-decoration: line-through; }
 .prose .task-text { flex: 1; min-width: 0; }

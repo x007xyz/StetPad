@@ -53,6 +53,8 @@ import { packageInfo, packageStream, PACKAGE_MAX_BYTES, PackageError, preparePac
 import { ResumableUploads, UploadGone, type UploadRecord } from './uploads'
 import { buildVtt, TRANSCRIBE_LIMIT, transcribeProviderOf, transcribeVideo, type TranscribeProvider, type Transcriber } from './transcribe'
 
+const MAX_VERSION_LABEL_LENGTH = 200
+
 export interface ServerConfig {
   /** The data directory: the SQLite file, assets, renders and uploads live here. */
   dataDir: string
@@ -992,6 +994,7 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     if (!d) return notFound(c)
     const { label, trigger } = await c.req.json<{ label?: unknown; trigger?: string }>().catch(() => ({} as { label?: unknown; trigger?: string }))
     if (label !== undefined && typeof label !== 'string') return c.json({ error: '版本标签必须是字符串' }, 400)
+    if (label && label.trim().length > MAX_VERSION_LABEL_LENGTH) return c.json({ error: '版本标签不能超过 200 字' }, 400)
     const id = await collab.snapshot(d.doc.id, trigger === 'reviewed' ? 'reviewed' : 'manual', c.get('user').email, label?.trim() || undefined)
     return c.json({ id })
   })
@@ -1011,6 +1014,7 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     const body = await c.req.json<{ label?: unknown }>().catch(() => null)
     if (!body || typeof body !== 'object') return c.json({ error: 'bad request' }, 400)
     if (body.label !== undefined && typeof body.label !== 'string') return c.json({ error: '版本标签必须是字符串' }, 400)
+    if (body.label && body.label.trim().length > MAX_VERSION_LABEL_LENGTH) return c.json({ error: '版本标签不能超过 200 字' }, 400)
     await store.labelVersion(v.id, body.label?.trim() ?? '')
     return c.json({ ok: true })
   })

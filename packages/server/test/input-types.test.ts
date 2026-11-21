@@ -43,6 +43,29 @@ describe('document input types', () => {
     expect(await call(`/api/docs/${docId}/clip`, 'POST', { blocks, [field]: 4 })).toEqual({ status: 400, body: { error: expect.any(String) } })
   })
 
+  describe('version label length', () => {
+    it.each([201, 8192])('rejects %i-character labels on create and rename', async (length) => {
+      const version = await call(`/api/docs/${docId}/versions`, 'POST', { label: 'Original' })
+      const before = (await call(`/api/docs/${docId}/versions`, 'GET', undefined)).body
+      const label = '字'.repeat(length)
+      expect(await call(`/api/docs/${docId}/versions`, 'POST', { label })).toEqual({ status: 400, body: { error: expect.any(String) } })
+      expect(await call(`/api/versions/${version.body.id}`, 'PATCH', { label })).toEqual({ status: 400, body: { error: expect.any(String) } })
+      expect((await call(`/api/docs/${docId}/versions`, 'GET', undefined)).body).toEqual(before)
+    })
+
+    it('accepts 200-character trimmed labels and still allows clearing a label', async () => {
+      const label = '字'.repeat(200)
+      const version = await call(`/api/docs/${docId}/versions`, 'POST', { label: ` ${label} ` })
+      expect(version.status).toBe(200)
+      const path = `/api/versions/${version.body.id}`
+      expect((await call(path, 'GET', undefined)).body.label).toBe(label)
+      expect((await call(path, 'PATCH', { label: ` ${label} ` })).status).toBe(200)
+      expect((await call(path, 'GET', undefined)).body.label).toBe(label)
+      expect((await call(path, 'PATCH', { label: '   ' })).status).toBe(200)
+      expect((await call(path, 'GET', undefined)).body.label).toBe('')
+    })
+  })
+
   it('accepts a folder ID and null to move back to the root', async () => {
     const folder = (await call('/api/folders', 'POST', { name: 'Folder' })).body
     expect(await call(`/api/docs/${docId}/folder`, 'PUT', { folderId: folder.id })).toEqual({ status: 200, body: { ok: true } })

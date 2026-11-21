@@ -11,6 +11,8 @@ import { t } from '../i18n'
 
 interface Loaded { meta: VersionMeta; content: { revised: RichBlock[]; original: RichBlock[] } }
 
+const MAX_VERSION_LABEL_LENGTH = 200
+
 export const versionName = (v: VersionMeta): string => v.label || `${t(TRIGGERS[v.trigger] ?? v.trigger)} · ${fmtTime(v.created_at)}`
 
 export function VersionsMenu({ docId, current, refreshKey }: { docId: string; current: () => RichBlock[]; refreshKey: number }) {
@@ -45,7 +47,7 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
     return { meta: v, content: v.content }
   }
   const save = async (): Promise<void> => {
-    const label = await promptText({ title: '给这个版本起个名字（可留空）', confirmLabel: '保存' })
+    const label = await promptText({ title: '给这个版本起个名字（可留空）', confirmLabel: '保存', maxLength: MAX_VERSION_LABEL_LENGTH })
     if (label === null) return
     await post(`/docs/${docId}/versions`, { label })
     await load()
@@ -80,7 +82,7 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
     }
   }
   const rename = async (v: VersionMeta): Promise<void> => {
-    const label = await promptText({ title: '版本名称', defaultValue: v.label ?? '', confirmLabel: '保存' })
+    const label = await promptText({ title: '版本名称', defaultValue: v.label ?? '', confirmLabel: '保存', maxLength: MAX_VERSION_LABEL_LENGTH })
     if (label === null) return
     await api(`/versions/${v.id}`, { method: 'PATCH', body: JSON.stringify({ label }) })
     await load()
@@ -110,7 +112,7 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
             <label className="version">
               <input type="checkbox" checked={picked.includes(v.id)} onChange={() => toggle(v.id)} />
               <span>
-                <span className="v-name" data-i18n-skip={!!v.label || undefined}>{v.label || t(TRIGGERS[v.trigger] || v.trigger)}</span>
+                <span className="v-name" title={v.label || undefined} data-i18n-skip={!!v.label || undefined}>{v.label || t(TRIGGERS[v.trigger] || v.trigger)}</span>
                 <span className="muted small">{fmtTime(v.created_at)} · {v.word_count} 字{v.label ? ` · ${t(TRIGGERS[v.trigger] ?? v.trigger)}` : ''}</span>
               </span>
             </label>

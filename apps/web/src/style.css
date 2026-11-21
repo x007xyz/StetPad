@@ -325,7 +325,7 @@ del { color: var(--del); background: var(--del-bg); border-radius: 2px; } ins { 
 .reason { color: var(--muted-foreground); font-size: 12px; margin-top: 2px; }
 .tag { font-size: 11px; border-radius: 4px; padding: 0 5px; } .tag.ins { background: var(--ins-bg); color: var(--ins); } .tag.del { background: var(--del-bg); color: var(--del); }
 .version { display: flex; gap: 8px; align-items: flex-start; margin: 0; cursor: pointer; flex: 1; min-width: 0; }
-.version > span { display: flex; flex-direction: column; min-width: 0; } .v-name { font-size: 13px; overflow-wrap: anywhere; }
+.version > span { display: flex; flex-direction: column; min-width: 0; } .v-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-bar { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--border); }
 .chat-current { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 70%; border: 0; background: none; padding: 4px 6px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; color: inherit; }
 .chat-current:hover { background: var(--accent); }

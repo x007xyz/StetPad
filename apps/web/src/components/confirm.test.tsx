@@ -2,7 +2,23 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
-import { confirmAction, ConfirmHost } from './confirm'
+import { confirmAction, ConfirmHost, promptText } from './confirm'
+
+it('passes the optional text length limit to the prompt input', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<ConfirmHost />))
+    await act(async () => { void promptText({ title: '版本名称', confirmLabel: '保存', maxLength: 200 }) })
+    expect(document.querySelector('input')!.maxLength).toBe(200)
+  } finally {
+    act(() => root.unmount())
+    container.remove()
+    vi.unstubAllGlobals()
+  }
+})
 
 it.each([
   ['包含视频', true],

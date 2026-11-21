@@ -59,6 +59,8 @@ const EXACT: Record<string, string> = {
   '搜索文档': 'Search documents',
   '回收站': 'Trash',
   '新建文件夹': 'New folder',
+  '移动到…': 'Move to…',
+  '还没有文件夹': 'No folders yet',
   '移到回收站': 'Move to trash',
   '30 天内可以在回收站恢复。': 'You can restore it from the trash within 30 days.',
   '其中的文档不会被删除，会移到文档列表。': 'Its documents are not deleted; they move to the document list.',

@@ -11,6 +11,17 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+it.each(['en', 'zh'])('translates move menu labels added after initialization in %s', async (lang) => {
+  localStorage.setItem('aiw.lang', lang)
+  for (const name of ['alert', 'confirm', 'prompt']) vi.stubGlobal(name, vi.fn())
+  document.body.innerHTML = '<div id="root"></div>'
+  initI18n()
+  const menu = document.createElement('div')
+  menu.innerHTML = '<div>移动到…</div><div>还没有文件夹</div>'
+  document.getElementById('root')!.append(menu)
+  await vi.waitFor(() => expect(menu.textContent).toBe(lang === 'en' ? 'Move to…No folders yet' : '移动到…还没有文件夹'))
+})
+
 it('translates a version label error added after initialization', async () => {
   localStorage.setItem('aiw.lang', 'en')
   for (const name of ['alert', 'confirm', 'prompt']) vi.stubGlobal(name, vi.fn())

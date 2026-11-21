@@ -31,6 +31,34 @@ function typeQuery(input: HTMLInputElement, value: string) {
   act(() => input.dispatchEvent(new Event('input', { bubbles: true })))
 }
 
+it.each([
+  ['composition', { isComposing: true }],
+  ['legacy composition', { keyCode: 229 }],
+])('ignores result keys during %s but opens with plain Enter', async (_, composition) => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ results: [
+    { id: 'orchid-0', title: 'Orchid First', updated_at: 0 },
+    { id: 'orchid-1', title: 'Orchid Second', updated_at: 0 },
+  ] })))
+  const onClose = vi.fn()
+  await act(async () => root.render(<SearchDialog onClose={onClose} />))
+  const input = document.querySelector<HTMLInputElement>('[role="combobox"]')!
+  typeQuery(input, 'Orchid')
+  await act(() => vi.advanceTimersByTimeAsync(200))
+
+  for (const key of ['Enter', 'ArrowDown', 'ArrowUp']) {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...composition })
+    act(() => input.dispatchEvent(event))
+    expect(go).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(input.getAttribute('aria-activedescendant')).toBe('search-r-orchid-0')
+    expect(event.defaultPrevented).toBe(false)
+  }
+
+  act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  expect(go).toHaveBeenCalledExactlyOnceWith({ page: 'doc', id: 'orchid-0' })
+  expect(onClose).toHaveBeenCalledOnce()
+})
+
 it.each(['Catalpa', ''])('does not select previous results while the query is %j', async (query) => {
   const next = deferred<Response>()
   vi.stubGlobal('fetch', vi.fn()

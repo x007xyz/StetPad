@@ -139,6 +139,14 @@ describe('@stetpad/clip domToBlocks', () => {
 })
 
 describe('@stetpad/clip code Markdown', () => {
+  it('collapses blank lines outside code, including around adjacent code blocks', () => {
+    const paragraph = { type: 'paragraph', attrs: {}, delta: [{ insert: 'before\n\n\ntext' }] }
+    const empty = { type: 'paragraph', attrs: {}, delta: [] }
+    const code = { type: 'codeBlock', attrs: { language: 'ts' }, delta: [{ insert: 'a\n\n\nb' }] }
+    expect(blocksToMarkdown([paragraph, empty, empty, code, empty, empty, code, empty, paragraph]))
+      .toBe('before\n\ntext\n\n```ts\na\n\n\nb\n```\n\n```ts\na\n\n\nb\n```\n\nbefore\n\ntext\n')
+  })
+
   it.each([
     ['', '```'],
     ['plain', '```'],

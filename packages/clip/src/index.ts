@@ -662,7 +662,7 @@ function withFootnoteRefs(list: Block[]): Block[] {
 export function blocksToMarkdown(input: Block[]): string {
   const notes = footnoteNotes(input)
   const list = withFootnoteRefs(input)
-  const out: string[] = []
+  const out: (string | { code: string })[] = []
   const markers: { type: string; n: number; width: number }[] = []
   for (const b of list) {
     const listItem = ['bulletItem', 'orderedItem', 'taskItem'].includes(b.type)
@@ -696,7 +696,7 @@ export function blocksToMarkdown(input: Block[]): string {
         const lang = String(b.attrs.language ?? '')
         const text = blockTextContent(b)
         const fence = '`'.repeat((text.match(/`+/g) ?? []).reduce((length, run) => Math.max(length, run.length + 1), 3))
-        out.push(lang === 'math' ? `$$\n${text}\n$$` : fence + lang + '\n' + text + '\n' + fence)
+        out.push(lang === 'math' ? `$$\n${text}\n$$` : { code: fence + lang + '\n' + text + '\n' + fence })
         break
       }
       case 'divider':
@@ -746,7 +746,17 @@ export function blocksToMarkdown(input: Block[]): string {
     }
     if (!listItem) out.push('')
   }
-  const body = out.join('\n').trim() + '\n'
+  let markdown = ''
+  let nonCode = ''
+  out.forEach((part, i) => {
+    nonCode += i ? '\n' : ''
+    if (typeof part === 'string') nonCode += part
+    else {
+      markdown += nonCode.replace(/\n{3,}/g, '\n\n') + part.code
+      nonCode = ''
+    }
+  })
+  const body = (markdown + nonCode.replace(/\n{3,}/g, '\n\n')).trim() + '\n'
   if (!notes.length) return body
   return body + '\n' + notes.map((n) => `[^${n.number}]: ${mdOneLine(n.note).trim()}`).join('\n') + '\n'
 }

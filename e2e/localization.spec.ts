@@ -33,6 +33,11 @@ for (const lang of ['en', 'zh'] as const) {
       await expect.soft(notes.getByRole('heading')).toHaveText(en ? 'Footnotes' : '脚注')
       await expect.soft(notes.getByRole('button')).toHaveText('附件')
       await expect.soft(notes.getByRole('button')).toHaveAttribute('title', en ? 'Back to text' : '回到正文')
+
+      await page.locator('.ProseMirror .fn-num').click()
+      const footnote = page.getByRole('dialog', { name: en ? 'Footnote 1' : '脚注 1' })
+      await expect(footnote.locator('.fn-pop-text')).toHaveText('附件')
+      await expect(footnote.getByRole('button', { name: en ? 'Delete footnote' : '删除脚注' })).toBeVisible()
     })
 
     test('localizes the provider catalog and the model selection step', async ({ page }) => {

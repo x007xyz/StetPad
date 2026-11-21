@@ -109,6 +109,22 @@ describe('markdown import of footnotes', () => {
     expect(notes).toEqual(['Source note.', 'Second source.'])
     expect(blocks.some((b) => b.delta.some((d) => d.insert.includes('[^')))).toBe(false)
   })
+
+  it('marks the right word after an emoji and survives a round trip', async () => {
+    const src = 'Go 🚀word[^a] then 🎉 more[^b].\n\n[^a]: Rocket.\n[^b]: Party.\n'
+    const imported = await fileToBlocks('notes.md', new TextEncoder().encode(src))
+    expect(imported[0]!.delta).toEqual([
+      { insert: 'Go ' },
+      { insert: '🚀word', attributes: { footnote: { id: expect.any(String), note: 'Rocket.' } } },
+      { insert: ' then 🎉 ' },
+      { insert: 'more', attributes: { footnote: { id: expect.any(String), note: 'Party.' } } },
+      { insert: '.' },
+    ])
+    const md = blocksToMarkdown(imported as never)
+    expect(md).toContain('Go 🚀word[^1] then 🎉 more[^2].')
+    const again = await fileToBlocks('notes.md', new TextEncoder().encode(md))
+    expect(again[0]!.delta.map((d) => d.insert).join('')).toBe('Go 🚀word then 🎉 more.')
+  })
 })
 
 describe('DocTools footnotes', () => {

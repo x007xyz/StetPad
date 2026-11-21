@@ -140,6 +140,26 @@ describe('document package', () => {
     }
   })
 
+  it.each(['package', 'json'] as const)('preserves titles longer than 80 characters via %s', async (format) => {
+    const title = 'A'.repeat(83) + '— FINAL'
+    const created = await send(h, '/docs', { method: 'POST', json: { title } })
+    expect(created.status).toBe(200)
+    const source = await created.json()
+    expect(source.title).toBe(title)
+    const exported = await send(h, format === 'package' ? `/docs/${source.id}/package` : `/docs/${source.id}/export?format=json`)
+    expect(exported.status).toBe(200)
+    const bytes = await exported.arrayBuffer()
+    const manifest = format === 'package' ? openPackage(bytes).manifest : JSON.parse(new TextDecoder().decode(bytes))
+    expect(manifest.title).toBe(title)
+    const restored = await send(h, '/import/package', { method: 'POST', body: bytes, type: format === 'package' ? 'application/octet-stream' : 'application/json' })
+    expect(restored.status).toBe(200)
+    const copy = await restored.json()
+    expect(copy.id).not.toBe(source.id)
+    const fetched = await send(h, `/docs/${copy.id}`)
+    expect(fetched.status).toBe(200)
+    expect((await fetched.json()).title).toBe(title)
+  })
+
   it('counts the images and videos a package would hold', async () => {
     const res = await send(h, `/docs/${src.id}/package/info`)
     expect(res.status).toBe(200)

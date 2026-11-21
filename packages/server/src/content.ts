@@ -119,18 +119,13 @@ export function textToBlocks(text: string): Block[] {
   return out
 }
 
-async function ocrPdf(pdf: { numPages: number; getPage: (n: number) => Promise<any> }, ocr: Ocr): Promise<Block[]> {
-  if (pdf.numPages > 40) throw new Error('扫描件识别最多支持 40 页')
+async function ocrPdfPage(pdf: { getPage: (n: number) => Promise<any> }, p: number, ocr: Ocr): Promise<Block[]> {
   const { createCanvas } = await import('@napi-rs/canvas')
-  const texts: string[] = []
-  for (let p = 1; p <= pdf.numPages; p++) {
-    const page = await pdf.getPage(p)
-    const viewport = page.getViewport({ scale: 1.6 })
-    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height))
-    await page.render({ canvas: canvas as any, canvasContext: canvas.getContext('2d') as any, viewport }).promise
-    texts.push(await ocr(new Uint8Array(canvas.toBuffer('image/png')), p))
-  }
-  return textToBlocks(texts.join('\n\n'))
+  const page = await pdf.getPage(p)
+  const viewport = page.getViewport({ scale: 1.6 })
+  const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height))
+  await page.render({ canvas: canvas as any, canvasContext: canvas.getContext('2d') as any, viewport }).promise
+  return textToBlocks(await ocr(new Uint8Array(canvas.toBuffer('image/png')), p))
 }
 
 /** One page of a PDF as PNG (for attachment previews), with the page count. Null when the page does not exist. */
@@ -174,7 +169,10 @@ async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count:
   if (pdf.numPages > MAX_PDF_PAGES) onOmittedPages?.(pdf.numPages - MAX_PDF_PAGES)
   type Line = { y: number; x: number; size: number; text: string; page: number }
   const lines: Line[] = []
+  const entries: (Line | { page: number })[] = []
+  let emptyPages = 0
   for (let p = 1; p <= Math.min(pdf.numPages, MAX_PDF_PAGES); p++) {
+    const start = lines.length
     const page = await pdf.getPage(p)
     const tc = await page.getTextContent()
     let cur: Line | null = null
@@ -192,11 +190,15 @@ async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count:
       }
     }
     if (cur && cur.text.trim()) lines.push(cur)
+    if (lines.length === start) {
+      emptyPages++
+      entries.push({ page: p })
+    } else entries.push(...lines.slice(start))
   }
-  if (lines.length === 0) {
-    if (ocr) return ocrPdf(pdf, ocr)
+  if (emptyPages && !ocr) {
     throw new Error('这个 PDF 没有文字层（可能是扫描件），配置一个支持图像的模型后可识别')
   }
+  if (emptyPages > 40) throw new Error('扫描件识别最多支持 40 页')
   const sizes = lines.map((l) => Math.round(l.size * 2) / 2).sort((a, b) => a - b)
   const body = sizes[Math.floor(sizes.length / 2)]!
   const out: Block[] = []
@@ -206,7 +208,13 @@ async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count:
     if (buf.trim()) out.push(para(buf.trim()))
     buf = ''
   }
-  for (const l of lines) {
+  for (const l of entries) {
+    if (!('text' in l)) {
+      flush()
+      out.push(...await ocrPdfPage(pdf, l.page, ocr!))
+      prev = null
+      continue
+    }
     const t = l.text.trim()
     const isHeading = l.size >= body * 1.18 && t.length < 80
     const bullet = t.match(/^([•·▪◦‣\-–]|\d+[.)、])\s+(.*)$/)

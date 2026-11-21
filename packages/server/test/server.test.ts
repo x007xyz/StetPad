@@ -187,6 +187,14 @@ describe('server', () => {
     expect(preview.body.blocks).toHaveLength(2000)
   })
 
+  it('rejects mixed PDFs when no vision model is configured', async () => {
+    const form = new FormData()
+    form.append('file', new File([Buffer.from(textPdf(2, 1, [2]))], 'mixed.pdf'))
+    const result = await call('/api/import/preview', { method: 'POST', body: form })
+    expect(result.status).toBe(422)
+    expect(result.body.error).toContain('没有文字层')
+  })
+
   it('rejects empty or invalid PDFs instead of returning a truncation preview', async () => {
     for (const data of [textPdf(501, 0), new TextEncoder().encode('not a PDF')]) {
       const form = new FormData()

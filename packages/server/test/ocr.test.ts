@@ -1,6 +1,7 @@
 import { createCanvas } from '@napi-rs/canvas'
 import { describe, expect, it } from 'vitest'
 import { fileToBlocks } from '../src/content'
+import { textPdf } from './pdf-fixture'
 
 /** A one-page PDF whose only content is an image: no text layer. */
 function imagePdf(): Uint8Array {
@@ -37,6 +38,37 @@ function imagePdf(): Uint8Array {
 }
 
 describe('scanned PDF import', () => {
+  it('OCRs only image-only pages and preserves their position among text pages', async () => {
+    const pages: number[] = []
+    const blocks = await fileToBlocks('mixed.pdf', textPdf(3, 1, [2]), {
+      ocr: async (png, page) => {
+        expect(Array.from(png.slice(1, 4))).toEqual([0x50, 0x4e, 0x47])
+        pages.push(page)
+        return 'Scanned page two.'
+      },
+    })
+    expect(pages).toEqual([2])
+    expect(blocks.map((b) => b.delta.map((d) => d.insert).join(''))).toEqual(['Page 1 line 1.', 'Scanned page two.', 'Page 3 line 1.'])
+  })
+  it('rejects a mixed PDF without OCR instead of silently dropping pages', async () => {
+    await expect(fileToBlocks('mixed.pdf', textPdf(2, 1, [2]))).rejects.toThrow('没有文字层')
+  })
+  it('propagates OCR failures in mixed PDFs', async () => {
+    await expect(fileToBlocks('mixed.pdf', textPdf(2, 1, [2]), {
+      ocr: async () => { throw new Error('OCR unavailable') },
+    })).rejects.toThrow('OCR unavailable')
+  })
+  it('accepts an empty OCR transcription without changing adjacent text', async () => {
+    const blocks = await fileToBlocks('mixed.pdf', textPdf(3, 1, [2]), { ocr: async () => '' })
+    expect(blocks.map((b) => b.delta[0]?.insert)).toEqual(['Page 1 line 1.', 'Page 3 line 1.'])
+  })
+  it('limits the number of pages requiring OCR before calling the model', async () => {
+    let calls = 0
+    await expect(fileToBlocks('mixed.pdf', textPdf(42, 1, Array.from({ length: 41 }, (_, i) => i + 2)), {
+      ocr: async () => { calls++; return '' },
+    })).rejects.toThrow('最多支持 40 页')
+    expect(calls).toBe(0)
+  })
   it('recognises text through the ocr callback, once per page, with PNG input', async () => {
     const calls: Uint8Array[] = []
     const blocks = await fileToBlocks('scan.pdf', imagePdf(), {

@@ -133,6 +133,14 @@ describe('markdown import of footnotes', () => {
     expect(code.map((b) => b.delta)).toEqual([[{ insert: '[^ref]: x\nword[^ref]' }], [{ insert: '[^1]: not this one' }]])
     expect(blocks[0]!.delta).toEqual([{ insert: 'A ' }, { insert: 'claim', attributes: { footnote: { id: expect.any(String), note: 'Real note.' } } }, { insert: '.' }])
   })
+
+  it('does not end a fence at a delimiter indented as code content', async () => {
+    const src = 'A claim[^1].\n\n```\n    ```\n[^1]: in code\n```\n\nB claim[^2].\n\n[^1]: Real one.\n[^2]: Real two.\n'
+    const blocks = await fileToBlocks('notes.md', new TextEncoder().encode(src))
+    expect(blocks.find((b) => b.type === 'codeBlock')!.delta).toEqual([{ insert: '    ```\n[^1]: in code' }])
+    const notes = blocks.flatMap((b) => b.delta.map((d) => (d.attributes?.footnote as { note: string } | undefined)?.note)).filter(Boolean)
+    expect(notes).toEqual(['Real one.', 'Real two.'])
+  })
 })
 
 describe('DocTools footnotes', () => {

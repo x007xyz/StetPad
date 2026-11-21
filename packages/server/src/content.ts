@@ -44,16 +44,18 @@ export function htmlToBlocks(html: string, baseUrl?: string): Block[] {
 
 /** For each line, whether it belongs to a fenced code block (fence lines included). */
 function fencedCodeLines(lines: string[]): boolean[] {
-  let fence: string | null = null
+  const width = (indent: string): number => indent.replace(/\t/g, '    ').length
+  let fence: { mark: string; indent: number } | null = null
   return lines.map((line) => {
     if (fence !== null) {
-      const t = line.trim()
-      if (t.length >= fence.length && [...t].every((c) => c === fence![0])) fence = null
+      // A delimiter indented 4+ columns past the opener is code content, not a closer.
+      const close = /^([ \t]*)(`{3,}|~{3,})[ \t]*\r?$/.exec(line)
+      if (close && width(close[1]!) <= fence.indent + 3 && close[2]![0] === fence.mark[0] && close[2]!.length >= fence.mark.length) fence = null
       return true
     }
     // A backtick fence's info string has no backticks; ```x``` is a code span.
-    const open = /^\s*(`{3,}(?!.*`)|~{3,})/.exec(line)
-    if (open) fence = open[1]!
+    const open = /^([ \t]*)(`{3,}(?!.*`)|~{3,})/.exec(line)
+    if (open) fence = { mark: open[2]!, indent: width(open[1]!) }
     return open !== null
   })
 }

@@ -57,6 +57,9 @@ for (const lang of ['en', 'zh'] as const) {
       const card = catalog.locator('.prov-card').filter({ hasText: name }).first()
       await expect(card).toContainText(en ? 'Qwen models via an OpenAI-compatible API' : 'Qwen 系列，OpenAI 兼容模式')
       await card.click()
+      await expect(catalog.getByRole('link', { name: en
+        ? 'Get an API key from Alibaba Cloud Model Studio · Qwen ↗'
+        : '去 阿里云百炼 · 通义千问 获取密钥 ↗' })).toBeVisible()
       await expect(catalog.getByRole('button', { name: en ? 'Verify key and fetch models' : '验证密钥并获取模型' })).toBeVisible()
       await expect(catalog.getByText(en ? /^\d+ of \d+ models? selected$/ : /^已选 \d+ \/ 共 \d+ 个模型$/)).toBeVisible()
     })

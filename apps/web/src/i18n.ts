@@ -616,6 +616,7 @@ const PATTERNS: [RegExp, (...m: string[]) => string][] = [
   [/^已生成 (\d+) 个图形，插入后渲染预览$/, (_, n) => `Generated ${n} ${n === '1' ? 'shape' : 'shapes'}. Insert to render the preview.`],
   [/^(生成中|改图中)… (\d+)s$/, (_, state, secs) => `${state === '生成中' ? 'Generating' : 'Editing'}… ${secs}s`],
   [/^选择图片：([\s\S]+)$/, (_, label) => `Select image: ${label}`],
+  [/^去 (.+) 获取密钥 ↗$/, (_, provider) => `Get an API key from ${tr(provider)} ↗`],
   [/^「(段落|评论|选中文字)：([\s\S]*)」$/, (_, kind, label) => `[${EXACT[kind]}: ${label}]`],
   [/^针对「([\s\S]*)」( · 已解决)?$/, (_, quote, resolved) => `On “${quote}”${resolved ? ' · Resolved' : ''}`],
   [/^✓ 连接成功，读到 (\d+) 个模型$/, (_, n) => `✓ Connected. Found ${n} ${n === '1' ? 'model' : 'models'}.`],

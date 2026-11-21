@@ -57,6 +57,7 @@ it.each([
   ['视频超过 100 MB，暂不支持转写', 'This video exceeds the 100 MB transcription limit'],
   ['上传附件 设置 · 47%（1/2）', 'Uploading attachment 设置 · 47% (1/2)'],
   ['渲染失败：设置', 'Rendering failed: 设置'],
+  ['去 阿里云百炼 · 通义千问 获取密钥 ↗', 'Get an API key from Alibaba Cloud Model Studio · Qwen ↗'],
 ])('localizes %s only in English mode', (source, expected) => {
   localStorage.setItem('aiw.lang', 'en')
   expect(t(source)).toBe(expected)

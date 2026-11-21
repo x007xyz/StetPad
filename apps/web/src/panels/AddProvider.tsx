@@ -1,4 +1,4 @@
-import { getLang, t } from '../i18n'
+import { t } from '../i18n'
 import { useState } from 'react'
 import { post } from '../api'
 import { Button } from '../components/ui/button'
@@ -249,7 +249,7 @@ function ConfigureProvider({ entry, rows, onBack, onCancel, onDone }: ConfigureP
       </label>
       {entry?.keyUrl && (
         <a className="small" href={entry.keyUrl} target="_blank" rel="noreferrer">
-          {getLang() === 'en' ? `Get an API key from ${t(entry.name)} ↗` : `去 ${entry.name} 获取密钥 ↗`}
+          {`去 ${entry.name} 获取密钥 ↗`}
         </a>
       )}
 

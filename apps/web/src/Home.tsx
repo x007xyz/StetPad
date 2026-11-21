@@ -21,6 +21,8 @@ export function Home() {
   const [preview, setPreview] = useState<Preview | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
+  const [creating, setCreating] = useState(false)
+  const creatingRef = useRef(false)
   const file = useRef<HTMLInputElement>(null)
   const seq = useRef(0)
 
@@ -68,9 +70,19 @@ export function Home() {
     }
   }
   const confirmImport = async (): Promise<void> => {
-    if (!preview) return
+    if (!preview || creatingRef.current) return
+    creatingRef.current = true
+    setCreating(true)
+    setError('')
     const { title, blocks } = preview
-    go({ page: 'doc', id: (await post<DocMeta>('/import/create', { title, blocks })).id })
+    try {
+      go({ page: 'doc', id: (await post<DocMeta>('/import/create', { title, blocks })).id })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '导入失败')
+    } finally {
+      creatingRef.current = false
+      setCreating(false)
+    }
   }
   const omittedBlockCount = preview?.omittedBlockCount ?? 0
 
@@ -149,7 +161,7 @@ export function Home() {
             </div>
             <div className="row end">
               <Button onClick={() => setPreview(null)}>取消</Button>
-              <Button variant="default" onClick={confirmImport}>创建文档</Button>
+              <Button variant="default" disabled={creating} onClick={confirmImport}>创建文档</Button>
             </div>
           </DialogContent>
         )}

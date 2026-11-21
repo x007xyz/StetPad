@@ -194,6 +194,14 @@ export function DocPage({ id }: { id: string }) {
   trackingRef.current = tracking
   const slashRef = useRef(slash)
   slashRef.current = slash
+  const slashListRef = useRef<HTMLDivElement>(null)
+  // Set when typing or arrow keys move the highlight, so it is scrolled into view; pointer hover never scrolls the menu.
+  const revealSlashRef = useRef(false)
+  useLayoutEffect(() => {
+    if (!revealSlashRef.current) return
+    revealSlashRef.current = false
+    slashListRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
+  }, [slash?.index, slash?.query])
   const author = '我'
   const ydoc = useMemo(() => new Y.Doc(), [id])
 
@@ -462,6 +470,7 @@ export function DocPage({ id }: { id: string }) {
           if (!s) return false
           const count = slashItems(s.query).length
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            revealSlashRef.current = count > 1
             setSlash({ ...s, index: (s.index + (event.key === 'ArrowDown' ? 1 : count - 1)) % Math.max(count, 1) })
             return true
           }
@@ -489,6 +498,7 @@ export function DocPage({ id }: { id: string }) {
       if (m && editor.isFocused) {
         const c = v.coordsAtPos(from)
         const prev = slashRef.current
+        if (prev?.query !== m[1]) revealSlashRef.current = true
         setSlash({ x: c.left, y: c.bottom + 6, above: c.top - 6, query: m[1]!, index: prev && prev.query === m[1] ? prev.index : 0, from: $from.start() })
       } else if (slashRef.current) setSlash(null)
       // Selection toolbar.
@@ -1469,7 +1479,7 @@ export function DocPage({ id }: { id: string }) {
           left: Math.min(slash.x, window.innerWidth - 296),
           // Open upward when the menu (max 340px) would run past the bottom of the window.
           ...(window.innerHeight - slash.y < 350 && slash.above > window.innerHeight - slash.y ? { bottom: window.innerHeight - slash.above } : { top: slash.y }),
-        }} onMouseDown={(e) => e.preventDefault()} role="listbox">
+        }} ref={slashListRef} onMouseDown={(e) => e.preventDefault()} role="listbox">
           {items.map((it, i) => (
             <button key={it.label} role="option" aria-selected={i === slash.index} onMouseEnter={() => setSlash({ ...slash, index: i })} onClick={() => pickSlash(i)}>
               <span>{it.label}</span>

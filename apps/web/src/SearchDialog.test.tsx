@@ -81,6 +81,31 @@ it.each(['empty', 'error'])('does not restore previous results after an %s respo
   expect(onClose).not.toHaveBeenCalled()
 })
 
+it('scrolls the selected result into view when arrow keys wrap or advance', async () => {
+  const scrollIntoView = vi.fn()
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ results: Array.from({ length: 30 }, (_, i) => ({
+    id: `orchid-${i}`, title: `Orchid ${i}`, updated_at: 0, folder_id: null, snippet: '', titleMatch: true,
+  })) })))
+  const scroll = vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(scrollIntoView)
+  try {
+    await act(async () => root.render(<SearchDialog onClose={vi.fn()} />))
+    const input = document.querySelector<HTMLInputElement>('[role="combobox"]')!
+    typeQuery(input, 'Orchid')
+    await act(() => vi.advanceTimersByTimeAsync(200))
+
+    for (const [key, id] of [['ArrowUp', 'orchid-29'], ['ArrowDown', 'orchid-0'], ['ArrowDown', 'orchid-1']]) {
+      scrollIntoView.mockClear()
+      act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })))
+      const selected = document.querySelector('[aria-selected="true"]')!
+      expect(selected.id).toBe(`search-r-${id}`)
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+      expect(scrollIntoView.mock.instances).toContain(selected)
+    }
+  } finally {
+    scroll.mockRestore()
+  }
+})
+
 it('keeps cleared search results empty when an earlier request finishes', async () => {
   const { promise, resolve } = deferred<Response>()
   const fetchSearch = vi.fn(() => promise)

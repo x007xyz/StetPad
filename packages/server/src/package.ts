@@ -355,7 +355,7 @@ function parseManifest(raw: Uint8Array): Manifest {
     if (s.reason === 'video-excluded') dropped.push({ name: null, mime, reason: 'excluded' })
     else if (s.reason === 'missing') dropped.push({ name: null, mime, reason: 'missing' })
   }
-  return { title: typeof obj.title === 'string' ? obj.title.trim().slice(0, 80) : '', state, blocks: obj.blocks, versions, assets, dropped }
+  return { title: typeof obj.title === 'string' ? obj.title.trim() : '', state, blocks: obj.blocks, versions, assets, dropped }
 }
 
 /** Replaces `/files/<old>` in a CRDT state's block attributes with the new ids. */
@@ -439,7 +439,7 @@ async function prepareLegacy(ctx: PackageContext, file: string): Promise<Prepare
       createdAt: typeof raw.created_at === 'number' ? raw.created_at : typeof raw.createdAt === 'number' ? raw.createdAt : undefined,
     })
   }
-  return { title: typeof obj.title === 'string' ? obj.title.trim().slice(0, 80) : '', state, versions, assets: [], dropped: [], discard: async () => undefined }
+  return { title: typeof obj.title === 'string' ? obj.title.trim() : '', state, versions, assets: [], dropped: [], discard: async () => undefined }
 }
 
 async function preparePackageZip(ctx: PackageContext, file: string): Promise<PreparedPackage> {

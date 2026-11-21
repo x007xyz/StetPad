@@ -83,6 +83,25 @@ it('translates diff labels but preserves document text, including newly added ma
   }
 })
 
+it.each([
+  ['公式', 'Formula'],
+  ['$$ 空格，LaTeX 实时预览', '$$ space, live LaTeX preview'],
+  ['描述画面，AI 画出来', 'Describe an image for AI to draw'],
+  ['视频', 'Video'],
+  ['上传本地视频（最大 1GB）', 'Upload a local video (up to 1 GB)'],
+  ['嵌入视频', 'Embed video'],
+  ['B 站 / YouTube / Vimeo 链接', 'Bilibili / YouTube / Vimeo link'],
+  ['附件', 'Attachment'],
+  ['上传 PDF、Office、压缩包等文件', 'Upload PDFs, Office files, archives, and more'],
+  ['链接卡片', 'Link card'],
+  ['粘贴网址生成预览卡片', 'Paste a URL to create a preview card'],
+])('translates the slash menu string "%s" only in English mode', (zh, en) => {
+  localStorage.setItem('aiw.lang', 'zh')
+  expect(t(zh)).toBe(zh)
+  localStorage.setItem('aiw.lang', 'en')
+  expect(t(zh)).toBe(en)
+})
+
 it('translates folder page empty, normal and error states without changing Chinese', () => {
   const labels = [
   ['空文件夹（把文档拖进来）', 'Empty folder (drag documents here)'],

@@ -22,6 +22,31 @@ it.each(['en', 'zh'])('translates move menu labels added after initialization in
   await vi.waitFor(() => expect(menu.textContent).toBe(lang === 'en' ? 'Move to…No folders yet' : '移动到…还没有文件夹'))
 })
 
+it('translates every export label in desktop and narrow menus while preserving Chinese', () => {
+  const labels: [string, string][] = [
+    ['Markdown', 'Markdown'],
+    ['Markdown（按修改稿）', 'Markdown (revised)'],
+    ['Markdown（按原文）', 'Markdown (original)'],
+    ['HTML', 'HTML'],
+    ['HTML（按修改稿）', 'HTML (revised)'],
+    ['HTML（按原文）', 'HTML (original)'],
+    ['Word', 'Word'],
+    ['Word（按修改稿）', 'Word (revised)'],
+    ['Word（按原文）', 'Word (original)'],
+    ['PDF（打印）', 'PDF (print)'],
+    ['PDF（打印）（按修改稿）', 'PDF (print, revised)'],
+    ['文档包（含图片、视频和全部版本）', 'Package (images, videos and all versions)'],
+  ]
+  for (const [zh, en] of labels) {
+    localStorage.setItem('aiw.lang', 'en')
+    expect.soft(t(zh)).toBe(en)
+    expect.soft(t(`导出 ${zh}`)).toBe(`Export ${en}`)
+    localStorage.setItem('aiw.lang', 'zh')
+    expect.soft(t(zh)).toBe(zh)
+    expect.soft(t(`导出 ${zh}`)).toBe(`导出 ${zh}`)
+  }
+})
+
 it('translates a version label error added after initialization', async () => {
   localStorage.setItem('aiw.lang', 'en')
   for (const name of ['alert', 'confirm', 'prompt']) vi.stubGlobal(name, vi.fn())

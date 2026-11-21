@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, fmtTime, post, TRIGGERS, type RichBlock, type VersionMeta } from '../api'
 import { History } from 'lucide-react'
 import { Button } from '../components/ui/button'
@@ -24,6 +24,7 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
   const [notice, setNotice] = useState('')
   const [open, setOpen] = useState(false)
   const latestLoad = useRef<{ docId: string } | null>(null)
+  const compareRows = useMemo(() => (compare ? alignBlocks(compare.a, compare.b) : []), [compare])
 
   const load = useCallback(async (): Promise<void> => {
     if (latestLoad.current?.docId !== docId) return
@@ -149,7 +150,7 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
         {compare && (
           <DialogContent title="版本对比" className="dialog-diff panel min-h-[40vh] max-w-6xl">
             <label className="row mb-2 text-sm"><input type="checkbox" checked={onlyChanged} onChange={(e) => setOnlyChanged(e.target.checked)} /> 只看有变化的段落</label>
-            <DiffView rows={alignBlocks(compare.a, compare.b)} leftTitle={compare.left} rightTitle={compare.right} onlyChanged={onlyChanged} skipTitleTranslation />
+            <DiffView rows={compareRows} leftTitle={compare.left} rightTitle={compare.right} onlyChanged={onlyChanged} skipTitleTranslation />
           </DialogContent>
         )}
       </Dialog>

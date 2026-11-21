@@ -5,6 +5,8 @@ import { expect, it, vi } from 'vitest'
 import { deferred } from '../lib/deferred.test-utils'
 import { VersionsMenu } from './Versions'
 import { ConfirmHost } from '../components/confirm'
+import { alignBlocks } from './DiffView'
+import type { RichBlock } from '../api'
 
 vi.mock('../components/ui/popover', () => ({
   Popover: ({ children }: { children: ReactNode }) => children,
@@ -12,6 +14,10 @@ vi.mock('../components/ui/popover', () => ({
   PopoverTrigger: ({ children }: { children: ReactNode }) => children,
 }))
 vi.mock('../components/ui/tooltip', () => ({ Tip: ({ children }: { children: ReactNode }) => children }))
+vi.mock('./DiffView', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./DiffView')>()
+  return { ...actual, alignBlocks: vi.fn(actual.alignBlocks) }
+})
 
 it('shows snapshot errors and lets comparison be retried without losing selection', async () => {
   const version = { id: 'v1', label: 'First draft', trigger: 'manual', created_at: 0, word_count: 1 }
@@ -141,6 +147,38 @@ it.each([
     expect(names()).toEqual(['B'])
     await act(async () => a.resolve(Response.json([version('A')])))
     expect(names()).toEqual(['B'])
+  } finally {
+    act(() => root.unmount())
+    container.remove()
+    vi.unstubAllGlobals()
+  }
+})
+
+it('aligns a compared version pair once and only refilters when toggling changed paragraphs', async () => {
+  const paragraph = (id: string, text: string): RichBlock => ({ blockId: id, type: 'paragraph', text, attrs: {}, delta: [{ insert: text }] })
+  const saved = [paragraph('a', 'Same'), paragraph('b', 'Old')]
+  const version = { id: 'v1', label: 'First draft', trigger: 'manual', created_at: 0, word_count: 2 }
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => Promise.resolve(Response.json(
+    url === '/api/versions/v1' ? { ...version, content: { revised: saved, original: saved } } : [version],
+  ))))
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  vi.mocked(alignBlocks).mockClear()
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  const current = () => [paragraph('a', 'Same'), paragraph('b', 'New')]
+  const rows = () => document.querySelectorAll('[role="dialog"] .diff-row').length
+  try {
+    await act(async () => root.render(<VersionsMenu docId="doc" refreshKey={0} current={current} />))
+    await act(async () => container.querySelector<HTMLInputElement>('.version input')!.click())
+    await act(async () => [...container.querySelectorAll('button')].find((b) => b.textContent === '与当前文档对比')!.click())
+    expect(rows()).toBe(1)
+    const onlyChanged = document.querySelector<HTMLInputElement>('[role="dialog"] label input')!
+    await act(async () => onlyChanged.click())
+    expect(rows()).toBe(2)
+    await act(async () => onlyChanged.click())
+    expect(rows()).toBe(1)
+    expect(alignBlocks).toHaveBeenCalledTimes(1)
   } finally {
     act(() => root.unmount())
     container.remove()

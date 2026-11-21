@@ -1,5 +1,5 @@
 import { diffWords } from '@stetpad/crdt'
-import type { ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import type { RichBlock } from '../api'
 
 export interface DiffRow {
@@ -79,17 +79,17 @@ function richText(block: NonNullable<DiffRow['left']>): ReactNode {
 
 /** Two versions of a document side by side, aligned block by block. */
 export function DiffView({ rows, leftTitle, rightTitle, onlyChanged, skipTitleTranslation }: { rows: DiffRow[]; leftTitle: string; rightTitle: string; onlyChanged?: boolean; skipTitleTranslation?: boolean }) {
-  const shown = onlyChanged ? rows.filter(rowChanged) : rows
-  const changed = rows.filter(rowChanged).length
+  const changedRows = useMemo(() => new Set(rows.filter(rowChanged)), [rows])
+  const shown = onlyChanged ? rows.filter((r) => changedRows.has(r)) : rows
   return (
     <div className="diff">
       <div className="diff-head" data-i18n-skip={skipTitleTranslation || undefined}>
         <div>{leftTitle}</div>
         <div>{rightTitle}</div>
       </div>
-      {changed === 0 && <p className="muted pad">两边内容相同。</p>}
+      {changedRows.size === 0 && <p className="muted pad">两边内容相同。</p>}
       {shown.map((r) => {
-        const changedRow = rowChanged(r)
+        const changedRow = changedRows.has(r)
         const formattingOnly = changedRow && r.left && r.right && r.left.text === r.right.text
         const ops = changedRow && !formattingOnly && r.left && r.right ? diffWords(r.left.text, r.right.text) : null
         return (

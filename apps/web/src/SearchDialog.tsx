@@ -69,6 +69,7 @@ export function SearchDialog({ onClose }: { onClose: () => void }) {
     go({ page: 'doc', id: r.id })
   }
   const onKey = (e: KeyboardEvent<HTMLInputElement>): void => {
+    if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
       if (!currentResults.length) return

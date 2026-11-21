@@ -277,12 +277,14 @@ const FN_DEF = /^\[\^([^\]\s]+)\]:[ \t]*(.*)$/
 /** Punctuation that ends the word a footnote marker attaches to. */
 const FN_STOP = /[\s，。！？；：、,.;:!?()（）「」“”"'《》]/
 
-/** Take `[^label]: text` definitions out of Markdown. They are applied after parsing. */
+/** Take `[^label]: text` definitions out of Markdown, outside fenced code. They are applied after parsing. */
 export function splitMdFootnotes(src: string): { body: string; defs: Map<string, string> } {
   const defs = new Map<string, string>()
   const kept: string[] = []
-  for (const line of src.split('\n')) {
-    const m = line.match(FN_DEF)
+  const lines = src.split('\n')
+  const code = fencedCodeLines(lines)
+  for (const [i, line] of lines.entries()) {
+    const m = code[i] ? null : line.match(FN_DEF)
     if (m) defs.set(m[1]!, m[2]!.trim())
     else kept.push(line)
   }
@@ -290,12 +292,12 @@ export function splitMdFootnotes(src: string): { body: string; defs: Map<string,
 }
 
 /**
- * Turn each `[^label]` marker into a footnote mark over the word before it.
+ * Turn each `[^label]` marker outside code blocks into a footnote mark over the word before it.
  * A marker with no definition, or with nothing before it, is dropped.
  */
 export function applyMdFootnotes(list: Block[], defs: Map<string, string>): Block[] {
   for (const b of list) {
-    if (!b.delta.some((d) => d.insert.includes('[^'))) continue
+    if (b.type === 'codeBlock' || !b.delta.some((d) => d.insert.includes('[^'))) continue
     // One entry per UTF-16 code unit, so regex match offsets index `chars` directly.
     const chars: { ch: string; attributes?: Record<string, unknown> }[] = []
     for (const d of b.delta) for (const ch of d.insert.split('')) chars.push({ ch, attributes: d.attributes })

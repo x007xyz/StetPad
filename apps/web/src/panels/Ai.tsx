@@ -554,7 +554,7 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
             {options.map((o, i) => (
               <button key={o.id} role="option" aria-selected={i === menu.index} className="at-item" data-active={i === menu.index} onMouseDown={(e) => { e.preventDefault(); pick(o) }} onMouseEnter={() => setMenu({ ...menu, index: i })}>
                 {o.kind === 'comment' ? <MessageSquare className="size-3.5" /> : <Pilcrow className="size-3.5" />}
-                <span className="at-label">{o.label}</span>
+                <span className="at-label" translate="no">{o.label}</span>
                 <span className="muted small">{(o as { hint?: string }).hint || KIND_NAME[o.kind]}</span>
               </button>
             ))}
@@ -563,9 +563,9 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
         {refs.length > 0 && (
           <div className="ref-chips">
             {refs.map((r) => (
-              <span key={r.id} className="ref-chip" title={r.text}>
+              <span key={r.id} className="ref-chip">
                 {r.kind === 'comment' ? <MessageSquare className="size-3" /> : r.kind === 'block' ? <Pilcrow className="size-3" /> : <TextQuote className="size-3" />}
-                <span>{r.label}</span>
+                <span translate="no" title={r.text}>{r.label}</span>
                 <button aria-label="移除引用" onClick={() => setRefs((cur) => cur.filter((x) => x.id !== r.id))}><X className="size-3" /></button>
               </span>
             ))}

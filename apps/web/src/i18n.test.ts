@@ -83,6 +83,19 @@ it('translates diff labels but preserves document text, including newly added ma
   }
 })
 
+it.each([
+  ['告诉 AI 你想怎么改这篇文档，例如"把全文改得更正式""给每一节加一句小结"。它的修改会以修订的形式出现在文档里，由你逐条确认。也可以选中文字后直接用工具栏里的润色、扩写。', 'Tell AI how you’d like to edit this document, for example, “Make the whole document more formal” or “Add a short summary to each section.” Its edits appear as tracked changes for you to review one by one. You can also select text and use Polish or Expand in the toolbar.'],
+  ['让 AI 修改这篇文档…（@ 引用评论或段落，Enter 发送）', 'Ask AI to edit this document… (@ to reference a comment or paragraph, Enter to send)'],
+  ['还没有对话', 'No chats yet'],
+  ['切换对话', 'Switch chat'],
+  ['段落', 'Paragraph'],
+])('translates AI panel copy %s without changing Chinese', (zh, en) => {
+  localStorage.setItem('aiw.lang', 'en')
+  expect(t(zh)).toBe(en)
+  localStorage.setItem('aiw.lang', 'zh')
+  expect(t(zh)).toBe(zh)
+})
+
 it('translates folder page empty, normal and error states without changing Chinese', () => {
   const labels = [
   ['空文件夹（把文档拖进来）', 'Empty folder (drag documents here)'],

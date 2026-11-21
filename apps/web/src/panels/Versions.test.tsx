@@ -147,3 +147,25 @@ it.each([
     vi.unstubAllGlobals()
   }
 })
+
+it('tells the user when saving creates no new version because nothing changed', async () => {
+  const version = { id: 'v1', label: null, trigger: 'manual', created_at: 0, word_count: 1 }
+  const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
+    Promise.resolve(Response.json(init?.method === 'POST' ? { id: null } : [version])))
+  vi.stubGlobal('fetch', fetchMock)
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<><ConfirmHost /><VersionsMenu docId="doc" refreshKey={0} current={() => []} /></>))
+    await act(async () => [...container.querySelectorAll('button')].find((b) => b.textContent === '保存当前版本')!.click())
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((b) => b.textContent === '保存')!.click())
+    expect(fetchMock).toHaveBeenCalledWith('/api/docs/doc/versions', expect.objectContaining({ method: 'POST' }))
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('自上个版本以来没有改动，未保存新版本。')
+  } finally {
+    act(() => root.unmount())
+    container.remove()
+    vi.unstubAllGlobals()
+  }
+})

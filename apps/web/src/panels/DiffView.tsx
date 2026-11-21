@@ -10,8 +10,8 @@ export interface DiffRow {
 }
 
 const label = (b?: { type: string; attrs?: Record<string, unknown> }): string =>
-  !b ? '' : b.type === 'heading' ? `H${String(b.attrs?.level ?? 1)}` : ({
-    paragraph: '', bulletItem: '•', orderedItem: '1.', taskItem: '☐', quote: '❝', callout: '提示', codeBlock: '代码', divider: '—', image: '图片', table: '表格',
+  !b ? '' : b.type === 'heading' ? `H${String(b.attrs?.level ?? 1)}` : b.type === 'taskItem' ? (b.attrs?.checked ? '☑' : '☐') : ({
+    paragraph: '', bulletItem: '•', orderedItem: '1.', quote: '❝', callout: '提示', codeBlock: '代码', divider: '—', image: '图片', table: '表格',
   } as Record<string, string>)[b.type] ?? b.type
 
 /** Pair up two block lists by block id (longest common subsequence). */

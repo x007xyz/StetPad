@@ -135,6 +135,7 @@ const EXACT: Record<string, string> = {
   '给这个版本起个名字（可留空）': 'Name this version (optional)', '当前文档': 'Current document', '恢复失败': 'Restore failed', '版本名称': 'Version name',
   '版本标签不能超过 200 字': "Version label can't exceed 200 characters",
   '对比失败': 'Comparison failed',
+  '自上个版本以来没有改动，未保存新版本。': 'Nothing has changed since the last version, so no new version was saved.',
   '保存当前版本': 'Save current version', '对比所选两个版本': 'Compare the two selected versions', '与当前文档对比': 'Compare with current document', '勾选版本以对比': 'Tick versions to compare',
   '还没有版本。AI 操作前后、导入后会自动保存，也可以手动保存。': 'No versions yet. They are saved automatically around AI runs and imports, and you can save one by hand.',
   '命名': 'Rename', '恢复': 'Restore', '版本历史': 'Version history', '版本对比': 'Compare versions', '只看有变化的段落': 'Only changed paragraphs',

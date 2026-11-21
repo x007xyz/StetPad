@@ -163,17 +163,17 @@ export function useRuns(docId: string, onFinished: () => void, enabled = true) {
     void loadHistory(id).catch(() => {})
   }, [docId, loadHistory])
 
-  const newChat = useCallback(async (): Promise<string | null> => {
+  const newChat = useCallback(async (select = true): Promise<string | null> => {
     // An empty chat is reused instead of piling up blank ones.
     const blank = chats.find((c) => c.runs === 0 && !lives[c.id])
     if (blank) {
-      selectChat(blank.id)
+      if (select) selectChat(blank.id)
       return blank.id
     }
     try {
       const { chat } = await post<{ chat: ChatMeta }>(`/docs/${docId}/chats`, {})
       setChats((cur) => [chat, ...cur])
-      selectChat(chat.id)
+      if (select) selectChat(chat.id)
       return chat.id
     } catch (e) {
       setError(e instanceof Error ? e.message : '创建对话失败')
@@ -212,13 +212,14 @@ export function useRuns(docId: string, onFinished: () => void, enabled = true) {
   }, [chats, selectChat, loadHistory])
 
   /** An external agent (ACP): started here, then polled until it ends. */
-  const startExternal = useCallback(async (cid: string, agentId: string, prompt: string) => {
+  const startExternal = useCallback(async (cid: string, agentId: string, prompt: string, onStarted: () => void) => {
     aborts.current.get(cid)?.abort()
     const ac = new AbortController()
     aborts.current.set(cid, ac)
     const { id } = await post<{ id: string }>(`/docs/${docId}/external-runs`, { agent: agentId, prompt })
     const put = (l: Live): void => setLives((all) => ({ ...all, [cid]: l }))
     put({ runId: 'ext:' + id, title: prompt, steps: [], plan: [], text: '', status: 'running' })
+    onStarted()
     while (!ac.signal.aborted) {
       await new Promise((r) => setTimeout(r, 700))
       const r = await api<{ status: string; text: string; steps: string[]; error?: string; agent: string }>(`/external-runs/${id}`).catch(() => null)
@@ -229,22 +230,27 @@ export function useRuns(docId: string, onFinished: () => void, enabled = true) {
     finished.current()
   }, [docId])
 
-  const start = useCallback(async (req: RunRequest, title: string) => {
+  const start = useCallback(async (req: RunRequest, title: string, onStarted?: () => void) => {
     setError('')
     try {
       let cid = current.current
       if (!cid) {
-        cid = await newChat()
+        cid = await newChat(false)
         if (!cid) return
       }
-      if (engine !== 'builtin' && !req.preset && !req.selection && req.instruction) return await startExternal(cid, engine, req.instruction)
+      const started = (): void => {
+        if (!current.current) selectChat(cid)
+        onStarted?.()
+      }
+      if (engine !== 'builtin' && !req.preset && !req.selection && req.instruction) return await startExternal(cid, engine, req.instruction, started)
       const { runId } = await post<{ runId: string }>(`/docs/${docId}/runs`, { ...req, chatId: cid, modelId: model || undefined })
       attach(cid, runId, title)
+      started()
       void loadChats().catch(() => {})
     } catch (e) {
       setError(e instanceof Error ? e.message : '启动失败')
     }
-  }, [docId, model, attach, engine, startExternal, newChat, loadChats])
+  }, [docId, model, attach, engine, startExternal, newChat, loadChats, selectChat])
 
   const cancel = useCallback(() => {
     if (live?.status !== 'running') return
@@ -263,7 +269,7 @@ export function useRuns(docId: string, onFinished: () => void, enabled = true) {
 
 /** The text typed but not yet sent, kept per chat so switching chats, panels or documents does not lose it. */
 const drafts = new Map<string, string>()
-const draftKey = (docId: string, chatId: string | null): string => (chatId ? 'chat.' + chatId : docId)
+export const draftKey = (docId: string, chatId: string | null): string => (chatId ? 'chat.' + chatId : docId)
 const readDraft = (key: string): string => {
   const mem = drafts.get(key)
   if (mem !== undefined) return mem
@@ -398,6 +404,9 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
     })
   }
   const { models, model, setModel, history, live, error, start, cancel, running, engine, setEngine, busyElsewhere, knownRunIds } = runs
+  const [sending, setSending] = useState(false)
+  const noModel = models !== null && models.models.length === 0 && engine === 'builtin'
+  const canSend = !!input.trim() && !noModel && !running && !busyElsewhere && !sending
   const end = useRef<HTMLDivElement>(null)
   useEffect(() => {
     // Braces matter: newer browsers return a promise from scrollIntoView, and an effect must not return one.
@@ -406,13 +415,16 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
 
   const send = (): void => {
     const text = input.trim()
-    if (!text || running || busyElsewhere) return
-    setInput('')
-    setMenu(null)
+    if (!canSend) return
+    setSending(true)
     const context = refs
-    setRefs(() => [])
     const title = context.length ? `${text}\n${context.map((r) => `「${KIND_NAME[r.kind]}：${r.label}」`).join(' ')}` : text
-    void start({ instruction: text, context: context.length ? context : undefined }, title)
+    void start({ instruction: text, context: context.length ? context : undefined }, title, () => {
+      setInput('')
+      setMenu(null)
+      setRefs((cur) => cur.filter((r) => !context.includes(r)))
+      setSending(false)
+    }).finally(() => setSending(false))
   }
 
   useEffect(() => {
@@ -479,7 +491,6 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
   }
   const orphanIds = new Set(changes.map((c) => c.runId).filter((id): id is string => !!id && !knownRunIds.includes(id) && id !== live?.runId))
   const past = history.filter((r) => r.id !== live?.runId)
-  const noModel = models !== null && models.models.length === 0 && engine === 'builtin'
 
   return (
     <div className="ai">
@@ -563,6 +574,7 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
         <textarea
           ref={area}
           rows={2}
+          readOnly={sending}
           value={input}
           placeholder="让 AI 修改这篇文档…（@ 引用评论或段落，Enter 发送）"
           onChange={(e) => onInput(e.target.value, e.target.selectionStart)}
@@ -627,10 +639,10 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
                 variant="default"
                 size="icon"
                 aria-label="发送"
-                disabled={!input.trim() || noModel || busyElsewhere}
+                disabled={!canSend}
                 className={
                   'size-8 rounded-full ' +
-                  (!input.trim() || noModel || busyElsewhere ? 'bg-muted text-muted-foreground' : 'bg-foreground text-background hover:bg-foreground hover:opacity-90')
+                  (!canSend ? 'bg-muted text-muted-foreground' : 'bg-foreground text-background hover:bg-foreground hover:opacity-90')
                 }
                 onClick={send}
               >

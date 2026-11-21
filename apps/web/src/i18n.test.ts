@@ -204,12 +204,15 @@ it('keeps import overflow notices in Chinese or translates them in the English U
   expect(t(error)).toBe('The import exceeds 2000 blocks. Split the file and try again.')
 })
 
-it.each(['2', '2, 4'])('translates skipped PDF page numbers (%s)', (pages) => {
+it.each([
+  ['2', 'Page 2 has no extractable text and was skipped. Configure a vision model to recognize this page.'],
+  ['2, 4', 'Pages 2, 4 have no extractable text and were skipped. Configure a vision model to recognize these pages.'],
+])('translates skipped PDF page numbers (%s)', (pages, expected) => {
   const warning = `第 ${pages} 页没有可提取的文字，已跳过。配置支持图像的模型后可识别这些页面。`
   localStorage.setItem('aiw.lang', 'zh')
   expect(t(warning)).toBe(warning)
   localStorage.setItem('aiw.lang', 'en')
-  expect(t(warning)).toBe(`Pages ${pages} have no extractable text and were skipped. Configure a vision model to recognize these pages.`)
+  expect(t(warning)).toBe(expected)
 })
 
 it.each([1, 3])('translates omitted PDF pages (%i)', (count) => {

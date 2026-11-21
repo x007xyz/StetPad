@@ -22,6 +22,9 @@ it.each(['Task', ''])('exposes checkbox state and toggles with Space and Enter (
   expect(box.getAttribute('role')).toBe('checkbox')
   expect(box.getAttribute('aria-checked')).toBe('false')
   expect(box.tabIndex).toBe(0)
+  const label = document.getElementById(box.getAttribute('aria-labelledby')!)
+  expect(label?.classList.contains('task-text')).toBe(true)
+  expect(label?.textContent).toBe(text)
   box.focus()
   for (const [key, checked] of [[' ', true], ['Enter', false]] as const) {
     const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })

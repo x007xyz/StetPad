@@ -60,6 +60,7 @@ export const OrderedItem = textBlock('orderedItem', 'ordered', {
     return [textblockTypeInputRule({ find: /^\s*\d+[.)]\s$/, type: this.type })]
   },
 })
+let taskTextIds = 0
 export const TaskItem = Node.create({
   name: 'taskItem',
   group: 'block',
@@ -85,6 +86,9 @@ export const TaskItem = Node.create({
       const { dom, contentDOM } = DOMSerializer.renderSpec(document, node.type.spec.toDOM!(node))
       const element = dom as HTMLElement
       const box = element.querySelector<HTMLElement>('.task-box')!
+      const textId = `task-text-${++taskTextIds}`
+      ;(contentDOM as HTMLElement).id = textId
+      box.setAttribute('aria-labelledby', textId)
       const toggle = () => {
         const pos = getPos()
         if (typeof pos !== 'number' || !editor.isEditable) return

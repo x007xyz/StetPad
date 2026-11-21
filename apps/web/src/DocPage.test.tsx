@@ -5,7 +5,7 @@ import { expect, it, vi } from 'vitest'
 import { DocPage } from './DocPage'
 import type { AiPanel } from './panels/Ai'
 
-const { start } = vi.hoisted(() => ({ start: vi.fn() }))
+const { start } = vi.hoisted(() => ({ start: vi.fn(async (_req, _title, onStarted?: () => void) => { onStarted?.() }) }))
 vi.mock('./Shell', () => ({ useWorkspaceOptional: () => null, SidebarToggle: () => null }))
 vi.mock('@hocuspocus/provider', () => ({ HocuspocusProvider: class { destroy() {} } }))
 vi.mock('y-indexeddb', () => ({ IndexeddbPersistence: class { destroy() {} } }))
@@ -25,7 +25,7 @@ it('keeps references with their chat draft and clears only the sent chat', async
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve(Response.json(
     url.endsWith('/versions') ? []
-      : url.endsWith('/models') ? { models: [], presets: [], default: null }
+      : url.endsWith('/models') ? { models: [{ id: 'test', label: 'Test model', verified: true }], presets: [], default: 'test' }
       : url.endsWith('/chats') ? { chats: [] }
         : url.includes('/runs?') ? { runs: [], knownRunIds: [], active: null }
           : { id: 'doc', title: 'Document' },
@@ -59,12 +59,12 @@ it('keeps references with their chat draft and clears only the sent chat', async
     await click('Chat A')
     expect(chips()).toEqual(['Reference a'])
     await send('Revise A')
-    expect(start).toHaveBeenLastCalledWith(expect.objectContaining({ context: [expect.objectContaining({ id: 'a' })] }), expect.any(String))
+    expect(start).toHaveBeenLastCalledWith(expect.objectContaining({ context: [expect.objectContaining({ id: 'a' })] }), expect.any(String), expect.any(Function))
     expect(chips()).toEqual([])
     await click('Chat B')
     expect(chips()).toEqual(['Reference b'])
     await send('Revise B')
-    expect(start).toHaveBeenLastCalledWith(expect.objectContaining({ context: [expect.objectContaining({ id: 'b' })] }), expect.any(String))
+    expect(start).toHaveBeenLastCalledWith(expect.objectContaining({ context: [expect.objectContaining({ id: 'b' })] }), expect.any(String), expect.any(Function))
     expect(chips()).toEqual([])
     await click('Chat A')
     expect(chips()).toEqual([])

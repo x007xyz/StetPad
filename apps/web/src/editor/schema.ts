@@ -1,4 +1,5 @@
 import { Extension, Node, mergeAttributes, textblockTypeInputRule } from '@tiptap/core'
+import { DOMSerializer } from '@tiptap/pm/model'
 import { Plugin, TextSelection } from '@tiptap/pm/state'
 import { ySyncPluginKey } from '@tiptap/y-tiptap'
 import { AI_DIAGRAM_NEW_EVENT, codeBlockView, diagramEditingPlugin, type AiDiagramNewRequest } from './diagram'
@@ -59,6 +60,7 @@ export const OrderedItem = textBlock('orderedItem', 'ordered', {
     return [textblockTypeInputRule({ find: /^\s*\d+[.)]\s$/, type: this.type })]
   },
 })
+let taskTextIds = 0
 export const TaskItem = Node.create({
   name: 'taskItem',
   group: 'block',
@@ -74,27 +76,48 @@ export const TaskItem = Node.create({
   }),
   parseHTML: () => [{ tag: 'div.task' }],
   renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes(HTMLAttributes, { class: 'blk task' }), ['span', { class: 'task-box', contenteditable: 'false' }], ['div', { class: 'task-text' }, 0]]
+    return ['div', mergeAttributes(HTMLAttributes, { class: 'blk task' }), ['span', { class: 'task-box', contenteditable: 'false', role: 'checkbox', 'aria-checked': HTMLAttributes['data-checked'], tabindex: 0 }], ['div', { class: 'task-text' }, 0]]
   },
   addInputRules() {
     return [textblockTypeInputRule({ find: /^\s*\[\s?\]\s$/, type: this.type })]
   },
-  addProseMirrorPlugins() {
-    return [
-      new Plugin({
-        props: {
-          handleClick(view, pos, event) {
-            if (!(event.target as HTMLElement).classList?.contains('task-box')) return false
-            const $pos = view.state.doc.resolve(pos)
-            const at = $pos.before(1)
-            const node = view.state.doc.nodeAt(at)
-            if (!node) return false
-            view.dispatch(view.state.tr.setNodeAttribute(at, 'checked', !node.attrs.checked))
-            return true
-          },
+  addNodeView() {
+    return ({ node, editor, getPos }) => {
+      const { dom, contentDOM } = DOMSerializer.renderSpec(document, node.type.spec.toDOM!(node))
+      const element = dom as HTMLElement
+      const box = element.querySelector<HTMLElement>('.task-box')!
+      const textId = `task-text-${++taskTextIds}`
+      ;(contentDOM as HTMLElement).id = textId
+      box.setAttribute('aria-labelledby', textId)
+      const toggle = () => {
+        const pos = getPos()
+        if (typeof pos !== 'number' || !editor.isEditable) return
+        const current = editor.state.doc.nodeAt(pos)
+        if (current) editor.view.dispatch(editor.state.tr.setNodeAttribute(pos, 'checked', !current.attrs.checked))
+      }
+      box.addEventListener('click', toggle)
+      box.addEventListener('keydown', (event) => {
+        if (event.key !== ' ' && event.key !== 'Enter') return
+        event.preventDefault()
+        if (!event.repeat) toggle()
+      })
+      return {
+        dom: element,
+        contentDOM,
+        stopEvent: (event) => event.target === box,
+        ignoreMutation: (mutation) => mutation.type !== 'selection' && !contentDOM?.contains(mutation.target),
+        update(updated) {
+          if (updated.type !== node.type) return false
+          if (updated.attrs.blockId) element.setAttribute('data-block-id', String(updated.attrs.blockId))
+          else element.removeAttribute('data-block-id')
+          element.setAttribute('data-checked', String(updated.attrs.checked))
+          if (updated.attrs.indent) element.setAttribute('data-indent', String(updated.attrs.indent))
+          else element.removeAttribute('data-indent')
+          box.setAttribute('aria-checked', String(updated.attrs.checked))
+          return true
         },
-      }),
-    ]
+      }
+    }
   },
 })
 export const Quote = textBlock('quote', 'quote', {

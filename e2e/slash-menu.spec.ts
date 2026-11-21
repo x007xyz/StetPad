@@ -30,4 +30,19 @@ test('slash menu scrolls the keyboard-selected item into view', async ({ page })
 
   await page.keyboard.press('ArrowUp')
   await expectSelectedVisible(count - 1)
+
+  // Hovering a row the menu only partly shows highlights it without scrolling the menu.
+  const scrollTop = await menu.evaluate((el) => el.scrollTop)
+  const list = (await menu.boundingBox())!
+  let clipped = -1
+  let visibleBottom = 0
+  for (let i = 0; i < count && clipped < 0; i++) {
+    const item = (await options.nth(i).boundingBox())!
+    if (item.y < list.y && item.y + item.height > list.y + 8) [clipped, visibleBottom] = [i, item.y + item.height]
+  }
+  expect(clipped).toBeGreaterThanOrEqual(0)
+  await page.mouse.move(list.x + list.width / 2, (list.y + visibleBottom) / 2)
+  await expect(options.nth(clipped)).toHaveAttribute('aria-selected', 'true')
+  await page.waitForTimeout(200)
+  expect(await menu.evaluate((el) => el.scrollTop)).toBe(scrollTop)
 })

@@ -195,8 +195,11 @@ export function DocPage({ id }: { id: string }) {
   const slashRef = useRef(slash)
   slashRef.current = slash
   const slashListRef = useRef<HTMLDivElement>(null)
-  // Keep the highlighted command visible when arrow keys move it past the menu's scroll edge.
+  // Set when typing or arrow keys move the highlight, so it is scrolled into view; pointer hover never scrolls the menu.
+  const revealSlashRef = useRef(false)
   useLayoutEffect(() => {
+    if (!revealSlashRef.current) return
+    revealSlashRef.current = false
     slashListRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
   }, [slash?.index, slash?.query])
   const author = '我'
@@ -467,6 +470,7 @@ export function DocPage({ id }: { id: string }) {
           if (!s) return false
           const count = slashItems(s.query).length
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            revealSlashRef.current = count > 1
             setSlash({ ...s, index: (s.index + (event.key === 'ArrowDown' ? 1 : count - 1)) % Math.max(count, 1) })
             return true
           }
@@ -494,6 +498,7 @@ export function DocPage({ id }: { id: string }) {
       if (m && editor.isFocused) {
         const c = v.coordsAtPos(from)
         const prev = slashRef.current
+        if (prev?.query !== m[1]) revealSlashRef.current = true
         setSlash({ x: c.left, y: c.bottom + 6, above: c.top - 6, query: m[1]!, index: prev && prev.query === m[1] ? prev.index : 0, from: $from.start() })
       } else if (slashRef.current) setSlash(null)
       // Selection toolbar.

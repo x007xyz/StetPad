@@ -168,7 +168,7 @@ const EXACT: Record<string, string> = {
   '目录：一直显示（点击改为悬停显示）': 'Outline: always shown (click to show on hover)', '目录：悬停显示（点击改为一直显示）': 'Outline: shown on hover (click to always show)', '还没有标题。用 # 或 / 插入标题后，这里会出现目录。': 'No headings yet. Add one with # or / and the outline appears here.', '引用评论或段落': 'Mention a comment or paragraph', '发送（Enter）': 'Send (Enter)',
   '修订模式已开启：你的修改会记为修订，确认后才生效': 'Track changes on: your edits are recorded as changes and apply once accepted',
   '修订模式已关闭：直接修改正文。点击开启后修改会留痕': 'Track changes off: you edit the text directly. Turn on to record your edits',
-  '上一处修订': 'Previous change', '下一处修订': 'Next change', '导出': 'Export', 'Markdown（按原文）': 'Markdown (original)', 'HTML（按原文）': 'HTML (original)', 'Word（按原文）': 'Word (original)', '文档包（含全部版本）': 'Package (all versions)',
+  '上一处修订': 'Previous change', '下一处修订': 'Next change', '导出': 'Export', 'Markdown（按原文）': 'Markdown (original)', 'HTML（按原文）': 'HTML (original)', 'Word（按原文）': 'Word (original)', '文档包（含图片、视频和全部版本）': 'Package (images, videos and all versions)',
   '正在打开文档…': 'Opening document…', '只看有修订的段落': 'Only paragraphs with changes', '评论': 'Comment', '修订': 'Changes', '版本': 'Versions',
   '写下评论': 'Write a comment', '告诉 AI 怎么改选中的内容': 'Tell the AI how to change the selection', '高亮': 'Highlight', '更多 AI 操作': 'More AI actions', '更多…': 'More…', '自定义…': 'Custom…',
   '拖动以移动这一段（也可以用 Alt+↑/↓）': 'Drag to move this block (or use Alt+↑/↓)', '权限': 'Permission', '创建链接': 'Create link', '已复制': 'Copied', '复制': 'Copy', '撤销': 'Revoke',
@@ -192,6 +192,9 @@ Object.assign(EXACT, {
 })
 
 const PATTERNS: [RegExp, (...m: string[]) => string][] = [
+  [/^导出 (.+)$/, (_, label) => `Export ${tr(label)}`],
+  [/^(Markdown|HTML|Word)（按修改稿）$/, (_, format) => `${format} (revised)`],
+  [/^PDF（打印）（按修改稿）$/, () => 'PDF (print, revised)'],
   [/^文档标题：(.*)$/, (_, title) => `Document title: ${title}`],
   [/^单独打开 (.*)$/, (_, title) => `Open ${title} separately`],
   [/^共 (\d+) 篇$/, (_, n) => `${n} ${n === '1' ? 'document' : 'documents'}`],

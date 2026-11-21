@@ -13,6 +13,44 @@ vi.mock('../components/ui/popover', () => ({
 }))
 vi.mock('../components/ui/tooltip', () => ({ Tip: ({ children }: { children: ReactNode }) => children }))
 
+it('shows snapshot errors and lets comparison be retried without losing selection', async () => {
+  const version = { id: 'v1', label: 'First draft', trigger: 'manual', created_at: 0, word_count: 1 }
+  const retry = deferred<Response>()
+  const snapshot = vi.fn()
+    .mockResolvedValueOnce(Response.json({ error: 'Snapshot unavailable' }, { status: 500 }))
+    .mockReturnValueOnce(retry.promise)
+  const fetchMock = vi.fn().mockImplementation((url: string) => url === '/api/versions/v1'
+    ? snapshot() : Promise.resolve(Response.json([version])))
+  const unhandled = vi.fn()
+  process.on('unhandledRejection', unhandled)
+  vi.stubGlobal('fetch', fetchMock)
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<VersionsMenu docId="doc" refreshKey={0} current={() => []} />))
+    await act(async () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click())
+    const compare = [...container.querySelectorAll('button')].find((b) => b.textContent === '与当前文档对比')!
+    await act(async () => compare.click())
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Snapshot unavailable')
+    expect(unhandled).not.toHaveBeenCalled()
+    expect(container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked).toBe(true)
+    expect(compare.disabled).toBe(false)
+    await act(async () => compare.click())
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    await act(async () => retry.resolve(Response.json({ ...version, content: { revised: [], original: [] } })))
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('版本对比')
+    expect(unhandled).not.toHaveBeenCalled()
+  } finally {
+    act(() => root.unmount())
+    container.remove()
+    process.off('unhandledRejection', unhandled)
+    vi.unstubAllGlobals()
+  }
+})
+
 it('restores a version only after accepting the in-app dialog', async () => {
   const version = { id: 'v1', label: 'First draft', trigger: 'manual', created_at: 0, word_count: 1 }
   const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(Response.json([version])))

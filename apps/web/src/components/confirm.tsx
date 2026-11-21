@@ -4,7 +4,7 @@ import { Dialog, DialogContent } from './ui/dialog'
 import { Input } from './ui/input'
 
 type ConfirmOptions = { title: string; body?: string; confirmLabel: string; danger?: boolean }
-type Request = ConfirmOptions & { cancelLabel?: string; text?: { defaultValue?: string; placeholder?: string }; resolve: (value: string | boolean | null) => void }
+type Request = ConfirmOptions & { cancelLabel?: string; text?: { defaultValue?: string; placeholder?: string; maxLength?: number }; resolve: (value: string | boolean | null) => void }
 type ActiveRequest = Request & { opener?: HTMLElement }
 
 let show: ((r: Request) => void) | null = null
@@ -20,7 +20,7 @@ export function confirmAction(opts: ConfirmOptions & { cancelLabel?: string }): 
   return new Promise((resolve) => show!({ ...opts, resolve: (value) => resolve(value === null && opts.cancelLabel !== undefined ? null : value === true) }))
 }
 
-export function promptText(opts: { title: string; defaultValue?: string; placeholder?: string; confirmLabel: string }): Promise<string | null> {
+export function promptText(opts: { title: string; defaultValue?: string; placeholder?: string; maxLength?: number; confirmLabel: string }): Promise<string | null> {
   if (!show) return Promise.resolve(window.prompt(opts.title, opts.defaultValue))
   return new Promise((resolve) => show!({ title: opts.title, confirmLabel: opts.confirmLabel, text: opts, resolve: (value) => resolve(typeof value === 'string' ? value : null) }))
 }
@@ -66,7 +66,7 @@ export function ConfirmHost() {
             if (req.opener?.isConnected && document.activeElement === document.body) req.opener.focus()
           }}
         >
-          {req.text && <Input key={req.title} ref={input} aria-label={req.title} defaultValue={req.text.defaultValue ?? ''} placeholder={req.text.placeholder} onKeyDown={(e) => {
+          {req.text && <Input key={req.title} ref={input} aria-label={req.title} defaultValue={req.text.defaultValue ?? ''} placeholder={req.text.placeholder} maxLength={req.text.maxLength} onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
               e.preventDefault()
               close(true)

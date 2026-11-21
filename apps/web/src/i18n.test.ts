@@ -11,6 +11,18 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+it('translates a version label error added after initialization', async () => {
+  localStorage.setItem('aiw.lang', 'en')
+  for (const name of ['alert', 'confirm', 'prompt']) vi.stubGlobal(name, vi.fn())
+  document.body.innerHTML = '<div id="root"></div>'
+  initI18n()
+  const error = document.createElement('p')
+  error.className = 'error pad'
+  error.textContent = '版本标签不能超过 200 字'
+  document.getElementById('root')!.append(error)
+  await vi.waitFor(() => expect(error.textContent).toBe("Version label can't exceed 200 characters"))
+})
+
 it('preserves user titles in lists, including nested text, attributes and later updates', async () => {
   localStorage.setItem('aiw.lang', 'en')
   for (const name of ['alert', 'confirm', 'prompt']) vi.stubGlobal(name, vi.fn())

@@ -60,5 +60,24 @@ for (const lang of ['en', 'zh'] as const) {
       await expect(catalog.getByRole('button', { name: en ? 'Verify key and fetch models' : '验证密钥并获取模型' })).toBeVisible()
       await expect(catalog.getByText(en ? /^\d+ of \d+ models? selected$/ : /^已选 \d+ \/ 共 \d+ 个模型$/)).toBeVisible()
     })
+
+    test('keeps configured provider and model names in settings', async ({ page }) => {
+      await page.route('**/api/models', (route) => route.fulfill({ json: {
+        default: 'fixture:one',
+        providerList: [{ id: 'fixture', name: '保存', status: 'ready' }],
+        models: [
+          { id: 'fixture:one', provider: 'fixture', label: '设置', verified: true },
+          { id: 'fixture:two', provider: 'fixture', label: '预览', verified: false },
+        ],
+      } }))
+      await page.getByRole('complementary', { name: en ? 'Sidebar' : '侧栏' })
+        .getByRole('button', { name: en ? 'Settings' : '设置', exact: true }).last().click()
+      await expect(page.getByRole('combobox', { name: en ? 'Default provider' : '默认提供方' })).toHaveText('保存')
+      const model = page.getByRole('combobox', { name: en ? 'Default model' : '默认模型' })
+      await expect(model).toHaveText('设置')
+      await model.click()
+      await expect(page.getByRole('option', { name: '设置', exact: true })).toBeVisible()
+      await expect(page.getByRole('option', { name: en ? '预览 (unverified)' : '预览（未验证）', exact: true })).toBeVisible()
+    })
   })
 }

@@ -3,6 +3,7 @@ import { api, fmtTime, isDesktop, post, type ModelsResponse } from '../api'
 import { Button } from '../components/ui/button'
 import { Dialog, DialogContent } from '../components/ui/dialog'
 import { Select } from '../components/ui/select'
+import { t } from '../i18n'
 import { CAP_LABELS, type Capability, type Role } from './caps'
 import { Providers } from './Providers'
 
@@ -180,7 +181,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
                 setModel((models?.models ?? []).find((m) => m.provider === v)?.id ?? '')
               }}
               placeholder="没有可用的提供方"
-              options={Array.from(new Map((models?.models ?? []).map((m) => [m.provider, models?.providerList?.find((p) => p.id === m.provider)?.name ?? m.provider]))).map(([value, label]) => ({ value, label }))}
+              options={Array.from(new Map((models?.models ?? []).map((m) => [m.provider, models?.providerList?.find((p) => p.id === m.provider)?.name ?? m.provider]))).map(([value, label]) => ({ value, label, translateLabel: false }))}
             />
           </label>
           <label>
@@ -191,7 +192,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
               value={model}
               onValueChange={setModel}
               placeholder="没有可用的模型"
-              options={(models?.models ?? []).filter((m) => !defaultProvider || m.provider === defaultProvider).map((m) => ({ value: m.id, label: m.label + (m.verified ? '' : '（未验证）') }))}
+              options={(models?.models ?? []).filter((m) => !defaultProvider || m.provider === defaultProvider).map((m) => ({ value: m.id, label: m.label + (m.verified ? '' : t('（未验证）')), translateLabel: false }))}
             />
           </label>
         </div>
@@ -204,7 +205,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
           const labelOf = (id: string): string => roles.flatMap((x) => x.options).find((o) => o.id === id)?.label ?? id
           const opts = [
             { value: '', label: '自动' + (r.effective ? `（当前：${labelOf(r.effective)}）` : '') },
-            ...r.options.map((o) => ({ value: o.id, label: o.label + (o.price ? ` · ${o.price}` : '') })),
+            ...r.options.map((o) => ({ value: o.id, label: o.label + (o.price ? ` · ${t(o.price)}` : ''), translateLabel: false })),
           ]
           return (
             <div key={r.key} className="role-row">
@@ -236,7 +237,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
                 <tbody>
                   {agentRows.map((a) => (
                     <tr key={a.id}>
-                      <td>{a.label}</td>
+                      <td translate={a.builtin ? undefined : 'no'}>{a.label}</td>
                       <td><code>{a.command}</code></td>
                       <td>{a.builtin ? '内置' : '自定义'}</td>
                       <td>{a.installed === undefined ? '保存后检测' : a.installed ? '已安装' : '未安装'}</td>

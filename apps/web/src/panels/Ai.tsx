@@ -623,8 +623,8 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
               }
             }}
             options={[
-              ...(models?.models ?? []).map((m) => ({ value: m.id, label: m.label + (m.verified ? '' : '（未验证）') })),
-              ...(models?.externalAgents ?? []).map((x) => ({ value: 'ext:' + x.id, label: x.label, group: '外部 Agent（用它自己的模型）' })),
+              ...(models?.models ?? []).map((m) => ({ value: m.id, label: m.label + (m.verified ? '' : t('（未验证）')), translateLabel: false })),
+              ...(models?.externalAgents ?? []).map((x) => ({ value: 'ext:' + x.id, label: x.label, group: '外部 Agent（用它自己的模型）', translateLabel: false })),
             ]}
           />
           {running ? (

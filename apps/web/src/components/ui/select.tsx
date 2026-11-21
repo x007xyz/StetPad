@@ -8,7 +8,7 @@ import { cn, portalRoot } from '@/lib/utils'
  * and back. Callers keep using '' for "none".
  */
 const EMPTY = '__empty__'
-export interface Option { value: string; label: string; group?: string }
+export interface Option { value: string; label: string; group?: string; translateLabel?: boolean }
 
 export function Select({ value, onValueChange, options, placeholder, className, disabled, 'aria-label': aria, size = 'default' }: {
   value: string
@@ -35,7 +35,7 @@ export function Select({ value, onValueChange, options, placeholder, className, 
               {o.group && o.group !== options[i - 1]?.group && <P.Label className="px-2 py-1 text-xs text-muted-foreground">{o.group}</P.Label>}
               <P.Item value={enc(o.value)} className="relative flex cursor-pointer select-none items-center rounded-md py-1.5 pl-7 pr-2 text-sm outline-none data-[highlighted]:bg-accent">
                 <span className="absolute left-2 flex size-3.5 items-center justify-center"><P.ItemIndicator><Check className="size-3.5" /></P.ItemIndicator></span>
-                <P.ItemText>{o.label}</P.ItemText>
+                <P.ItemText>{o.translateLabel === false ? <span translate="no">{o.label}</span> : o.label}</P.ItemText>
               </P.Item>
               </React.Fragment>
             ))}

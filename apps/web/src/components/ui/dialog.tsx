@@ -9,14 +9,14 @@ export const DialogClose = DialogPrimitive.Close
 
 export const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { title: string; description?: string; hideTitle?: boolean }
->(({ className, children, title, description, hideTitle, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { title: string; description?: string; hideTitle?: boolean; layerClassName?: string }
+>(({ className, children, title, description, hideTitle, layerClassName, ...props }, ref) => (
   <DialogPrimitive.Portal container={portalRoot()}>
-    <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+    <DialogPrimitive.Overlay className={cn('fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=open]:fade-in-0', layerClassName)} />
     <DialogPrimitive.Content
       ref={ref}
-      aria-describedby={description ? undefined : undefined}
-      className={cn('fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-[calc(100vw-24px)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl outline-none', className)}
+      {...(description ? {} : { 'aria-describedby': undefined })}
+      className={cn('fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-[calc(100vw-24px)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl outline-none', layerClassName, className)}
       {...props}
     >
       <div className="flex items-center justify-between px-5 pb-1 pt-4">

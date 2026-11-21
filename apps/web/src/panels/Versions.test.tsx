@@ -13,6 +13,37 @@ vi.mock('../components/ui/popover', () => ({
 }))
 vi.mock('../components/ui/tooltip', () => ({ Tip: ({ children }: { children: ReactNode }) => children }))
 
+it('restores a version only after accepting the in-app dialog', async () => {
+  const version = { id: 'v1', label: 'First draft', trigger: 'manual', created_at: 0, word_count: 1 }
+  const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(Response.json([version])))
+  vi.stubGlobal('fetch', fetchMock)
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const nativeConfirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  const click = (parent: ParentNode, label: string) => act(async () => {
+    Array.from(parent.querySelectorAll('button')).find((button) => button.textContent === label)!.click()
+  })
+  try {
+    await act(async () => root.render(<><ConfirmHost /><VersionsMenu docId="doc" refreshKey={0} current={() => []} /></>))
+    await click(container, '恢复')
+    expect(nativeConfirm).not.toHaveBeenCalled()
+    const dialog = () => document.querySelector('[role="dialog"]')!
+    expect(dialog().textContent).toContain('First draft')
+    await click(dialog(), '取消')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await click(container, '恢复')
+    await click(dialog(), '恢复')
+    expect(fetchMock).toHaveBeenCalledWith('/api/versions/v1/restore', expect.objectContaining({ method: 'POST' }))
+  } finally {
+    act(() => root.unmount())
+    container.remove()
+    nativeConfirm.mockRestore()
+    vi.unstubAllGlobals()
+  }
+})
+
 it.each([
   ['save', 'New name'], ['rename', 'New name'], ['save', ''], ['rename', ''], ['save', null], ['rename', null],
 ] as const)('can %s a version with label %s without Electron native prompts', async (action, label) => {

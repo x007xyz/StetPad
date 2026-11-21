@@ -109,6 +109,25 @@ test('reports an invalid document package without creating a document', async ({
   await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
+test('shows a restore rejection even after the version popover closes', async ({ page }) => {
+  await createDoc(page, 'Restore draft')
+  await page.getByRole('button', { name: '版本历史', exact: true }).click()
+  await page.getByRole('button', { name: '保存当前版本' }).click()
+  const save = page.getByRole('dialog', { name: '给这个版本起个名字（可留空）' })
+  await save.getByRole('textbox').fill('Checkpoint')
+  await save.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(save).toBeHidden()
+  const opener = page.getByRole('button', { name: '版本历史', exact: true })
+  const restore = page.getByRole('button', { name: '恢复', exact: true })
+  if ((await opener.getAttribute('aria-expanded')) === 'false') await opener.click()
+  await page.route('**/api/versions/*/restore', (route) =>
+    route.fulfill({ status: 409, json: { error: 'AI 任务运行中，暂不能恢复' } }),
+  )
+  await restore.click()
+  await page.getByRole('dialog', { name: '恢复到"Checkpoint"？' }).getByRole('button', { name: '恢复' }).click()
+  await expect(page.getByRole('alert')).toHaveText('AI 任务运行中，暂不能恢复')
+})
+
 test('trashes, restores, then permanently deletes a document', async ({ page }) => {
   await createDoc(page, 'Disposable draft')
   const remove = async () => {

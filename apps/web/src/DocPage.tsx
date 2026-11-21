@@ -12,6 +12,7 @@ import { api, ApiError, collabUrl, download, getToken, notifyComment, post, prin
 import { go } from './App'
 import { ListChecks, ListTree, MessageSquare, MessageSquarePlus, Sparkles, AlignLeft, Columns2, ChevronDown, ChevronUp, Download, GripVertical, Ellipsis, FilePenLine, Bold as BoldIcon, Italic as ItalicIcon, Underline as UnderlineIcon, Strikethrough, Code as CodeIcon, Highlighter, Repeat2, Copy, ArrowUp, ArrowDown, Trash2, Type, Heading1, Heading2, Heading3, List, ListOrdered, ListTodo, Quote as QuoteIcon, StickyNote, SquareCode, PenLine, NotebookPen, Sigma } from 'lucide-react'
 import { Button } from './components/ui/button'
+import { confirmAction } from './components/confirm'
 import { Dialog, SheetContent } from './components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './components/ui/dropdown-menu'
 import { Tip, TooltipProvider } from './components/ui/tooltip'
@@ -1010,7 +1011,14 @@ export function DocPage({ id }: { id: string }) {
     let videos = true
     if (info.videos.count > 0) {
       const mb = (info.videos.bytes / 1024 / 1024).toFixed(1)
-      videos = confirm(`包含 ${info.videos.count} 个视频（共 ${mb} MB）。点"确定"一起导出，点"取消"只导出图片。`)
+      const choice = await confirmAction({
+        title: '导出时包含视频？',
+        body: `文档包含 ${info.videos.count} 个视频（共 ${mb} MB）。图片始终会导出。`,
+        confirmLabel: '包含视频',
+        cancelLabel: '不含视频',
+      })
+      if (choice === null) return
+      videos = choice
     }
     const res = await fetch(`/api/docs/${id}/package?videos=${videos ? 1 : 0}`, { headers: { authorization: `Bearer ${getToken()}` } })
     if (!res.ok) {

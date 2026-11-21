@@ -174,6 +174,13 @@ const EXACT: Record<string, string> = {
   }
 
 Object.assign(EXACT, {
+  '当前内容会先保存为一个版本，不会丢失。': 'Your current content will be saved as a version first.',
+  'AI 任务运行中，暂不能恢复': 'Wait for the AI task to finish before restoring a version.',
+  '文档内容和待确认的修改不会受影响。': 'Document content and pending changes won’t be affected.',
+  '新对话': 'New chat', '切换对话': 'Switch chat', '删除对话': 'Delete chat',
+  '导出时包含视频？': 'Include videos in the export?', '包含视频': 'Include videos', '不含视频': 'Skip videos',
+  '放弃未保存的修改？': 'Discard unsaved changes?', '关闭后，图表中未保存的修改将丢失。': 'Unsaved changes to the diagram will be lost.',
+  '放弃修改': 'Discard changes', 'draw.io 编辑器': 'draw.io editor',
   '我的文档': 'My documents', '提及': 'Mention', '无法连接本机服务，请重启应用': 'Cannot reach the local service. Restart the app.',
   '- 空格': '- space', '1. 空格': '1. space', '侧栏': 'Sidebar', '打开侧栏': 'Open sidebar', '收起侧栏': 'Collapse sidebar', '文档': 'Documents', '面板': 'Panel', '打开面板': 'Open panel', '收起面板': 'Collapse panel',
   '浏览器插件': 'Browser clipper', '管理已连接的 Stetpad 网页剪藏插件。撤销后，对应浏览器插件需重新配对才能访问文档。': 'Manage connected Stetpad web clippers. Revoked extensions must re-pair before accessing documents.',
@@ -216,7 +223,9 @@ const PATTERNS: [RegExp, (...m: string[]) => string][] = [
   [/^条未解决$/, () => 'unresolved'], [/^条待处理$/, () => 'pending'], [/^个段落有修订$/, () => 'paragraphs with changes'],
   [/^删除"(.*)"？此操作不可恢复。$/s, (_, t) => `Delete "${t}"? This cannot be undone.`],
   [/^删除 (.*)$/, (_, t) => `Delete ${t}`], [/^正在解析 (.*)…$/, (_, t) => `Parsing ${t}…`],
-  [/^恢复到"(.*)"？\n当前内容会先保存为一个版本，不会丢失。$/, (_, t) => `Restore "${t}"?\nThe current content is saved as a version first.`],
+  [/^恢复到"(.*)"？$/s, (_, title) => `Restore "${title}"?`],
+  [/^删除对话"(.*)"？$/s, (_, title) => `Delete chat "${title === '新对话' ? EXACT[title] : title}"?`],
+  [/^文档包含 (\d+) 个视频（共 ([\d.]+) MB）。图片始终会导出。$/, (_, n, mb) => `This document contains ${n} ${n === '1' ? 'video' : 'videos'} (${mb} MB total). Images are included either way.`],
   [/^共 (\d+) 个段落。$/, (_, n) => `${n} blocks.`],
   [/^导入最多保留前 (\d+) 个段落。继续创建将省略最后 (\d+) 个段落。$/, (_, limit, omitted) => `This import can keep only the first ${limit} blocks. Creating the document will omit the last ${omitted} ${omitted === '1' ? 'block' : 'blocks'}.`],
   [/^PDF 导入最多保留前 (\d+) 页。继续创建将省略最后 (\d+) 页。$/, (_, limit, omitted) => `This PDF import can keep only the first ${limit} pages. Creating the document will omit the last ${omitted} ${omitted === '1' ? 'page' : 'pages'}.`],

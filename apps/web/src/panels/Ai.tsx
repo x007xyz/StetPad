@@ -263,7 +263,7 @@ export function useRuns(docId: string, onFinished: () => void, enabled = true) {
 
 /** The text typed but not yet sent, kept per chat so switching chats, panels or documents does not lose it. */
 const drafts = new Map<string, string>()
-const draftKey = (docId: string, chatId: string | null): string => (chatId ? 'chat.' + chatId : docId)
+export const draftKey = (docId: string, chatId: string | null): string => (chatId ? 'chat.' + chatId : docId)
 const readDraft = (key: string): string => {
   const mem = drafts.get(key)
   if (mem !== undefined) return mem

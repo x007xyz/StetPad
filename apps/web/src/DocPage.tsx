@@ -34,7 +34,7 @@ import { attachmentFiles, describeInBackground, FILE_ACCEPT, IMAGE_ACCEPT, IMAGE
 import { AiImageEditDialog } from './editor/AiImageEditDialog'
 import { ImageEditDialog } from './editor/ImageEditDialog'
 import { anchorBetween } from './editor/tracked'
-import { AiPanel, makeLabel, useRuns, type ContextItem } from './panels/Ai'
+import { AiPanel, draftKey, makeLabel, useRuns, type ContextItem } from './panels/Ai'
 import { ChangesPanel } from './panels/Changes'
 import { CommentsPanel } from './panels/Comments'
 import { MentionInput } from './MentionInput'
@@ -157,7 +157,7 @@ export function DocPage({ id }: { id: string }) {
   const [panelOpen, setPanelOpen] = useState(() => !window.matchMedia('(max-width: 1023px)').matches)
   const [onlyChanged, setOnlyChanged] = useState(false)
   const [custom, setCustom] = useState('')
-  const [refs, setRefs] = useState<ContextItem[]>([])
+  const [refsByDraft, setRefsByDraft] = useState<Record<string, ContextItem[]>>({})
   const [focusSignal, setFocusSignal] = useState(0)
 
   const showTab = (t: Tab): void => {
@@ -174,6 +174,11 @@ export function DocPage({ id }: { id: string }) {
   const ydoc = useMemo(() => new Y.Doc(), [id])
 
   const runs = useRuns(id, () => setVersionsKey((k) => k + 1))
+  const refsKey = draftKey(id, runs.chatId)
+  const refs = refsByDraft[refsKey] ?? []
+  const setRefs = (update: (cur: ContextItem[]) => ContextItem[]): void => {
+    setRefsByDraft((cur) => ({ ...cur, [refsKey]: update(cur[refsKey] ?? []) }))
+  }
   const runsRef = useRef(runs)
   runsRef.current = runs
 

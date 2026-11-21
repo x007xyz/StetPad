@@ -694,7 +694,9 @@ export function blocksToMarkdown(input: Block[]): string {
         break
       case 'codeBlock': {
         const lang = String(b.attrs.language ?? '')
-        out.push(lang === 'math' ? `$$\n${blockTextContent(b)}\n$$` : '```' + lang + '\n' + blockTextContent(b) + '\n```')
+        const text = blockTextContent(b)
+        const fence = '`'.repeat((text.match(/`+/g) ?? []).reduce((length, run) => Math.max(length, run.length + 1), 3))
+        out.push(lang === 'math' ? `$$\n${text}\n$$` : fence + lang + '\n' + text + '\n' + fence)
         break
       }
       case 'divider':
@@ -744,7 +746,7 @@ export function blocksToMarkdown(input: Block[]): string {
     }
     if (!listItem) out.push('')
   }
-  const body = out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n'
+  const body = out.join('\n').trim() + '\n'
   if (!notes.length) return body
   return body + '\n' + notes.map((n) => `[^${n.number}]: ${mdOneLine(n.note).trim()}`).join('\n') + '\n'
 }

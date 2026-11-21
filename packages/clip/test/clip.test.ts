@@ -138,6 +138,18 @@ describe('@stetpad/clip domToBlocks', () => {
   })
 })
 
+describe('@stetpad/clip code Markdown', () => {
+  it.each([
+    ['', '```'],
+    ['plain', '```'],
+    ['first\n\n\n```\n\nlast', '````'],
+    ['inline ````` run\n```', '``````'],
+  ])('preserves code %j with a safe fence', (text, fence) => {
+    expect(blocksToMarkdown([{ type: 'codeBlock', attrs: { language: 'ts' }, delta: [{ insert: text }] }]))
+      .toBe(`${fence}ts\n${text}\n${fence}\n`)
+  })
+})
+
 describe('@stetpad/clip table Markdown', () => {
   it('escapes pipes and backslashes in header and body cells', () => {
     const blocks = parse('<table><tr><th>A|B</th><th>tail</th></tr><tr><td>A\\|B</td><td>tail</td></tr></table>')

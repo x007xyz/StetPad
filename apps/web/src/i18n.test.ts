@@ -108,6 +108,31 @@ it('translates diff labels but preserves document text, including newly added ma
   }
 })
 
+it.each([
+  ['公式', 'Formula'],
+  ['$$ 空格，LaTeX 实时预览', '$$ space, live LaTeX preview'],
+  ['Mermaid 图表', 'Mermaid diagram'],
+  ['```mermaid 空格，流程图等', '```mermaid + Space for flowcharts and more'],
+  ['AI 生成图表', 'Generate diagram with AI'],
+  ['用一句话描述，AI 画出来', 'Describe it in one sentence; AI draws it'],
+  ['draw.io 图', 'draw.io diagram'],
+  ['在 draw.io 里画图', 'Draw a diagram in draw.io'],
+  ['描述画面，AI 画出来', 'Describe an image for AI to draw'],
+  ['视频', 'Video'],
+  ['上传本地视频（最大 1GB）', 'Upload a local video (up to 1 GB)'],
+  ['嵌入视频', 'Embed video'],
+  ['B 站 / YouTube / Vimeo 链接', 'Bilibili / YouTube / Vimeo link'],
+  ['附件', 'Attachment'],
+  ['上传 PDF、Office、压缩包等文件', 'Upload PDFs, Office files, archives, and more'],
+  ['链接卡片', 'Link card'],
+  ['粘贴网址生成预览卡片', 'Paste a URL to create a preview card'],
+])('translates the slash menu string "%s" only in English mode', (zh, en) => {
+  localStorage.setItem('aiw.lang', 'zh')
+  expect(t(zh)).toBe(zh)
+  localStorage.setItem('aiw.lang', 'en')
+  expect(t(zh)).toBe(en)
+})
+
 it('translates folder page empty, normal and error states without changing Chinese', () => {
   const labels = [
   ['空文件夹（把文档拖进来）', 'Empty folder (drag documents here)'],

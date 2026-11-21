@@ -4,8 +4,8 @@ import type { RichBlock } from '../api'
 
 export interface DiffRow {
   id: string
-  left?: { type: string; text: string; attrs?: Record<string, unknown> }
-  right?: { type: string; text: string; attrs?: Record<string, unknown> }
+  left?: { type: string; text: string; attrs?: Record<string, unknown>; delta?: RichBlock['delta'] }
+  right?: { type: string; text: string; attrs?: Record<string, unknown>; delta?: RichBlock['delta'] }
   actions?: ReactNode
 }
 
@@ -43,8 +43,39 @@ export function alignBlocks(a: RichBlock[], b: RichBlock[]): DiffRow[] {
   return rows
 }
 
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((value, i) => sameValue(value, b[i]))
+  }
+  const left = a as Record<string, unknown>
+  const right = b as Record<string, unknown>
+  return Object.keys(left).length === Object.keys(right).length &&
+    Object.keys(left).every((key) => Object.hasOwn(right, key) && sameValue(left[key], right[key]))
+}
+
 export const rowChanged = (r: DiffRow): boolean =>
-  !r.left || !r.right || r.left.text !== r.right.text || r.left.type !== r.right.type
+  !r.left || !r.right || r.left.text !== r.right.text || r.left.type !== r.right.type ||
+  !sameValue(r.left.delta, r.right.delta) ||
+  !sameValue(r.left.attrs ?? {}, r.right.attrs ?? {})
+
+function richText(block: NonNullable<DiffRow['left']>): ReactNode {
+  return block.delta?.map(({ insert, attributes: marks = {} }, i) => {
+    let text: ReactNode = insert
+    if (marks.bold) text = <strong>{text}</strong>
+    if (marks.italic) text = <em>{text}</em>
+    if (marks.underline) text = <u>{text}</u>
+    if (marks.strike) text = <s>{text}</s>
+    if (marks.code) text = <code>{text}</code>
+    if (marks.highlight) text = <mark>{text}</mark>
+    const href = (marks.link as { href?: unknown } | undefined)?.href
+    if (typeof href === 'string' && /^(https?:|mailto:|tel:|\/|#)/i.test(href)) {
+      text = <a className="underline" href={href} target="_blank" rel="noopener noreferrer">{text}</a>
+    }
+    return <span key={i}>{text}</span>
+  }) ?? block.text
+}
 
 /** Two versions of a document side by side, aligned block by block. */
 export function DiffView({ rows, leftTitle, rightTitle, onlyChanged }: { rows: DiffRow[]; leftTitle: string; rightTitle: string; onlyChanged?: boolean }) {
@@ -59,16 +90,18 @@ export function DiffView({ rows, leftTitle, rightTitle, onlyChanged }: { rows: D
       {changed === 0 && <p className="muted pad">两边内容相同。</p>}
       {shown.map((r) => {
         const changedRow = rowChanged(r)
-        const ops = changedRow && r.left && r.right ? diffWords(r.left.text, r.right.text) : null
+        const formattingOnly = changedRow && r.left && r.right && r.left.text === r.right.text
+        const ops = changedRow && !formattingOnly && r.left && r.right ? diffWords(r.left.text, r.right.text) : null
         return (
           <div key={r.id} className={'diff-row' + (changedRow ? ' changed' : '')} data-diff-changed={changedRow || undefined}>
             <div className={'diff-cell' + (!r.left ? ' absent' : !r.right ? ' removed' : '')}>
               {r.left && <span className="kind">{label(r.left)}</span>}
-              {r.left && (ops ? ops.filter((o) => o.type !== 'insert').map((o, k) => (o.type === 'delete' ? <del key={k}>{o.text}</del> : <span key={k}>{o.text}</span>)) : r.left.text)}
+              {r.left && <span className="doc-text">{formattingOnly ? richText(r.left) : ops ? ops.filter((o) => o.type !== 'insert').map((o, k) => (o.type === 'delete' ? <del key={k}>{o.text}</del> : <span key={k}>{o.text}</span>)) : r.left.text}</span>}
             </div>
             <div className={'diff-cell' + (!r.right ? ' absent' : !r.left ? ' added' : '')}>
               {r.right && <span className="kind">{label(r.right)}</span>}
-              {r.right && (ops ? ops.filter((o) => o.type !== 'delete').map((o, k) => (o.type === 'insert' ? <ins key={k}>{o.text}</ins> : <span key={k}>{o.text}</span>)) : r.right.text)}
+              {r.right && <span className="doc-text">{formattingOnly ? richText(r.right) : ops ? ops.filter((o) => o.type !== 'delete').map((o, k) => (o.type === 'insert' ? <ins key={k}>{o.text}</ins> : <span key={k}>{o.text}</span>)) : r.right.text}</span>}
+              {formattingOnly && <div className="muted small">仅格式变化</div>}
               {r.actions && <div className="diff-actions">{r.actions}</div>}
             </div>
           </div>

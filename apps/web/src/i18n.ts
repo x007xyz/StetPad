@@ -150,7 +150,7 @@ const EXACT: Record<string, string> = {
   '请填写名称和命令': 'Please enter a name and command', '添加 Agent': 'Add agent',
   'AI 用量': 'AI usage', '最近 30 天没有用量。': 'No usage in the last 30 days.',
   '日期': 'Date', '模型': 'Model', '次数': 'Runs', '输入': 'Input', '输出': 'Output', '已保存': 'Saved', '保存': 'Save',
-  '两边内容相同。': 'Both sides are identical.', '未命名文档': 'Untitled document', '我': 'Me',
+  '两边内容相同。': 'Both sides are identical.', '仅格式变化': 'Formatting only', '未命名文档': 'Untitled document', '我': 'Me',
   '输入内容，或输入 / 选择块类型': 'Type something, or type / to pick a block type', '上传失败': 'Upload failed', '操作失败': 'Action failed',
   '找不到这篇文档，或者你没有权限打开它。': 'This document does not exist, or you do not have access.', '返回文档列表': 'Back to documents', '← 文档': '← Documents',
   '文档标题': 'Document title', '已同步': 'Synced', '连接中…': 'Connecting…', '连接中': 'Connecting', '离线，修改已保存在本机': 'Offline, changes are saved locally',
@@ -244,7 +244,7 @@ function tr(raw: string): string {
 }
 
 const ATTRS = ['placeholder', 'aria-label', 'title', 'label']
-const SKIP = '.ProseMirror, .chat-body, .md'
+const SKIP = '.ProseMirror, .chat-body, .md, .doc-text'
 
 function walk(root: Node): void {
   if (root.nodeType === Node.TEXT_NODE) {

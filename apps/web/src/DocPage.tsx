@@ -5,7 +5,7 @@ import { Editor } from '@tiptap/core'
 import { editorExtensions, type EditorExtensionOptions } from './editor/extensions'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { NodeSelection } from '@tiptap/pm/state'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { IndexeddbPersistence } from 'y-indexeddb'
 import * as Y from 'yjs'
 import { api, ApiError, collabUrl, download, getToken, notifyComment, post, printHtml, type DocMeta } from './api'
@@ -17,6 +17,7 @@ import { Dialog, SheetContent } from './components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './components/ui/dropdown-menu'
 import { Tip, TooltipProvider } from './components/ui/tooltip'
 import { useMedia } from './lib/useMedia'
+import { clampPanelWidth } from './lib/panelWidth'
 import { cn } from './lib/utils'
 import { SidebarToggle, useWorkspaceOptional } from './Shell'
 import { addFootnote, FootnoteList, FootnotePopover, scrollToFootnote } from './editor/footnotes'
@@ -34,7 +35,7 @@ import { attachmentFiles, describeInBackground, FILE_ACCEPT, IMAGE_ACCEPT, IMAGE
 import { AiImageEditDialog } from './editor/AiImageEditDialog'
 import { ImageEditDialog } from './editor/ImageEditDialog'
 import { anchorBetween } from './editor/tracked'
-import { AiPanel, makeLabel, useRuns, type ContextItem } from './panels/Ai'
+import { AiPanel, draftKey, makeLabel, useRuns, type ContextItem } from './panels/Ai'
 import { ChangesPanel } from './panels/Changes'
 import { CommentsPanel } from './panels/Comments'
 import { MentionInput } from './MentionInput'
@@ -132,22 +133,45 @@ export function DocPage({ id }: { id: string }) {
   const [slash, setSlash] = useState<(Floating & { query: string; index: number; from: number; above: number }) | null>(null)
   const workspace = useWorkspaceOptional()
   const narrow = useMedia('(max-width: 1023px)')
+  const layoutRef = useRef<HTMLDivElement>(null)
+  const editorAreaRef = useRef<HTMLDivElement>(null)
+  const pageRef = useRef<HTMLElement>(null)
+  const [available, setAvailable] = useState(Infinity)
+  const availableWidth = (): number => {
+    const layout = layoutRef.current
+    const editorArea = editorAreaRef.current
+    const page = pageRef.current
+    if (!layout || !editorArea || !page) return Infinity
+    return layout.clientWidth - (editorArea.clientWidth - page.clientWidth)
+  }
   const [panelW, setPanelW] = useState(() => {
-    try { return Math.min(760, Math.max(300, Number(localStorage.getItem('aiw.panelW')) || 340)) } catch { return 340 }
+    try { return clampPanelWidth(Number(localStorage.getItem('aiw.panelW')), Infinity) } catch { return 340 }
   })
+  const displayedPanelW = clampPanelWidth(panelW, available)
+  useLayoutEffect(() => {
+    if (narrow || !layoutRef.current || !pageRef.current) return
+    const update = (): void => setAvailable(availableWidth())
+    const observer = new ResizeObserver(update)
+    observer.observe(layoutRef.current)
+    observer.observe(pageRef.current)
+    update()
+    return () => observer.disconnect()
+  }, [narrow, missing])
   const startResize = (e: React.PointerEvent<HTMLDivElement>): void => {
     e.preventDefault()
     const startX = e.clientX
-    const startW = panelW
+    const startW = displayedPanelW
     let w = startW
     const move = (ev: PointerEvent): void => {
-      w = Math.min(760, Math.max(300, startW + (startX - ev.clientX)))
+      w = clampPanelWidth(startW + (startX - ev.clientX), availableWidth())
       setPanelW(w)
     }
     const up = (): void => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       document.body.style.userSelect = ''
+      w = clampPanelWidth(w, availableWidth())
+      setPanelW(w)
       try { localStorage.setItem('aiw.panelW', String(w)) } catch { /* ignore */ }
     }
     document.body.style.userSelect = 'none'
@@ -157,7 +181,7 @@ export function DocPage({ id }: { id: string }) {
   const [panelOpen, setPanelOpen] = useState(() => !window.matchMedia('(max-width: 1023px)').matches)
   const [onlyChanged, setOnlyChanged] = useState(false)
   const [custom, setCustom] = useState('')
-  const [refs, setRefs] = useState<ContextItem[]>([])
+  const [refsByDraft, setRefsByDraft] = useState<Record<string, ContextItem[]>>({})
   const [focusSignal, setFocusSignal] = useState(0)
 
   const showTab = (t: Tab): void => {
@@ -174,6 +198,11 @@ export function DocPage({ id }: { id: string }) {
   const ydoc = useMemo(() => new Y.Doc(), [id])
 
   const runs = useRuns(id, () => setVersionsKey((k) => k + 1))
+  const refsKey = draftKey(id, runs.chatId)
+  const refs = refsByDraft[refsKey] ?? []
+  const setRefs = (update: (cur: ContextItem[]) => ContextItem[]): void => {
+    setRefsByDraft((cur) => ({ ...cur, [refsKey]: update(cur[refsKey] ?? []) }))
+  }
   const runsRef = useRef(runs)
   runsRef.current = runs
 
@@ -1201,9 +1230,9 @@ export function DocPage({ id }: { id: string }) {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <div className="relative flex min-w-0 flex-1">
-          <main className="page" data-view={view} onMouseMove={trackHandle} onScroll={() => setHandle(null)}>
+      <div ref={layoutRef} className="flex min-h-0 flex-1">
+        <div ref={editorAreaRef} className="relative flex min-w-0 flex-1">
+          <main ref={pageRef} className="page" data-view={view} onMouseMove={trackHandle} onScroll={() => setHandle(null)}>
             {!ready && <p className="muted pad">正在打开文档…</p>}
             <div ref={mount} hidden={view === 'side'} />
             {view !== 'side' && <FootnoteList notes={footnotes} onJump={(id) => scrollToFootnote(mount.current, id)} />}
@@ -1250,7 +1279,7 @@ export function DocPage({ id }: { id: string }) {
           })()}
         </div>
         {!narrow && panelOpen && (
-          <aside className="relative flex shrink-0 flex-col border-l border-border bg-background" style={{ width: panelW }} aria-label="面板">
+          <aside className="relative flex shrink-0 flex-col border-l border-border bg-background" style={{ width: displayedPanelW }} aria-label="面板">
             <div className="panel-resizer" role="separator" aria-orientation="vertical" aria-label="拖动调整面板宽度" onPointerDown={startResize} onDoubleClick={() => { setPanelW(340); try { localStorage.removeItem('aiw.panelW') } catch { /* ignore */ } }} />
             {panel}
           </aside>

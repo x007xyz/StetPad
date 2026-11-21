@@ -341,7 +341,7 @@ export class Store {
   }
   /** Thin out automatic versions: keep named ones, and one automatic version per hour once older than a day. */
   async pruneVersions(documentId: string): Promise<number> {
-    const rows = await this.sql.all<{ id: string; label: string | null; created_at: number }>('select id, label, created_at from versions where document_id = ? order by created_at desc', [documentId])
+    const rows = await this.sql.all<{ id: string; label: string | null; created_at: number }>("select id, label, created_at from versions where document_id = ? and trigger = 'auto' order by created_at desc", [documentId])
     const cutoff = Date.now() - 24 * 3600_000
     const seen = new Set<number>()
     let removed = 0

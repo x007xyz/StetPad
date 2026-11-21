@@ -49,6 +49,29 @@ test('shows an empty folder then its moved document in folder view', async ({ pa
   await expect(editor(page)).toContainText('Folder view body')
 })
 
+test('persists a cleared document title in folder view', async ({ page, request }) => {
+  const headers = { Authorization: 'Bearer dev' }
+  const folder = await request.post('/api/folders', { headers, data: { name: 'Title reset folder' } })
+  await expect(folder).toBeOK()
+  const { id: folderId } = await folder.json()
+  const doc = await request.post('/api/docs', { headers, data: { title: 'Title to clear', folderId } })
+  await expect(doc).toBeOK()
+  await page.goto(`/#/f/${folderId}`)
+
+  const title = page.getByRole('textbox', { name: /^文档标题：/ })
+  const outline = page.getByRole('navigation', { name: '文件夹大纲' })
+  await expect(title).toHaveValue('Title to clear')
+  await title.fill('')
+  await title.press('Enter')
+  await expect.soft(outline.getByRole('button')).toHaveText('未命名文档')
+  await page.reload()
+  await expect(title).toHaveValue('未命名文档')
+
+  await title.fill('   ')
+  await title.press('Enter')
+  await expect(title).toHaveValue('未命名文档')
+})
+
 test('searches titles, opens a result, and clears results', async ({ page }) => {
   await createDoc(page, 'Searchable nebula')
   await page.getByRole('button', { name: '搜索文档', exact: false }).click()

@@ -299,8 +299,12 @@ function DocSection({ doc, first, author, trackingRef, force, onState, onRenamed
     }
   }, [ready, visible, ydoc, author, trackingRef])
 
-  const rename = async (title: string): Promise<void> => {
-    if (!title.trim() || title.trim() === doc.title) return
+  const rename = async (input: HTMLInputElement): Promise<void> => {
+    const title = input.value.trim() || '未命名文档'
+    if (title === doc.title) {
+      input.value = title
+      return
+    }
     await api(`/docs/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) })
     onRenamed()
   }
@@ -310,7 +314,7 @@ function DocSection({ doc, first, author, trackingRef, force, onState, onRenamed
       <hr className="mb-4 mt-8 border-border" />
       <div className="flex items-center gap-2">
         <input id={`doc-title-${id}`} className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-2xl font-bold tracking-tight outline-none hover:bg-accent focus:border-ring focus:bg-background" aria-label={`文档标题：${doc.title}`}
-          defaultValue={doc.title} key={doc.title} onBlur={(e) => rename(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
+          defaultValue={doc.title} key={doc.title} onBlur={(e) => rename(e.currentTarget)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
         <Tip text="在单独页面中打开"><Button variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground" aria-label={`单独打开 ${doc.title}`} onClick={() => go({ page: 'doc', id })}><ExternalLink /></Button></Tip>
       </div>
       {!visible && <p className="muted py-6">滚动到这里时加载内容…</p>}

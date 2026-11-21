@@ -68,15 +68,21 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
   const toggle = (id: string): void =>
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id].slice(-2)))
   const doCompare = async (): Promise<void> => {
-    if (picked.length === 2) {
-      const [x, y] = await Promise.all(picked.map(fetchOne))
-      const [older, newer] = x!.meta.created_at <= y!.meta.created_at ? [x!, y!] : [y!, x!]
-      setOpen(false)
-      setCompare({ left: name(older.meta), right: name(newer.meta), a: older.content.revised, b: newer.content.revised })
-    } else if (picked.length === 1) {
-      const v = await fetchOne(picked[0]!)
-      setOpen(false)
-      setCompare({ left: name(v.meta), right: t('当前文档'), a: v.content.revised, b: current() })
+    setError('')
+    try {
+      if (picked.length === 2) {
+        const [x, y] = await Promise.all(picked.map(fetchOne))
+        const [older, newer] = x!.meta.created_at <= y!.meta.created_at ? [x!, y!] : [y!, x!]
+        setOpen(false)
+        setCompare({ left: name(older.meta), right: name(newer.meta), a: older.content.revised, b: newer.content.revised })
+      } else if (picked.length === 1) {
+        const v = await fetchOne(picked[0]!)
+        setOpen(false)
+        setCompare({ left: name(v.meta), right: t('当前文档'), a: v.content.revised, b: current() })
+      }
+    } catch {
+      setError('对比失败')
+      setOpen(true)
     }
   }
   const restore = async (v: VersionMeta): Promise<void> => {

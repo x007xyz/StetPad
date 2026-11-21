@@ -2,6 +2,8 @@
  * How the UI reaches the local service. The desktop shell injects `window.aiw`,
  * which carries the token that proves who the caller is.
  */
+import { fmtDate, getLang } from './i18n'
+
 declare global {
   interface Window {
     aiw?: { token: string; platform: string }
@@ -156,7 +158,7 @@ export const TRIGGERS: Record<string, string> = {
 export const fmtTime = (t: number): string => {
   const d = new Date(t)
   const p = (n: number): string => String(n).padStart(2, '0')
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${p(d.getHours())}:${p(d.getMinutes())}`
+  return `${fmtDate(t)}${getLang() === 'en' ? ',' : ''} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 /** GET /search: one hit across every document the caller can open. */

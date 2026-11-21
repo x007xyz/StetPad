@@ -30,7 +30,15 @@ export function setLang(l: Lang): void {
   location.reload()
 }
 
+export function fmtDate(t: number): string {
+  const d = new Date(t)
+  return getLang() === 'zh'
+    ? `${d.getMonth() + 1}月${d.getDate()}日`
+    : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 const EXACT: Record<string, string> = {
+  '手动保存': 'Manual save', '自动保存': 'Auto save', '导入': 'Import', 'AI 操作前': 'Before AI', 'AI 操作后': 'After AI', '修订处理完': 'Changes reviewed', '恢复前': 'Before restore',
   // Folder page
   '空文件夹（把文档拖进来）': 'Empty folder (drag documents here)',
   '找不到这个文件夹，或者你没有权限打开它。': 'This folder could not be found, or you do not have permission to open it.',
@@ -127,7 +135,7 @@ const EXACT: Record<string, string> = {
   '给这个版本起个名字（可留空）': 'Name this version (optional)', '当前文档': 'Current document', '恢复失败': 'Restore failed', '版本名称': 'Version name',
   '保存当前版本': 'Save current version', '对比所选两个版本': 'Compare the two selected versions', '与当前文档对比': 'Compare with current document', '勾选版本以对比': 'Tick versions to compare',
   '还没有版本。AI 操作前后、导入后会自动保存，也可以手动保存。': 'No versions yet. They are saved automatically around AI runs and imports, and you can save one by hand.',
-  '命名': 'Rename', '恢复': 'Restore', '版本对比': 'Compare versions', '只看有变化的段落': 'Only changed paragraphs',
+  '命名': 'Rename', '恢复': 'Restore', '版本历史': 'Version history', '版本对比': 'Compare versions', '只看有变化的段落': 'Only changed paragraphs',
   '默认模型': 'Default model', '没有可用的模型': 'No models available', '（未验证）': ' (unverified)',
   '模型分工': 'Model roles', '识图模型': 'Vision model', '图片生成模型': 'Image generation model', '改图模型': 'Image editing model', '语音转写模型': 'Transcription model', '图表生成模型': 'Diagram generation model',
   '图片描述、AI 看图、扫描版 PDF 识别': 'Image descriptions, AI vision and scanned PDF recognition',
@@ -150,7 +158,7 @@ const EXACT: Record<string, string> = {
   '请填写名称和命令': 'Please enter a name and command', '添加 Agent': 'Add agent',
   'AI 用量': 'AI usage', '最近 30 天没有用量。': 'No usage in the last 30 days.',
   '日期': 'Date', '模型': 'Model', '次数': 'Runs', '输入': 'Input', '输出': 'Output', '已保存': 'Saved', '保存': 'Save',
-  '两边内容相同。': 'Both sides are identical.', '未命名文档': 'Untitled document', '我': 'Me',
+  '两边内容相同。': 'Both sides are identical.', '仅格式变化': 'Formatting only', '未命名文档': 'Untitled document', '我': 'Me',
   '输入内容，或输入 / 选择块类型': 'Type something, or type / to pick a block type', '上传失败': 'Upload failed', '操作失败': 'Action failed',
   '找不到这篇文档，或者你没有权限打开它。': 'This document does not exist, or you do not have access.', '返回文档列表': 'Back to documents', '← 文档': '← Documents',
   '文档标题': 'Document title', '已同步': 'Synced', '连接中…': 'Connecting…', '连接中': 'Connecting', '离线，修改已保存在本机': 'Offline, changes are saved locally',
@@ -253,7 +261,7 @@ function tr(raw: string): string {
 }
 
 const ATTRS = ['placeholder', 'aria-label', 'title', 'label']
-const SKIP = '.ProseMirror, .chat-body, .md'
+const SKIP = '.ProseMirror, .chat-body, .md, .doc-text, [data-i18n-skip]'
 
 function walk(root: Node): void {
   if (root.nodeType === Node.TEXT_NODE) {

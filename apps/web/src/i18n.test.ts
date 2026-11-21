@@ -1,8 +1,45 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it } from 'vitest'
-import { t } from './i18n'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { afterEach, expect, it, vi } from 'vitest'
+import { initI18n, t } from './i18n'
+import { DiffView } from './panels/DiffView'
 
 afterEach(() => localStorage.removeItem('aiw.lang'))
+
+it('translates diff labels but preserves document text, including newly added marked runs', async () => {
+  localStorage.setItem('aiw.lang', 'en')
+  const root = document.createElement('div')
+  root.id = 'root'
+  document.body.append(root)
+  const plain = { type: 'paragraph', text: '请点击保存按钮' }
+  const rows = [
+    { id: 'format', left: plain, right: { ...plain, delta: [{ insert: '请点击' }, { insert: '保存', attributes: { bold: true } }, { insert: '按钮' }] } },
+    { id: 'words', left: { type: 'paragraph', text: '保存' }, right: { type: 'paragraph', text: '取消' } },
+    { id: 'plain', right: { type: 'codeBlock', text: '保存' } },
+  ]
+  const render = () => { root.innerHTML = renderToStaticMarkup(createElement(DiffView, { rows, leftTitle: '原文', rightTitle: '修改稿' })) }
+  const dialogs = { alert: window.alert, confirm: window.confirm, prompt: window.prompt }
+  try {
+    Object.assign(window, { alert: vi.fn(), confirm: vi.fn(), prompt: vi.fn() })
+    render()
+    initI18n()
+    expect(root.querySelector('strong')!.textContent).toBe('保存')
+    expect(root.querySelector('.muted')!.textContent).toBe('Formatting only')
+    expect(root.querySelector('.diff-head')!.textContent).toContain('Original')
+    expect(root.querySelector('del')!.textContent).toBe('保存')
+    expect(root.querySelector('ins')!.textContent).toBe('取消')
+    expect(root.querySelector('.diff-cell.added .doc-text')!.textContent).toBe('保存')
+    expect(root.querySelector('.diff-cell.added .kind')!.textContent).toBe('Code')
+    render()
+    await vi.waitFor(() => expect(root.querySelector('.muted')!.textContent).toBe('Formatting only'))
+    expect(root.querySelector('strong')!.textContent).toBe('保存')
+  } finally {
+    Object.assign(window, dialogs)
+    root.remove()
+    document.querySelector('.floating-tools')?.remove()
+  }
+})
 
 it('translates folder page empty, normal and error states without changing Chinese', () => {
   const labels = [

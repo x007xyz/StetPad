@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import { Node, type NodeViewRenderer } from '@tiptap/core'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -54,10 +55,10 @@ export const fileNodeView: NodeViewRenderer = ({ node }) => {
   const preview = document.createElement('button')
   preview.type = 'button'
   preview.className = 'file-preview-toggle'
-  preview.textContent = '预览'
+  preview.textContent = t('预览')
   const download = document.createElement('a')
   download.className = 'file-download'
-  download.textContent = '下载'
+  download.textContent = t('下载')
   actions.append(preview, download)
   card.append(icon, info, actions)
   const frameBox = document.createElement('div')
@@ -74,19 +75,19 @@ export const fileNodeView: NodeViewRenderer = ({ node }) => {
   const showPage = (src: string): void => {
     const img = document.createElement('img')
     img.className = 'file-page'
-    img.alt = `第 ${page} 页`
+    img.alt = t(`第 ${page} 页`)
     img.src = `${src}/pages/${page}`
     const bar = document.createElement('div')
     bar.className = 'file-pager'
     const prev = document.createElement('button')
     prev.type = 'button'
-    prev.textContent = '上一页'
+    prev.textContent = t('上一页')
     prev.disabled = page <= 1
     const label = document.createElement('span')
     label.textContent = pages ? `${page} / ${pages}` : `${page}`
     const next = document.createElement('button')
     next.type = 'button'
-    next.textContent = '下一页'
+    next.textContent = t('下一页')
     next.disabled = pages > 0 && page >= pages
     prev.addEventListener('click', (e) => {
       e.preventDefault()
@@ -109,14 +110,14 @@ export const fileNodeView: NodeViewRenderer = ({ node }) => {
     const safe = FILE_SRC.test(String(src ?? ''))
     const isPdf = mime === 'application/pdf' && safe
     icon.innerHTML = iconMarkup(fileIcon(String(mime ?? '')))
-    nameEl.textContent = String(name || '附件')
+    nameEl.textContent = String(name || t('附件'))
     meta.textContent = [Number(size) > 0 ? humanSize(Number(size)) : '', String(mime ?? '')].filter(Boolean).join(' · ')
     if (safe) download.setAttribute('href', String(src))
     else download.removeAttribute('href')
     download.setAttribute('download', String(name || ''))
     preview.hidden = !isPdf
     if (!isPdf) open = false
-    preview.textContent = open ? '收起预览' : '预览'
+    preview.textContent = open ? t('收起预览') : t('预览')
     if (isPdf && open) {
       if (shownSrc !== src) {
         shownSrc = String(src)

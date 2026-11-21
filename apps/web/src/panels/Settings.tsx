@@ -302,7 +302,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
         {usage && usage.days.length === 0 && <p className="muted small">最近 30 天没有用量。</p>}
         {usage && usage.days.length > 0 && (
           <>
-            <p className="muted small">今天已用 {usage.today.toLocaleString()} token。{Object.keys(usage.totals).length > 0 && `最近 30 天估算花费：${Object.entries(usage.totals).map(([c, v]) => `${c}${v.toFixed(4)}`).join('、')}。`}</p>
+            <p className="muted small">{`今天已用 ${usage.today.toLocaleString()} token。`}{Object.keys(usage.totals).length > 0 && `最近 30 天估算花费：${Object.entries(usage.totals).map(([c, v]) => `${c}${v.toFixed(4)}`).join('、')}。`}</p>
             <table className="usage">
               <thead><tr><th>日期</th><th>模型</th><th>次数</th><th>输入</th><th>输出</th><th>估算花费</th></tr></thead>
               <tbody>

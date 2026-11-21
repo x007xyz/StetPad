@@ -5,6 +5,7 @@ import { Dialog, DialogContent } from '../components/ui/dialog'
 import { Select } from '../components/ui/select'
 import { cn } from '../lib/utils'
 import { useImageModelCatalog } from './useImageModelCatalog'
+import { t } from '../i18n'
 
 type ImageSize = '1024x1024' | '1536x1024' | '1024x1536'
 
@@ -178,8 +179,9 @@ export function AiImageDialog({ docId, open, initialPrompt, onClose, onInsert }:
                   <button
                     key={h.url}
                     type="button"
+                    translate="no"
                     title={h.prompt}
-                    aria-label={`选择图片：${h.prompt}`}
+                    aria-label={t(`选择图片：${h.prompt}`)}
                     aria-pressed={current?.url === h.url}
                     disabled={busy}
                     onClick={() => setCurrent(h)}

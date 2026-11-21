@@ -1,3 +1,4 @@
+import { getLang, t } from '../i18n'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { Button } from '../components/ui/button'
@@ -114,7 +115,7 @@ function BalanceView({ value }: { value: BalanceResult | 'loading' | undefined }
   if (value === 'loading') return <span className="muted small">查询中…</span>
   if (value.error) return <span className="error small">{value.error}</span>
   if (value.supported === false) return <span className="muted small">这个服务暂不支持查询余额。</span>
-  return <span className="small">{(value.items ?? []).map((i) => `${i.label}：${i.value}`).join('　')}</span>
+  return <span className="small">{(value.items ?? []).map((i) => t(`${i.label}：${i.value}`)).join(getLang() === 'en' ? ' · ' : '　')}</span>
 }
 
 /**
@@ -360,7 +361,7 @@ export function Providers({ onClose, onChanged }: { onClose: () => void; onChang
                 {g.items.map((r) => (
                   <button key={r.id} type="button" className="prov-item" data-active={r.id === selected} onClick={() => { setSelected(r.id); setAdding(false); setTab('overview'); setFilter('') }}>
                     <span className={`dot ${status(r)}`} aria-hidden />
-                    <span className="prov-name">{r.name}</span>
+                    <span className="prov-name" translate="no">{r.name}</span>
                     {r.id === providerOfDefault && <span title="默认提供方">★</span>}
                     <span className="muted small">{r.models.filter((m) => m.enabled).length}/{r.models.length}</span>
                   </button>
@@ -381,7 +382,7 @@ export function Providers({ onClose, onChanged }: { onClose: () => void; onChang
               <div>
                 <div className="row between">
                   <div>
-                    <h3 className="prov-title">{current.name}</h3>
+                    <h3 className="prov-title" translate="no">{current.name}</h3>
                     <span className="muted small">{current.builtin ? current.id : current.id.slice('custom-'.length)}</span>
                   </div>
                   <div className="row">
@@ -416,7 +417,7 @@ export function Providers({ onClose, onChanged }: { onClose: () => void; onChang
                     <div className="row wrap">
                       <select aria-label="测试用模型" value={testTarget} onChange={(e) => setTestModel(e.target.value)}>
                         {enabledModels.length === 0 && <option value="">没有启用的模型</option>}
-                        {enabledModels.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                        {enabledModels.map((m) => <option key={m.id} value={m.id} translate="no">{m.label}</option>)}
                       </select>
                       <Button size="sm" disabled={!testTarget || current.isNew || dirty || tests[current.id]?.running} onClick={() => void testConnection(current, testTarget)}>{tests[current.id]?.running ? '测试中…' : '测试'}</Button>
                       {tests[current.id]?.ok === true && <span className="small">{`连接正常，耗时 ${tests[current.id]!.ms} ms`}</span>}

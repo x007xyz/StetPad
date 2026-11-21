@@ -190,16 +190,16 @@ export function AiDiagramDialog({ docId, open, initial, context, onClose, onInse
             <div className="flex flex-col gap-2">
               {result.kind === 'drawio' ? (
                 result.renderError ? (
-                  <p className="text-sm text-destructive">生成失败：{result.renderError}</p>
+                  <p className="text-sm text-destructive">{`生成失败：${result.renderError}`}</p>
                 ) : (
                   <p className="text-sm text-muted-foreground">{result.note}</p>
                 )
               ) : result.svg ? (
-                <div className="diagram-preview" dangerouslySetInnerHTML={{ __html: result.svg }} />
+                <div className="diagram-preview" translate="no" dangerouslySetInnerHTML={{ __html: result.svg }} />
               ) : (
-                <p className="text-sm text-destructive">渲染失败：{result.renderError}</p>
+                <p className="text-sm text-destructive">{`渲染失败：${result.renderError}`}</p>
               )}
-              <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2 font-mono text-xs text-muted-foreground">{result.source}</pre>
+              <pre translate="no" className="max-h-32 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2 font-mono text-xs text-muted-foreground">{result.source}</pre>
             </div>
           )}
           <div className="flex justify-end gap-2 pt-1">

@@ -193,6 +193,7 @@ describe('server', () => {
     const result = await call('/api/import/preview', { method: 'POST', body: form })
     expect(result.status).toBe(200)
     expect(result.body.skippedPages).toEqual([2])
+    expect(result.body.skippedPageReason).toBe('no-ocr')
     expect(result.body.blocks[0].delta).toEqual([{ insert: 'Page 1 line 1.' }])
   })
 

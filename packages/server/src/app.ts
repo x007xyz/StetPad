@@ -16,7 +16,7 @@ import { AgentRuntime, cleanContext, contextNote, PRESETS } from './agent'
 import { AssetFiles, newAssetId, parseRange, TooLargeError, type AssetKind } from './assets'
 import { collectAssets, referencedAssetIds } from './gc'
 import { Collab, docPlainText, type VersionContent } from './collab'
-import { applyBlocks, blocksToDocx, blocksToHtml, blocksToMarkdown, docFromBlocks, fileToBlocks, pdfPageCount, renderPdfPage, type Block } from './content'
+import { applyBlocks, blocksToDocx, blocksToHtml, blocksToMarkdown, docFromBlocks, fileToBlocks, pdfPageCount, renderPdfPage, type Block, type SkippedPageReason } from './content'
 import { sqliteSql, Store, type DocRow, type FolderRow, type Sql, type User } from './db'
 import { ExternalAgents, parseAgentDefs, parseStoredAgents, type AgentDef } from './external'
 import { generateText } from 'ai'
@@ -1044,7 +1044,8 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
         : undefined
       let omittedPageCount = 0
       let skippedPages: number[] = []
-      const blocks = await fileToBlocks(file.name, new Uint8Array(await file.arrayBuffer()), { ocr, onOmittedPages: (count) => { omittedPageCount = count }, onSkippedPages: (pages) => { skippedPages = pages } })
+      let skippedPageReason: SkippedPageReason | undefined
+      const blocks = await fileToBlocks(file.name, new Uint8Array(await file.arrayBuffer()), { ocr, onOmittedPages: (count) => { omittedPageCount = count }, onSkippedPages: (pages, reason) => { skippedPages = pages; skippedPageReason = reason } })
       if (blocks.length === 0) return c.json({ error: '没有解析出任何内容' }, 422)
       const heading = blocks.find((b) => b.type === 'heading')
       const title = (heading?.delta.map((d) => d.insert).join('') || file.name.replace(/\.[^.]+$/, '')).slice(0, 80)
@@ -1052,7 +1053,7 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
         title, blocks: blocks.slice(0, MAX_IMPORT_BLOCKS),
         ...(blocks.length > MAX_IMPORT_BLOCKS ? { omittedBlockCount: blocks.length - MAX_IMPORT_BLOCKS } : {}),
         ...(omittedPageCount > 0 ? { omittedPageCount } : {}),
-        ...(skippedPages.length > 0 ? { skippedPages } : {}),
+        ...(skippedPages.length > 0 ? { skippedPages, skippedPageReason } : {}),
       })
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : '解析失败' }, 422)

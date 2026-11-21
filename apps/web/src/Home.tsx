@@ -7,7 +7,7 @@ import { Dialog, DialogContent } from './components/ui/dialog'
 import { Field, Input } from './components/ui/input'
 import { SidebarToggle, useWorkspace } from './Shell'
 
-interface Preview { title: string; blocks: RichBlock[]; omittedBlockCount?: number; omittedPageCount?: number; skippedPages?: number[] }
+interface Preview { title: string; blocks: RichBlock[]; omittedBlockCount?: number; omittedPageCount?: number; skippedPages?: number[]; skippedPageReason?: 'no-ocr' | 'ocr-limit' }
 
 /** The message for an import that left files out: their names, five at most. */
 const droppedNote = (dropped: { name: string | null; mime: string }[]): string => {
@@ -145,7 +145,9 @@ export function Home() {
               <p role="alert" className="warn">{`PDF 导入最多保留前 500 页。继续创建将省略最后 ${preview.omittedPageCount} 页。`}</p>
             )}
             {(preview.skippedPages?.length ?? 0) > 0 && (
-              <p role="alert" className="warn">{`第 ${preview.skippedPages!.join(', ')} 页没有可提取的文字，已跳过。配置支持图像的模型后可识别这些页面。`}</p>
+              <p role="alert" className="warn">{preview.skippedPageReason === 'ocr-limit'
+                ? `第 ${preview.skippedPages!.join(', ')} 页没有可提取的文字，已跳过。这些页面超过了 40 页识别上限，请拆分 PDF 后重试。`
+                : `第 ${preview.skippedPages!.join(', ')} 页没有可提取的文字，已跳过。配置支持图像的模型后可识别这些页面。`}</p>
             )}
             {omittedBlockCount > 0 && (
               <p role="alert" className="warn">{`导入最多保留前 ${preview.blocks.length} 个段落。继续创建将省略最后 ${omittedBlockCount} 个段落。`}</p>

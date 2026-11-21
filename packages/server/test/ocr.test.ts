@@ -77,12 +77,30 @@ describe('scanned PDF import', () => {
     const blocks = await fileToBlocks('mixed.pdf', textPdf(3, 1, [2]), { ocr: async () => '' })
     expect(blocks.map((b) => b.delta[0]?.insert)).toEqual(['Page 1 line 1.', 'Page 3 line 1.'])
   })
-  it('limits the number of pages requiring OCR before calling the model', async () => {
+  it('skips OCR over the limit in mixed PDFs without losing text', async () => {
+    const pages = Array.from({ length: 41 }, (_, i) => i + 2)
+    let skipped: number[] = []
+    let reason = ''
     let calls = 0
-    await expect(fileToBlocks('mixed.pdf', textPdf(42, 1, Array.from({ length: 41 }, (_, i) => i + 2)), {
+    const blocks = await fileToBlocks('mixed.pdf', textPdf(42, 1, pages), {
+      onSkippedPages: (pages, why) => { skipped = pages; reason = why },
       ocr: async () => { calls++; return '' },
-    })).rejects.toThrow('最多支持 40 页')
+    })
+    expect(blocks.map((b) => b.delta[0]?.insert)).toEqual(['Page 1 line 1.'])
+    expect(skipped).toEqual(pages)
+    expect(reason).toBe('ocr-limit')
     expect(calls).toBe(0)
+  })
+  it('rejects all-scanned PDFs over the OCR limit without any OCR calls', async () => {
+    let calls = 0
+    await expect(fileToBlocks('scan.pdf', textPdf(41, 0), { ocr: async () => { calls++; return '' } })).rejects.toThrow('最多支持 40 页')
+    expect(calls).toBe(0)
+  })
+  it.each([2, 40])('calls OCR exactly once for each of %i textless pages', async (count) => {
+    const pages = Array.from({ length: count }, (_, i) => i + 2)
+    const calls: number[] = []
+    await fileToBlocks('mixed.pdf', textPdf(count + 1, 1, pages), { ocr: async (_, page) => { calls.push(page); return '' } })
+    expect(calls).toEqual(pages)
   })
   it('recognises text through the ocr callback, once per page, with PNG input', async () => {
     const calls: Uint8Array[] = []

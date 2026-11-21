@@ -222,3 +222,11 @@ it.each([1, 3])('translates omitted PDF pages (%i)', (count) => {
   localStorage.setItem('aiw.lang', 'en')
   expect(t(warning)).toBe(`This PDF import can keep only the first 500 pages. Creating the document will omit the last ${count} ${count === 1 ? 'page' : 'pages'}.`)
 })
+
+it('translates the PDF recognition limit warning', () => {
+  const warning = '第 2, 4 页没有可提取的文字，已跳过。这些页面超过了 40 页识别上限，请拆分 PDF 后重试。'
+  localStorage.setItem('aiw.lang', 'zh')
+  expect(t(warning)).toBe(warning)
+  localStorage.setItem('aiw.lang', 'en')
+  expect(t(warning)).toBe('Pages 2, 4 have no extractable text and were skipped because they exceed the 40-page recognition limit. Split the PDF and try again.')
+})

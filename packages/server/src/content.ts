@@ -162,8 +162,9 @@ export async function pdfPageCount(data: Uint8Array): Promise<number> {
 }
 
 const MAX_PDF_PAGES = 500
+export type SkippedPageReason = 'no-ocr' | 'ocr-limit'
 
-async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count: number) => void, onSkippedPages?: (pages: number[]) => void): Promise<Block[]> {
+async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count: number) => void, onSkippedPages?: (pages: number[], reason: SkippedPageReason) => void): Promise<Block[]> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
   const pdf = await pdfjs.getDocument({ data, useSystemFonts: true }).promise
   if (pdf.numPages > MAX_PDF_PAGES) onOmittedPages?.(pdf.numPages - MAX_PDF_PAGES)
@@ -198,8 +199,9 @@ async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count:
   if (lines.length === 0 && !ocr) {
     throw new Error('这个 PDF 没有文字层（可能是扫描件），配置一个支持图像的模型后可识别')
   }
-  if (ocr && emptyPages.length > 40) throw new Error('扫描件识别最多支持 40 页')
-  if (!ocr && emptyPages.length) onSkippedPages?.(emptyPages)
+  if (ocr && emptyPages.length > 40 && lines.length === 0) throw new Error('扫描件识别最多支持 40 页')
+  const recognize = emptyPages.length <= 40 ? ocr : undefined
+  if (!recognize && emptyPages.length) onSkippedPages?.(emptyPages, ocr ? 'ocr-limit' : 'no-ocr')
   const sizes = lines.map((l) => Math.round(l.size * 2) / 2).sort((a, b) => a - b)
   const body = sizes[Math.floor(sizes.length / 2)]!
   const out: Block[] = []
@@ -212,7 +214,7 @@ async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count:
   for (const l of entries) {
     if (!('text' in l)) {
       flush()
-      if (ocr) out.push(...await ocrPdfPage(pdf, l.page, ocr))
+      if (recognize) out.push(...await ocrPdfPage(pdf, l.page, recognize))
       prev = null
       continue
     }
@@ -238,7 +240,7 @@ async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count:
   return out
 }
 
-export async function fileToBlocks(name: string, data: Uint8Array, opts: { ocr?: Ocr; onOmittedPages?: (count: number) => void; onSkippedPages?: (pages: number[]) => void } = {}): Promise<Block[]> {
+export async function fileToBlocks(name: string, data: Uint8Array, opts: { ocr?: Ocr; onOmittedPages?: (count: number) => void; onSkippedPages?: (pages: number[], reason: SkippedPageReason) => void } = {}): Promise<Block[]> {
   const ext = name.toLowerCase().split('.').pop() ?? ''
   if (data.byteLength > 30 * 1024 * 1024) throw new Error('文件超过 30MB')
   if (ext === 'docx') {

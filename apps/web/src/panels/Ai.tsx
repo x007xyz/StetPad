@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popove
 import { Tip } from '../components/ui/tooltip'
 import { RunChanges } from './Changes'
 import { Select } from '../components/ui/select'
-import { fmtDate } from '../i18n'
+import { fmtDate, t } from '../i18n'
 
 /** Something the user attached to a message: a paragraph, a comment, or selected text. */
 export interface ContextItem { id: string; kind: 'block' | 'comment' | 'text'; label: string; text: string; blockIds: string[] }
@@ -304,7 +304,7 @@ function ChatBar({ runs }: { runs: ReturnType<typeof useRuns> }) {
   const [editing, setEditing] = useState<string | null>(null)
   const [name, setName] = useState('')
   const cur = chats.find((c) => c.id === chatId)
-  const label = (c?: ChatMeta): string => c?.title || '新对话'
+  const label = (c?: ChatMeta): string => c?.title || t('新对话')
   const requestDelete = async (chat: ChatMeta): Promise<void> => {
     if (await confirmAction({
       title: `删除对话"${label(chat)}"？`,
@@ -322,7 +322,7 @@ function ChatBar({ runs }: { runs: ReturnType<typeof useRuns> }) {
     <div className="chat-bar">
       <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setEditing(null) }}>
         <PopoverTrigger asChild>
-          <button className="chat-current" aria-label="切换对话" title={label(cur)}>
+          <button className="chat-current" translate="no" aria-label={t('切换对话')} title={label(cur)}>
             <span className="chat-title">{label(cur)}</span>
             <ChevronDown className="size-3.5" />
           </button>
@@ -350,7 +350,7 @@ function ChatBar({ runs }: { runs: ReturnType<typeof useRuns> }) {
                 ) : (
                   <>
                     <button className="chat-pick" onClick={() => { selectChat(c.id); setOpen(false) }}>
-                      <span className="chat-title">{label(c)}</span>
+                      <span className="chat-title" translate="no">{label(c)}</span>
                       <span className="muted small">{ago(c.updated_at)}</span>
                     </button>
                     <button className="chat-act" aria-label="重命名" title="重命名" onClick={() => { setName(c.title); setEditing(c.id) }}><Pencil className="size-3.5" /></button>

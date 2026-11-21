@@ -34,7 +34,7 @@ it('shows snapshot errors and lets comparison be retried without losing selectio
     const compare = [...container.querySelectorAll('button')].find((b) => b.textContent === '与当前文档对比')!
     await act(async () => compare.click())
     await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Snapshot unavailable')
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('对比失败')
     expect(unhandled).not.toHaveBeenCalled()
     expect(container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked).toBe(true)
     expect(compare.disabled).toBe(false)

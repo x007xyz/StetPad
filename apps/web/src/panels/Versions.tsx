@@ -73,8 +73,8 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
         setOpen(false)
         setCompare({ left: name(v.meta), right: t('当前文档'), a: v.content.revised, b: current() })
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '对比失败')
+    } catch {
+      setError('对比失败')
       setOpen(true)
     }
   }

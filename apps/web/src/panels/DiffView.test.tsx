@@ -5,6 +5,27 @@ import { alignBlocks, DiffView, rowChanged } from './DiffView'
 
 const block: RichBlock = { blockId: 'one', type: 'paragraph', text: 'A whole line', attrs: {}, delta: [{ insert: 'A whole line' }] }
 
+it.each([[false, true], [true, false]])('shows each side’s task state: %s → %s', (before, after) => {
+  const task = { ...block, type: 'taskItem' }
+  const rows = alignBlocks([{ ...task, attrs: { checked: before } }], [{ ...task, attrs: { checked: after } }])
+  const html = renderToStaticMarkup(<DiffView rows={rows} leftTitle="Before" rightTitle="After" onlyChanged />)
+  expect(html.match(/<span class="kind">(.*?)<\/span>/g)).toEqual([
+    `<span class="kind">${before ? '☑' : '☐'}</span>`,
+    `<span class="kind">${after ? '☑' : '☐'}</span>`,
+  ])
+  expect(html).toContain('data-diff-changed="true"')
+})
+
+it.each([undefined, {}, { checked: false }, { checked: true }])('shows added and removed tasks with attributes %j', (attrs) => {
+  const task = { ...block, type: 'taskItem', text: '', delta: undefined, attrs }
+  for (const rows of [[{ id: 'added', right: task }], [{ id: 'removed', left: task }]]) {
+    const html = renderToStaticMarkup(<DiffView rows={rows} leftTitle="Before" rightTitle="After" />)
+    expect(html.match(/<span class="kind">(.*?)<\/span>/g)).toEqual([
+      `<span class="kind">${attrs?.checked ? '☑' : '☐'}</span>`,
+    ])
+  }
+})
+
 it.each([
   [{ bold: true }, '<strong>A whole line</strong>'],
   [{ italic: true }, '<em>A whole line</em>'],

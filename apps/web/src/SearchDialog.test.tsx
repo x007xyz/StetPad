@@ -31,6 +31,56 @@ function typeQuery(input: HTMLInputElement, value: string) {
   act(() => input.dispatchEvent(new Event('input', { bubbles: true })))
 }
 
+it.each(['Catalpa', ''])('does not select previous results while the query is %j', async (query) => {
+  const next = deferred<Response>()
+  vi.stubGlobal('fetch', vi.fn()
+    .mockResolvedValueOnce(Response.json({ results: [{ id: 'chestnut', title: 'Chestnut', updated_at: 0 }] }))
+    .mockReturnValueOnce(next.promise))
+  const onClose = vi.fn()
+  await act(async () => root.render(<SearchDialog onClose={onClose} />))
+  const input = document.querySelector<HTMLInputElement>('[role="combobox"]')!
+  typeQuery(input, 'Chestnut')
+  await act(() => vi.advanceTimersByTimeAsync(200))
+  expect(document.querySelector('[role="option"]')?.textContent).toContain('Chestnut')
+
+  typeQuery(input, query)
+  act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  expect(go).not.toHaveBeenCalled()
+  expect(onClose).not.toHaveBeenCalled()
+  expect(document.querySelector('[role="option"]')).toBeNull()
+  expect(input.getAttribute('aria-expanded')).toBe('false')
+  expect(input.hasAttribute('aria-activedescendant')).toBe(false)
+
+  if (!query) return
+  await act(() => vi.advanceTimersByTimeAsync(200))
+  act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  expect(go).not.toHaveBeenCalled()
+  await act(async () => next.resolve(Response.json({ results: [{ id: 'catalpa', title: 'Catalpa', updated_at: 0 }] })))
+  act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  expect(go).toHaveBeenCalledExactlyOnceWith({ page: 'doc', id: 'catalpa' })
+})
+
+it.each(['empty', 'error'])('does not restore previous results after an %s response', async (outcome) => {
+  const next = deferred<Response>()
+  vi.stubGlobal('fetch', vi.fn()
+    .mockResolvedValueOnce(Response.json({ results: [{ id: 'chestnut', title: 'Chestnut', updated_at: 0 }] }))
+    .mockReturnValueOnce(next.promise))
+  const onClose = vi.fn()
+  await act(async () => root.render(<SearchDialog onClose={onClose} />))
+  const input = document.querySelector<HTMLInputElement>('[role="combobox"]')!
+  typeQuery(input, 'Chestnut')
+  await act(() => vi.advanceTimersByTimeAsync(200))
+  typeQuery(input, 'Catalpa')
+  await act(() => vi.advanceTimersByTimeAsync(200))
+  await act(async () => next.resolve(outcome === 'empty'
+    ? Response.json({ results: [] })
+    : Response.json({ error: 'unavailable' }, { status: 500 })))
+  expect(document.querySelector('[role="option"]')).toBeNull()
+  act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  expect(go).not.toHaveBeenCalled()
+  expect(onClose).not.toHaveBeenCalled()
+})
+
 it('keeps cleared search results empty when an earlier request finishes', async () => {
   const { promise, resolve } = deferred<Response>()
   const fetchSearch = vi.fn(() => promise)

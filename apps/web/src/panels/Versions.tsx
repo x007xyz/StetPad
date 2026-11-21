@@ -49,8 +49,14 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
   const save = async (): Promise<void> => {
     const label = await promptText({ title: '给这个版本起个名字（可留空）', confirmLabel: '保存', maxLength: MAX_VERSION_LABEL_LENGTH })
     if (label === null) return
-    await post(`/docs/${docId}/versions`, { label })
-    await load()
+    setError('')
+    try {
+      await post(`/docs/${docId}/versions`, { label })
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '保存失败')
+      setOpen(true)
+    }
   }
   const toggle = (id: string): void =>
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id].slice(-2)))
@@ -84,8 +90,14 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
   const rename = async (v: VersionMeta): Promise<void> => {
     const label = await promptText({ title: '版本名称', defaultValue: v.label ?? '', confirmLabel: '保存', maxLength: MAX_VERSION_LABEL_LENGTH })
     if (label === null) return
-    await api(`/versions/${v.id}`, { method: 'PATCH', body: JSON.stringify({ label }) })
-    await load()
+    setError('')
+    try {
+      await api(`/versions/${v.id}`, { method: 'PATCH', body: JSON.stringify({ label }) })
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '保存失败')
+      setOpen(true)
+    }
   }
 
   return (

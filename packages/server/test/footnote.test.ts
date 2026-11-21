@@ -141,6 +141,12 @@ describe('markdown import of footnotes', () => {
     const notes = blocks.flatMap((b) => b.delta.map((d) => (d.attributes?.footnote as { note: string } | undefined)?.note)).filter(Boolean)
     expect(notes).toEqual(['Real one.', 'Real two.'])
   })
+
+  it('ends a list fence whose closer is indented with a tab', async () => {
+    const src = '- item\n\n  ```\n  [^1]: in code\n  \t```\n\nB claim[^1].\n\n[^1]: Real.\n'
+    const blocks = await fileToBlocks('notes.md', new TextEncoder().encode(src))
+    expect(blocks.at(-1)!.delta).toEqual([{ insert: 'B ' }, { insert: 'claim', attributes: { footnote: { id: expect.any(String), note: 'Real.' } } }, { insert: '.' }])
+  })
 })
 
 describe('DocTools footnotes', () => {

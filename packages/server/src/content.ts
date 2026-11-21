@@ -44,7 +44,7 @@ export function htmlToBlocks(html: string, baseUrl?: string): Block[] {
 
 /** For each line, whether it belongs to a fenced code block (fence lines included). */
 function fencedCodeLines(lines: string[]): boolean[] {
-  const width = (indent: string): number => indent.replace(/\t/g, '    ').length
+  const width = (indent: string): number => [...indent].reduce((w, c) => (c === '\t' ? w + 4 - (w % 4) : w + 1), 0)
   let fence: { mark: string; indent: number } | null = null
   return lines.map((line) => {
     if (fence !== null) {

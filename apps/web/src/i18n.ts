@@ -228,6 +228,10 @@ const PATTERNS: [RegExp, (...m: string[]) => string][] = [
   [/^删除对话"(.*)"？$/s, (_, title) => `Delete chat "${title === '新对话' ? EXACT[title] : title}"?`],
   [/^文档包含 (\d+) 个视频（共 ([\d.]+) MB）。图片始终会导出。$/, (_, n, mb) => `This document contains ${n} ${n === '1' ? 'video' : 'videos'} (${mb} MB total). Images are included either way.`],
   [/^共 (\d+) 个段落。$/, (_, n) => `${n} blocks.`],
+  [/^第 ([\d, ]+) 页没有可提取的文字，已跳过。这些页面超过了 40 页识别上限，请拆分 PDF 后重试。$/, (_, pages) => `Pages ${pages} have no extractable text and were skipped because they exceed the 40-page recognition limit. Split the PDF and try again.`],
+  [/^第 ([\d, ]+) 页没有可提取的文字，已跳过。配置支持图像的模型后可识别这些页面。$/, (_, pages) => pages.includes(',')
+    ? `Pages ${pages} have no extractable text and were skipped. Configure a vision model to recognize these pages.`
+    : `Page ${pages} has no extractable text and was skipped. Configure a vision model to recognize this page.`],
   [/^导入最多保留前 (\d+) 个段落。继续创建将省略最后 (\d+) 个段落。$/, (_, limit, omitted) => `This import can keep only the first ${limit} blocks. Creating the document will omit the last ${omitted} ${omitted === '1' ? 'block' : 'blocks'}.`],
   [/^PDF 导入最多保留前 (\d+) 页。继续创建将省略最后 (\d+) 页。$/, (_, limit, omitted) => `This PDF import can keep only the first ${limit} pages. Creating the document will omit the last ${omitted} ${omitted === '1' ? 'page' : 'pages'}.`],
   [/^导入内容超过 (\d+) 个段落，请拆分后重试。$/, (_, limit) => `The import exceeds ${limit} blocks. Split the file and try again.`],

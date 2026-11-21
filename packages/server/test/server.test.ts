@@ -187,6 +187,16 @@ describe('server', () => {
     expect(preview.body.blocks).toHaveLength(2000)
   })
 
+  it('previews text and reports skipped pages when no vision model is configured', async () => {
+    const form = new FormData()
+    form.append('file', new File([Buffer.from(textPdf(2, 1, [2]))], 'mixed.pdf'))
+    const result = await call('/api/import/preview', { method: 'POST', body: form })
+    expect(result.status).toBe(200)
+    expect(result.body.skippedPages).toEqual([2])
+    expect(result.body.skippedPageReason).toBe('no-ocr')
+    expect(result.body.blocks[0].delta).toEqual([{ insert: 'Page 1 line 1.' }])
+  })
+
   it('rejects empty or invalid PDFs instead of returning a truncation preview', async () => {
     for (const data of [textPdf(501, 0), new TextEncoder().encode('not a PDF')]) {
       const form = new FormData()

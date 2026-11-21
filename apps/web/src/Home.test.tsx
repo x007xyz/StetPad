@@ -137,6 +137,31 @@ it.each([undefined, 1, 3])('shows a PDF page warning only when pages were omitte
   }
 })
 
+it.each([
+  ...[undefined, [], [2], [2, 4]].map((skippedPages) => ({ skippedPages, skippedPageReason: 'no-ocr' })),
+  { skippedPages: [2, 4], skippedPageReason: 'ocr-limit' },
+])('warns about skipped PDF pages only when present (%j)', async ({ skippedPages, skippedPageReason }) => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ title: 'PDF', blocks: [], skippedPages, skippedPageReason })))
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<Home />))
+    const input = container.querySelector('input[type="file"]')!
+    Object.defineProperty(input, 'files', { value: [new File(['pdf'], 'mixed.pdf')] })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+    const warning = document.querySelector('[role="alert"]')
+    if (skippedPageReason === 'ocr-limit') expect(warning?.textContent).toBe('第 2, 4 页没有可提取的文字，已跳过。这些页面超过了 40 页识别上限，请拆分 PDF 后重试。')
+    else if (skippedPages?.length) expect(warning?.textContent).toBe(`第 ${skippedPages.join(', ')} 页没有可提取的文字，已跳过。配置支持图像的模型后可识别这些页面。`)
+    else expect(warning).toBeNull()
+  } finally {
+    act(() => root.unmount())
+    document.body.replaceChildren()
+    vi.unstubAllGlobals()
+  }
+})
+
 it.each(['preview', 'empty', 'error'])('keeps the latest import preview after a stale %s response', async (stale) => {
   const a = deferred<Response>()
   const b = deferred<Response>()

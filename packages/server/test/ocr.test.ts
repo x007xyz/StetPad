@@ -1,6 +1,7 @@
 import { createCanvas } from '@napi-rs/canvas'
 import { describe, expect, it } from 'vitest'
 import { fileToBlocks } from '../src/content'
+import { textPdf } from './pdf-fixture'
 
 /** A one-page PDF whose only content is an image: no text layer. */
 function imagePdf(): Uint8Array {
@@ -37,6 +38,70 @@ function imagePdf(): Uint8Array {
 }
 
 describe('scanned PDF import', () => {
+  it('OCRs only image-only pages and preserves their position among text pages', async () => {
+    const pages: number[] = []
+    const blocks = await fileToBlocks('mixed.pdf', textPdf(3, 1, [2]), {
+      ocr: async (png, page) => {
+        expect(Array.from(png.slice(1, 4))).toEqual([0x50, 0x4e, 0x47])
+        pages.push(page)
+        return 'Scanned page two.'
+      },
+    })
+    expect(pages).toEqual([2])
+    expect(blocks.map((b) => b.delta.map((d) => d.insert).join(''))).toEqual(['Page 1 line 1.', 'Scanned page two.', 'Page 3 line 1.'])
+  })
+  it('reports skipped pages in a mixed PDF without OCR and keeps the text', async () => {
+    let skipped: number[] = []
+    const blocks = await fileToBlocks('mixed.pdf', textPdf(4, 1, [2, 4]), { onSkippedPages: (pages) => { skipped = pages } })
+    expect(skipped).toEqual([2, 4])
+    expect(blocks.map((b) => b.delta[0]?.insert)).toEqual(['Page 1 line 1.', 'Page 3 line 1.'])
+  })
+  it('does not apply the OCR page limit when no OCR is configured', async () => {
+    const pages = Array.from({ length: 41 }, (_, i) => i + 2)
+    let skipped: number[] = []
+    const blocks = await fileToBlocks('mixed.pdf', textPdf(42, 1, pages), { onSkippedPages: (pages) => { skipped = pages } })
+    expect(skipped).toEqual(pages)
+    expect(blocks).toHaveLength(1)
+  })
+  it('does not report skipped pages when every page has text', async () => {
+    let skipped: number[] = []
+    await fileToBlocks('text.pdf', textPdf(2), { onSkippedPages: (pages) => { skipped = pages } })
+    expect(skipped).toEqual([])
+  })
+  it('propagates OCR failures in mixed PDFs', async () => {
+    await expect(fileToBlocks('mixed.pdf', textPdf(2, 1, [2]), {
+      ocr: async () => { throw new Error('OCR unavailable') },
+    })).rejects.toThrow('OCR unavailable')
+  })
+  it('accepts an empty OCR transcription without changing adjacent text', async () => {
+    const blocks = await fileToBlocks('mixed.pdf', textPdf(3, 1, [2]), { ocr: async () => '' })
+    expect(blocks.map((b) => b.delta[0]?.insert)).toEqual(['Page 1 line 1.', 'Page 3 line 1.'])
+  })
+  it('skips OCR over the limit in mixed PDFs without losing text', async () => {
+    const pages = Array.from({ length: 41 }, (_, i) => i + 2)
+    let skipped: number[] = []
+    let reason = ''
+    let calls = 0
+    const blocks = await fileToBlocks('mixed.pdf', textPdf(42, 1, pages), {
+      onSkippedPages: (pages, why) => { skipped = pages; reason = why },
+      ocr: async () => { calls++; return '' },
+    })
+    expect(blocks.map((b) => b.delta[0]?.insert)).toEqual(['Page 1 line 1.'])
+    expect(skipped).toEqual(pages)
+    expect(reason).toBe('ocr-limit')
+    expect(calls).toBe(0)
+  })
+  it('rejects all-scanned PDFs over the OCR limit without any OCR calls', async () => {
+    let calls = 0
+    await expect(fileToBlocks('scan.pdf', textPdf(41, 0), { ocr: async () => { calls++; return '' } })).rejects.toThrow('最多支持 40 页')
+    expect(calls).toBe(0)
+  })
+  it.each([2, 40])('calls OCR exactly once for each of %i textless pages', async (count) => {
+    const pages = Array.from({ length: count }, (_, i) => i + 2)
+    const calls: number[] = []
+    await fileToBlocks('mixed.pdf', textPdf(count + 1, 1, pages), { ocr: async (_, page) => { calls.push(page); return '' } })
+    expect(calls).toEqual(pages)
+  })
   it('recognises text through the ocr callback, once per page, with PNG input', async () => {
     const calls: Uint8Array[] = []
     const blocks = await fileToBlocks('scan.pdf', imagePdf(), {

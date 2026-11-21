@@ -216,10 +216,29 @@ it('keeps import overflow notices in Chinese or translates them in the English U
   expect(t(error)).toBe('The import exceeds 2000 blocks. Split the file and try again.')
 })
 
+it.each([
+  ['2', 'Page 2 has no extractable text and was skipped. Configure a vision model to recognize this page.'],
+  ['2, 4', 'Pages 2, 4 have no extractable text and were skipped. Configure a vision model to recognize these pages.'],
+])('translates skipped PDF page numbers (%s)', (pages, expected) => {
+  const warning = `第 ${pages} 页没有可提取的文字，已跳过。配置支持图像的模型后可识别这些页面。`
+  localStorage.setItem('aiw.lang', 'zh')
+  expect(t(warning)).toBe(warning)
+  localStorage.setItem('aiw.lang', 'en')
+  expect(t(warning)).toBe(expected)
+})
+
 it.each([1, 3])('translates omitted PDF pages (%i)', (count) => {
   const warning = `PDF 导入最多保留前 500 页。继续创建将省略最后 ${count} 页。`
   localStorage.setItem('aiw.lang', 'zh')
   expect(t(warning)).toBe(warning)
   localStorage.setItem('aiw.lang', 'en')
   expect(t(warning)).toBe(`This PDF import can keep only the first 500 pages. Creating the document will omit the last ${count} ${count === 1 ? 'page' : 'pages'}.`)
+})
+
+it('translates the PDF recognition limit warning', () => {
+  const warning = '第 2, 4 页没有可提取的文字，已跳过。这些页面超过了 40 页识别上限，请拆分 PDF 后重试。'
+  localStorage.setItem('aiw.lang', 'zh')
+  expect(t(warning)).toBe(warning)
+  localStorage.setItem('aiw.lang', 'en')
+  expect(t(warning)).toBe('Pages 2, 4 have no extractable text and were skipped because they exceed the 40-page recognition limit. Split the PDF and try again.')
 })

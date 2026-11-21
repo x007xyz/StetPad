@@ -12,21 +12,21 @@ function DecidedItem({ c }: { c: DecidedChange }) {
     <li className="decided" data-decision={c.decision}>
       <button className="decided-head" aria-expanded={open} onClick={() => setOpen(!open)}>
         <span className={'badge ' + (ok ? 'ok' : 'no')}>{ok ? '✓ 已接受' : '✗ 已拒绝'}</span>
-        <span className="muted small">{clip(brief, 30)}</span>
+        <span className="muted small" translate="no">{clip(brief, 30)}</span>
         <span className="muted small">{open ? '收起' : '查看修改'}</span>
       </button>
       {open && (
         <div className="decided-detail">
-          {c.deletedBlocks.map((b, i) => <div key={'d' + i}><span className="tag del">删除段落</span> <del>{b}</del></div>)}
-          {c.insertedBlocks.map((b, i) => <div key={'i' + i}><span className="tag ins">新增段落</span> <ins>{b}</ins></div>)}
+          {c.deletedBlocks.map((b, i) => <div key={'d' + i}><span className="tag del">删除段落</span> <del translate="no">{b}</del></div>)}
+          {c.insertedBlocks.map((b, i) => <div key={'i' + i}><span className="tag ins">新增段落</span> <ins translate="no">{b}</ins></div>)}
           {(c.deleted || c.inserted) && (
             <div>
-              {c.deleted && <del>{c.deleted}</del>}
+              {c.deleted && <del translate="no">{c.deleted}</del>}
               {c.deleted && c.inserted && ' → '}
-              {c.inserted && <ins>{c.inserted}</ins>}
+              {c.inserted && <ins translate="no">{c.inserted}</ins>}
             </div>
           )}
-          {c.reason && <div className="reason">{c.reason}</div>}
+          {c.reason && <div className="reason" translate="no">{c.reason}</div>}
         </div>
       )}
     </li>
@@ -48,7 +48,7 @@ export function RunChanges({ changes, decided = [], blockText, onDecide, onFocus
     <div className="run-changes">
       {decided.length > 0 && <ul>{decided.map((c) => <DecidedItem key={c.id} c={c} />)}</ul>}
       {changes.length > 0 && <div className="row between">
-        <strong className="small">{changes.length} 处待确认</strong>
+        <strong className="small">{`${changes.length} 处待确认`}</strong>
         {canDecide && (
           <span className="row">
             <button onClick={() => onDecide(all, 'accept')}>全部接受</button>
@@ -60,16 +60,16 @@ export function RunChanges({ changes, decided = [], blockText, onDecide, onFocus
         {changes.map((c) => (
           <li key={c.id}>
             <button className="change-body" onClick={() => onFocus(c.id)}>
-              {c.deletedBlocks.map((b) => <div key={b}><span className="tag del">删除段落</span> <del>{clip(blockText(b))}</del></div>)}
-              {c.insertedBlocks.map((b) => <div key={b}><span className="tag ins">新增段落</span> <ins>{clip(blockText(b))}</ins></div>)}
+              {c.deletedBlocks.map((b) => <div key={b}><span className="tag del">删除段落</span> <del translate="no">{clip(blockText(b))}</del></div>)}
+              {c.insertedBlocks.map((b) => <div key={b}><span className="tag ins">新增段落</span> <ins translate="no">{clip(blockText(b))}</ins></div>)}
               {(c.deleted || c.inserted) && (
                 <div>
-                  {c.deleted && <del>{clip(c.deleted)}</del>}
+                  {c.deleted && <del translate="no">{clip(c.deleted)}</del>}
                   {c.deleted && c.inserted && ' → '}
-                  {c.inserted && <ins>{clip(c.inserted)}</ins>}
+                  {c.inserted && <ins translate="no">{clip(c.inserted)}</ins>}
                 </div>
               )}
-              {c.reason && <div className="reason">{c.reason}</div>}
+              {c.reason && <div className="reason" translate="no">{c.reason}</div>}
             </button>
             {canDecide && (
               <div className="row">
@@ -125,16 +125,16 @@ export function ChangesPanel({ changes, blockText, onDecide, onFocus, canDecide 
         {changes.map((c) => (
           <li key={c.id}>
             <button className="change-body" onClick={() => onFocus(c.id)}>
-              {c.deletedBlocks.map((b) => <div key={b}><span className="tag del">删除段落</span> <del>{clip(blockText(b))}</del></div>)}
-              {c.insertedBlocks.map((b) => <div key={b}><span className="tag ins">新增段落</span> <ins>{clip(blockText(b))}</ins></div>)}
+              {c.deletedBlocks.map((b) => <div key={b}><span className="tag del">删除段落</span> <del translate="no">{clip(blockText(b))}</del></div>)}
+              {c.insertedBlocks.map((b) => <div key={b}><span className="tag ins">新增段落</span> <ins translate="no">{clip(blockText(b))}</ins></div>)}
               {(c.deleted || c.inserted) && (
                 <div>
-                  {c.deleted && <del>{clip(c.deleted)}</del>}
+                  {c.deleted && <del translate="no">{clip(c.deleted)}</del>}
                   {c.deleted && c.inserted && ' → '}
-                  {c.inserted && <ins>{clip(c.inserted)}</ins>}
+                  {c.inserted && <ins translate="no">{clip(c.inserted)}</ins>}
                 </div>
               )}
-              {c.reason && <div className="reason">{c.reason}</div>}
+              {c.reason && <div className="reason" translate="no">{c.reason}</div>}
               <div className="muted small">{c.author}</div>
             </button>
             {canDecide && (

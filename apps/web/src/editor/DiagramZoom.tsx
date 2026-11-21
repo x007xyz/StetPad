@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 /**
  * Full-screen view of one diagram: a Mermaid SVG or a KaTeX formula.
  * Esc, the backdrop or the close button closes it. The mouse wheel zooms
@@ -37,7 +38,7 @@ export function openDiagramZoom(source: Element): void {
   overlay.className = 'dz-overlay'
   overlay.setAttribute('role', 'dialog')
   overlay.setAttribute('aria-modal', 'true')
-  overlay.setAttribute('aria-label', '放大查看')
+  overlay.setAttribute('aria-label', t('放大查看'))
 
   const bar = document.createElement('div')
   bar.className = 'dz-bar'
@@ -50,11 +51,11 @@ export function openDiagramZoom(source: Element): void {
   }
   const hint = document.createElement('span')
   hint.className = 'dz-hint'
-  hint.textContent = '滚轮缩放 · 拖动平移 · Esc 关闭'
-  const fitBtn = button('适应窗口')
+  hint.textContent = t('滚轮缩放 · 拖动平移 · Esc 关闭')
+  const fitBtn = button(t('适应窗口'))
   const oneBtn = button('100%')
   const closeBtn = button('×')
-  closeBtn.setAttribute('aria-label', '关闭')
+  closeBtn.setAttribute('aria-label', t('关闭'))
   bar.append(hint, fitBtn, oneBtn, closeBtn)
 
   const stage = document.createElement('div')

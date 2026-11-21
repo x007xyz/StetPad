@@ -1,3 +1,4 @@
+import { getLang, t } from '../i18n'
 import type { Editor, NodeViewRenderer } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { api, getToken } from '../api'
@@ -34,7 +35,7 @@ export function drawioBaseUrl(): Promise<string> {
 }
 
 export function drawioEditorUrl(base: string): string {
-  return `${base}/?embed=1&proto=json&spin=1&ui=min&lang=zh&saveAndExit=1&noExitBtn=0`
+  return `${base}/?embed=1&proto=json&spin=1&ui=min&lang=${getLang()}&saveAndExit=1&noExitBtn=0`
 }
 
 /** The protocol's messages are JSON strings. Anything else is ignored. */
@@ -195,7 +196,7 @@ export function drawioNodeView(docId: string): NodeViewRenderer {
         },
         () => {
           if (String(current.attrs.xml ?? '') !== source) return
-          note = '预览生成失败，请编辑后保存'
+          note = t('预览生成失败，请编辑后保存')
           paint()
         },
       )
@@ -211,20 +212,20 @@ export function drawioNodeView(docId: string): NodeViewRenderer {
       if (DRAWIO_PREVIEW.test(url)) {
         const img = document.createElement('img')
         img.className = 'drawio-img'
-        img.alt = 'draw.io 图'
+        img.alt = t('draw.io 图')
         img.draggable = false
         img.src = url
         frame.appendChild(img)
       } else if (source) {
         const status = document.createElement('div')
         status.className = 'drawio-status'
-        status.textContent = note || '正在生成预览…'
+        status.textContent = note || t('正在生成预览…')
         frame.appendChild(status)
         renderPreview()
       } else {
         const empty = document.createElement('div')
         empty.className = 'drawio-empty'
-        empty.textContent = editor.isEditable ? '空白 draw.io 图 · 双击编辑' : '空白 draw.io 图'
+        empty.textContent = editor.isEditable ? t('空白 draw.io 图 · 双击编辑') : t('空白 draw.io 图')
         frame.appendChild(empty)
       }
       // Leave the caption alone while the user is typing in it.
@@ -238,7 +239,7 @@ export function drawioNodeView(docId: string): NodeViewRenderer {
       edit.type = 'button'
       edit.className = 'drawio-edit'
       edit.contentEditable = 'false'
-      edit.textContent = '编辑'
+      edit.textContent = t('编辑')
       edit.addEventListener('mousedown', (e) => e.preventDefault())
       edit.addEventListener('click', (e) => {
         e.preventDefault()
@@ -246,7 +247,7 @@ export function drawioNodeView(docId: string): NodeViewRenderer {
       })
       dom.appendChild(edit)
       cap.contentEditable = 'plaintext-only'
-      cap.dataset.placeholder = '添加图注'
+      cap.dataset.placeholder = t('添加图注')
       cap.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.isComposing) {
           e.preventDefault()

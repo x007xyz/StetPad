@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import { InputRule, Mark, mergeAttributes } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey, TextSelection, type EditorState } from '@tiptap/pm/state'
@@ -74,7 +75,7 @@ function widget(run: MathRun, shown: string, view: EditorView, getPos: () => num
   const el = document.createElement('span')
   el.className = 'math-view'
   el.contentEditable = 'false'
-  el.title = '点击编辑公式'
+  el.title = t('点击编辑公式')
   el.innerHTML = katexHtml(shown, false)
   el.addEventListener('mousedown', (e) => {
     // Clicking a formula puts the cursor at the end of its source.

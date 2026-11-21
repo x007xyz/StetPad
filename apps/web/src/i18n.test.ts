@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, expect, it, vi } from 'vitest'
 import { initI18n, t } from './i18n'
 import { DiffView } from './panels/DiffView'
+import { drawioEditorUrl } from './editor/drawio'
 
 afterEach(() => {
   localStorage.removeItem('aiw.lang')
@@ -45,6 +46,28 @@ it('translates every export label in desktop and narrow menus while preserving C
     expect.soft(t(zh)).toBe(zh)
     expect.soft(t(`导出 ${zh}`)).toBe(`导出 ${zh}`)
   }
+})
+
+it.each([
+  ['点击编辑公式', 'Click to edit formula'],
+  ['脚注 2', 'Footnote 2'],
+  ['已选 1 / 共 1 个模型', '1 of 1 model selected'],
+  ['今天已用 1,200 token。', 'Used today: 1,200 tokens.'],
+  ['请求失败（415）', 'Request failed (415)'],
+  ['视频超过 100 MB，暂不支持转写', 'This video exceeds the 100 MB transcription limit'],
+  ['上传附件 设置 · 47%（1/2）', 'Uploading attachment 设置 · 47% (1/2)'],
+  ['渲染失败：设置', 'Rendering failed: 设置'],
+  ['去 阿里云百炼 · 通义千问 获取密钥 ↗', 'Get an API key from Alibaba Cloud Model Studio · Qwen ↗'],
+])('localizes %s only in English mode', (source, expected) => {
+  localStorage.setItem('aiw.lang', 'en')
+  expect(t(source)).toBe(expected)
+  localStorage.setItem('aiw.lang', 'zh')
+  expect(t(source)).toBe(source)
+})
+
+it.each(['en', 'zh'])('opens the draw.io iframe in %s', (lang) => {
+  localStorage.setItem('aiw.lang', lang)
+  expect(new URL(drawioEditorUrl('https://embed.diagrams.net')).searchParams.get('lang')).toBe(lang)
 })
 
 it('translates a version label error added after initialization', async () => {

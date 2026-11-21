@@ -11,6 +11,31 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+it('translates every export label in desktop and narrow menus while preserving Chinese', () => {
+  const labels: [string, string][] = [
+    ['Markdown', 'Markdown'],
+    ['Markdown（按修改稿）', 'Markdown (revised)'],
+    ['Markdown（按原文）', 'Markdown (original)'],
+    ['HTML', 'HTML'],
+    ['HTML（按修改稿）', 'HTML (revised)'],
+    ['HTML（按原文）', 'HTML (original)'],
+    ['Word', 'Word'],
+    ['Word（按修改稿）', 'Word (revised)'],
+    ['Word（按原文）', 'Word (original)'],
+    ['PDF（打印）', 'PDF (print)'],
+    ['PDF（打印）（按修改稿）', 'PDF (print, revised)'],
+    ['文档包（含图片、视频和全部版本）', 'Package (images, videos and all versions)'],
+  ]
+  for (const [zh, en] of labels) {
+    localStorage.setItem('aiw.lang', 'en')
+    expect.soft(t(zh)).toBe(en)
+    expect.soft(t(`导出 ${zh}`)).toBe(`Export ${en}`)
+    localStorage.setItem('aiw.lang', 'zh')
+    expect.soft(t(zh)).toBe(zh)
+    expect.soft(t(`导出 ${zh}`)).toBe(`导出 ${zh}`)
+  }
+})
+
 it('translates a version label error added after initialization', async () => {
   localStorage.setItem('aiw.lang', 'en')
   for (const name of ['alert', 'confirm', 'prompt']) vi.stubGlobal(name, vi.fn())
@@ -94,6 +119,31 @@ it.each([
   expect(t(zh)).toBe(en)
   localStorage.setItem('aiw.lang', 'zh')
   expect(t(zh)).toBe(zh)
+})
+
+it.each([
+  ['公式', 'Formula'],
+  ['$$ 空格，LaTeX 实时预览', '$$ space, live LaTeX preview'],
+  ['Mermaid 图表', 'Mermaid diagram'],
+  ['```mermaid 空格，流程图等', '```mermaid + Space for flowcharts and more'],
+  ['AI 生成图表', 'Generate diagram with AI'],
+  ['用一句话描述，AI 画出来', 'Describe it in one sentence; AI draws it'],
+  ['draw.io 图', 'draw.io diagram'],
+  ['在 draw.io 里画图', 'Draw a diagram in draw.io'],
+  ['描述画面，AI 画出来', 'Describe an image for AI to draw'],
+  ['视频', 'Video'],
+  ['上传本地视频（最大 1GB）', 'Upload a local video (up to 1 GB)'],
+  ['嵌入视频', 'Embed video'],
+  ['B 站 / YouTube / Vimeo 链接', 'Bilibili / YouTube / Vimeo link'],
+  ['附件', 'Attachment'],
+  ['上传 PDF、Office、压缩包等文件', 'Upload PDFs, Office files, archives, and more'],
+  ['链接卡片', 'Link card'],
+  ['粘贴网址生成预览卡片', 'Paste a URL to create a preview card'],
+])('translates the slash menu string "%s" only in English mode', (zh, en) => {
+  localStorage.setItem('aiw.lang', 'zh')
+  expect(t(zh)).toBe(zh)
+  localStorage.setItem('aiw.lang', 'en')
+  expect(t(zh)).toBe(en)
 })
 
 it('translates folder page empty, normal and error states without changing Chinese', () => {

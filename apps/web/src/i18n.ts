@@ -230,7 +230,7 @@ const PATTERNS: [RegExp, (...m: string[]) => string][] = [
   [/^导入最多保留前 (\d+) 个段落。继续创建将省略最后 (\d+) 个段落。$/, (_, limit, omitted) => `This import can keep only the first ${limit} blocks. Creating the document will omit the last ${omitted} ${omitted === '1' ? 'block' : 'blocks'}.`],
   [/^PDF 导入最多保留前 (\d+) 页。继续创建将省略最后 (\d+) 页。$/, (_, limit, omitted) => `This PDF import can keep only the first ${limit} pages. Creating the document will omit the last ${omitted} ${omitted === '1' ? 'page' : 'pages'}.`],
   [/^导入内容超过 (\d+) 个段落，请拆分后重试。$/, (_, limit) => `The import exceeds ${limit} blocks. Split the file and try again.`],
-  [/^原文档的排版不会保留，内容已整理成下面的简单格式。$/, () => 'The original layout is not kept; the content was normalised into the simple format below.'],
+  [/^原文档的排版不会保留，内容已整理成下面的简单格式。(?:共 (\d+) 个段落。)?$/, (_, n) => `The original layout is not kept; the content was normalised into the simple format below.${n === undefined ? '' : ` ${n} blocks.`}`],
   [/^……其余 (\d+) 段未显示$/, (_, n) => `…${n} more blocks not shown`],
   [/^(\d+) 字$/, (_, n) => `${n} words`], [/^ ?字$/, () => ' chars'],
   [/^　?(\d+) 处未应用（文字已被改动）$/, (_, n) => `${n} not applied (text had changed)`], [/^　失败：(.*)$/, (_, e) => ` Failed: ${e}`],

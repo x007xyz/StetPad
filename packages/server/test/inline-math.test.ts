@@ -33,6 +33,11 @@ function unzipEntries(bytes: Uint8Array): Map<string, Buffer> {
 }
 
 describe('inline math export', () => {
+  it('round-trips code containing backtick fences and blank lines', async () => {
+    const blocks: Block[] = [{ type: 'codeBlock', attrs: { language: 'ts' }, delta: [{ insert: 'first\n\n\n```\n\nlast' }] }]
+    expect(await fileToBlocks('code.md', enc(blocksToMarkdown(blocks)))).toEqual(blocks)
+  })
+
   it('writes the source as $...$ in Markdown', () => {
     const md = blocksToMarkdown([para([{ insert: '面积 ' }, math('x^2')])])
     expect(md).toContain('面积 $x^2$')

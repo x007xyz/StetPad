@@ -140,7 +140,7 @@ export function Home() {
       <Dialog open={!!preview} onOpenChange={(o) => !o && setPreview(null)}>
         {preview && (
           <DialogContent title="导入预览" className="max-w-3xl">
-            <p className="muted">原文档的排版不会保留，内容已整理成下面的简单格式。共 {preview.blocks.length + omittedBlockCount} 个段落。</p>
+            <p className="muted">{`原文档的排版不会保留，内容已整理成下面的简单格式。共 ${preview.blocks.length + omittedBlockCount} 个段落。`}</p>
             {(preview.omittedPageCount ?? 0) > 0 && (
               <p role="alert" className="warn">{`PDF 导入最多保留前 500 页。继续创建将省略最后 ${preview.omittedPageCount} 页。`}</p>
             )}
@@ -157,7 +157,7 @@ export function Home() {
                   {b.type === 'table' ? '（表格）' : b.type === 'image' ? '（图片）' : b.type === 'divider' ? '———' : b.delta.map((d) => d.insert).join('')}
                 </div>
               ))}
-              {preview.blocks.length > 200 && <p className="muted">……其余 {preview.blocks.length - 200} 段未显示</p>}
+              {preview.blocks.length > 200 && <p className="muted">{`……其余 ${preview.blocks.length - 200} 段未显示`}</p>}
             </div>
             <div className="row end">
               <Button onClick={() => setPreview(null)}>取消</Button>

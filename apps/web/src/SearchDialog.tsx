@@ -57,6 +57,8 @@ export function SearchDialog({ onClose }: { onClose: () => void }) {
     return () => clearTimeout(t)
   }, [query])
 
+  const showingFor = query.trim() !== '' && searched === query.trim()
+  const currentResults = showingFor ? results : []
   const open = (r: SearchResult): void => {
     onClose()
     go({ page: 'doc', id: r.id })
@@ -64,17 +66,16 @@ export function SearchDialog({ onClose }: { onClose: () => void }) {
   const onKey = (e: KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
-      if (!results.length) return
+      if (!currentResults.length) return
       const step = e.key === 'ArrowDown' ? 1 : -1
-      setActive((i) => (i + step + results.length) % results.length)
+      setActive((i) => (i + step + currentResults.length) % currentResults.length)
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      const r = results[active]
+      const r = currentResults[active]
       if (r) open(r)
     }
   }
 
-  const showingFor = query.trim() !== '' && searched === query.trim()
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent title="搜索文档" hideTitle className="max-w-xl max-md:top-[12vh] max-md:translate-y-0">
@@ -83,9 +84,9 @@ export function SearchDialog({ onClose }: { onClose: () => void }) {
           <input
             autoFocus
             role="combobox"
-            aria-expanded={results.length > 0}
+            aria-expanded={currentResults.length > 0}
             aria-controls="search-results"
-            aria-activedescendant={results[active] ? `search-r-${results[active].id}` : undefined}
+            aria-activedescendant={currentResults[active] ? `search-r-${currentResults[active].id}` : undefined}
             aria-label="搜索文档"
             placeholder="搜索所有文档的标题和正文…"
             className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-muted-foreground"
@@ -100,9 +101,9 @@ export function SearchDialog({ onClose }: { onClose: () => void }) {
         {query.trim() && error && showingFor && <p className="error px-1 py-6 text-center text-sm">搜索失败，请稍后再试。</p>}
         {query.trim() && !error && showingFor && results.length === 0 && <p className="px-1 py-6 text-center text-sm text-muted-foreground">没有找到相关文档。</p>}
 
-        {results.length > 0 && (
+        {currentResults.length > 0 && (
           <ul id="search-results" role="listbox" aria-label="搜索结果" className="m-0 mt-2 max-h-[60vh] list-none overflow-auto p-0">
-            {results.map((r, i) => (
+            {currentResults.map((r, i) => (
               <li
                 key={r.id}
                 id={`search-r-${r.id}`}

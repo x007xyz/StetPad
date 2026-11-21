@@ -5,7 +5,37 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { initI18n, t } from './i18n'
 import { DiffView } from './panels/DiffView'
 
-afterEach(() => localStorage.removeItem('aiw.lang'))
+afterEach(() => {
+  localStorage.removeItem('aiw.lang')
+  vi.unstubAllGlobals()
+  document.body.innerHTML = ''
+})
+
+it('preserves user titles in lists, including nested text, attributes and later updates', async () => {
+  localStorage.setItem('aiw.lang', 'en')
+  for (const name of ['alert', 'confirm', 'prompt']) vi.stubGlobal(name, vi.fn())
+  document.body.innerHTML = `<div id="root">
+    <main><span translate="no" title="设置">设置</span><button>设置</button></main>
+    <nav><span translate="no">设置</span><span translate="no"><mark>设置</mark></span></nav>
+    <div translate="no"></div>
+  </div>`
+  initI18n()
+  const root = document.getElementById('root')!
+  const title = root.querySelector('main span')!
+  expect(title.textContent).toBe('设置')
+  expect(title.getAttribute('title')).toBe('设置')
+  expect(root.querySelector('button')!.textContent).toBe('Settings')
+  expect(root.querySelector('nav')!.textContent).toBe('设置设置')
+  expect(root.lastElementChild!.textContent).toBe('')
+
+  title.firstChild!.nodeValue = '搜索文档'
+  title.setAttribute('title', '搜索文档')
+  root.querySelector('nav')!.insertAdjacentHTML('beforeend', '<span translate="no">设置</span><button>设置</button>')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(title.textContent).toBe('搜索文档')
+  expect(title.getAttribute('title')).toBe('搜索文档')
+  expect(root.querySelector('nav')!.textContent).toBe('设置设置设置Settings')
+})
 
 it('translates diff labels but preserves document text, including newly added marked runs', async () => {
   localStorage.setItem('aiw.lang', 'en')
@@ -110,6 +140,24 @@ it('translates folder page empty, normal and error states without changing Chine
     localStorage.setItem('aiw.lang', 'zh')
     expect(t(zh!)).toBe(zh)
     localStorage.setItem('aiw.lang', 'en')
+    expect(t(zh!)).toBe(en)
+  }
+})
+
+it.each(['设置', '搜索文档', '删除 草稿', ''])('preserves interpolated user titles (%s) while translating UI labels', (title) => {
+  localStorage.setItem('aiw.lang', 'en')
+  const labels = [
+    [`无法删除"${title}"。`, `Can't delete "${title}".`],
+    [`删除文件夹"${title}"？`, `Delete folder "${title}"?`],
+    [`永久删除"${title}"？`, `Permanently delete "${title}"?`],
+    [`把"${title}"移到回收站？`, `Move "${title}" to the trash?`],
+    [`"${title}" 已移到回收站`, `"${title}" moved to the trash`],
+    [`文档标题：${title}`, `Document title: ${title}`],
+    [`单独打开 ${title}`, `Open ${title} separately`],
+  ]
+  for (const [zh, en] of labels) {
+    // Empty trailing titles are trimmed by the translator before pattern matching.
+    if (!title && zh === '单独打开 ') continue
     expect(t(zh!)).toBe(en)
   }
 })

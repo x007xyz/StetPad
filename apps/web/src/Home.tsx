@@ -127,7 +127,7 @@ export function Home() {
                   <li key={d.id}>
                     <button className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-accent" onClick={() => go({ page: 'doc', id: d.id })}>
                       <FileText className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1 truncate">{d.title}</span>
+                      <span translate="no" className="min-w-0 flex-1 truncate">{d.title}</span>
                       <span className="shrink-0 text-xs text-muted-foreground">{fmtTime(d.updated_at)}</span>
                     </button>
                   </li>

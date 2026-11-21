@@ -58,6 +58,7 @@ function OutlineList({ items, active, onJump }: { items: OutlineItem[]; active: 
         {items.map((it) => (
           <li key={it.id}>
             <button
+              translate="no"
               type="button"
               aria-current={active === it.id ? 'location' : undefined}
               className={cn('line-clamp-2 w-full rounded-md px-2 py-1 text-left text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground', active === it.id && 'font-medium text-foreground')}

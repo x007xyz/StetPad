@@ -2,8 +2,8 @@
  * Interface language. The source strings are Chinese; English is applied by
  * translating rendered text and attributes against the tables below. Switching
  * language reloads the page, so nothing needs to be translated back.
- * Text that is not in the tables stays Chinese (documents and model output are
- * never touched: the editor and chat bodies are skipped).
+ * User content must be marked translate="no"; editor and chat bodies are also
+ * skipped. Text that is not in the tables stays unchanged.
  */
 export type Lang = 'zh' | 'en'
 
@@ -197,15 +197,15 @@ const PATTERNS: [RegExp, (...m: string[]) => string][] = [
   [/^自动（当前：(.*)）$/, (_, model) => `Automatic (current: ${model})`],
   [/^模型分工暂时不可用：(.*)$/s, (_, error) => `Model roles are temporarily unavailable: ${error}`],
   [/^没有可用的模型：在模型提供方里给模型勾选"(.*)"能力$/, (_, cap) => `No models available: enable the "${EXACT[cap] ?? cap}" capability for a model under Model providers`],
-  [/^无法删除"(.*)"。$/, (_, t) => `Can't delete "${EXACT[t] ?? t}".`],
-  [/^删除文件夹"(.*)"？$/, (_, t) => `Delete folder "${EXACT[t] ?? t}"?`],
-  [/^永久删除"(.*)"？$/, (_, t) => `Permanently delete "${EXACT[t] ?? t}"?`],
+  [/^无法删除"(.*)"。$/, (_, t) => `Can't delete "${t}".`],
+  [/^删除文件夹"(.*)"？$/, (_, t) => `Delete folder "${t}"?`],
+  [/^永久删除"(.*)"？$/, (_, t) => `Permanently delete "${t}"?`],
   [/^删除文件夹 (.*)$/, (_, t) => `Delete folder ${t}`],
   [/^移动 (.*)$/, (_, t) => `Move ${t}`],
   [/^重命名 (.*)$/, (_, t) => `Rename ${t}`],
   [/^文件夹 (.*)$/, (_, t) => `Folder ${t}`],
-  [/^把"(.*)"移到回收站？$/, (_, t) => `Move "${EXACT[t] ?? t}" to the trash?`],
-  [/^"(.*)" 已移到回收站$/, (_, t) => `"${EXACT[t] ?? t}" moved to the trash`],
+  [/^把"(.*)"移到回收站？$/, (_, t) => `Move "${t}" to the trash?`],
+  [/^"(.*)" 已移到回收站$/, (_, t) => `"${t}" moved to the trash`],
   [/^(\d+) 分钟前$/, (_, n) => `${n} min ago`],
   [/^(\d+) 小时前$/, (_, n) => `${n} h ago`],
   [/^(\d+) 天前$/, (_, n) => `${n} d ago`],
@@ -261,7 +261,7 @@ function tr(raw: string): string {
 }
 
 const ATTRS = ['placeholder', 'aria-label', 'title', 'label']
-const SKIP = '.ProseMirror, .chat-body, .md, .doc-text, [data-i18n-skip]'
+const SKIP = '[translate="no"], .ProseMirror, .chat-body, .md, .doc-text, [data-i18n-skip]'
 
 function walk(root: Node): void {
   if (root.nodeType === Node.TEXT_NODE) {
@@ -275,6 +275,7 @@ function walk(root: Node): void {
     return
   }
   if (!(root instanceof Element)) return
+  if (root.closest(SKIP)) return
   for (const a of ATTRS) {
     const v = root.getAttribute(a)
     if (v) {
@@ -282,7 +283,7 @@ function walk(root: Node): void {
       if (t !== v) root.setAttribute(a, t)
     }
   }
-  if (!root.closest(SKIP)) root.childNodes.forEach(walk)
+  root.childNodes.forEach(walk)
 }
 
 export function initI18n(): void {

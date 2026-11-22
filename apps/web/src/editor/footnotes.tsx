@@ -210,7 +210,7 @@ export function FootnotePopover({
   const editable = editor.isEditable
   return (
     <div className="fn-pop" role="dialog" aria-label={`脚注 ${index + 1}`} style={{ left: Math.max(8, Math.min(x, window.innerWidth - 328)), top: y }} onMouseEnter={onEnter} onMouseLeave={onLeave}>
-      <div className="fn-pop-head">脚注 {index + 1}</div>
+      <div className="fn-pop-head">{`脚注 ${index + 1}`}</div>
       {editing ? (
         <form
           className="fn-pop-form"
@@ -228,7 +228,7 @@ export function FootnotePopover({
         </form>
       ) : (
         <>
-          <div className="fn-pop-text">{spot.note || <span className="muted">（空）</span>}</div>
+          <div className="fn-pop-text">{spot.note ? <span translate="no">{spot.note}</span> : <span className="muted">（空）</span>}</div>
           {editable && (
             <div className="fn-pop-actions">
               <Button type="button" variant="ghost" size="sm" onClick={() => { setDraft(spot.note); setEditing(true) }}>编辑</Button>
@@ -251,7 +251,7 @@ export function FootnoteList({ notes, onJump }: { notes: FootnoteInfo[]; onJump:
         {notes.map((n) => (
           <li key={n.id} value={n.number}>
             <button type="button" className="fn-item" onClick={() => onJump(n.id)} title="回到正文">
-              {n.note || <span className="muted">（空）</span>}
+              {n.note ? <span translate="no">{n.note}</span> : <span className="muted">（空）</span>}
             </button>
           </li>
         ))}

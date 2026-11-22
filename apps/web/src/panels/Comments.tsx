@@ -51,12 +51,12 @@ export function CommentsPanel({ list, focusId, aiHint, onReply, onResolve, onDel
         {shown.map((c) => (
           <li key={c.id} data-cid={c.id} className={c.resolved ? 'resolved' : ''}>
             <button className="change-body" onClick={() => onFocus(c.id)}>
-              <div className="quote-of">{c.orphaned ? <span className="warn">原文已删除：</span> : null}{c.quote}</div>
+              <div className="quote-of">{c.orphaned ? <span className="warn">原文已删除：</span> : null}<span translate="no">{c.quote}</span></div>
               <div><strong>{c.author}</strong> <span className="muted small">{fmtTime(c.createdAt)}</span></div>
-              <div className="answer">{renderMentions(c.text)}</div>
+              <div className="answer" translate="no">{renderMentions(c.text)}</div>
             </button>
             {c.replies.map((r, i) => (
-              <div key={i} className="reply"><strong>{r.author}</strong> <span className="muted small">{fmtTime(r.createdAt)}</span><div className="answer">{renderMentions(r.text)}</div></div>
+              <div key={i} className="reply"><strong>{r.author}</strong> <span className="muted small">{fmtTime(r.createdAt)}</span><div className="answer" translate="no">{renderMentions(r.text)}</div></div>
             ))}
             <form className="row" onSubmit={(e) => {
               e.preventDefault()

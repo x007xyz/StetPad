@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import { Extension, Node, mergeAttributes, textblockTypeInputRule } from '@tiptap/core'
 import { DOMSerializer } from '@tiptap/pm/model'
 import { Plugin, TextSelection } from '@tiptap/pm/state'
@@ -251,7 +252,7 @@ export const Image = Node.create({
         const button = (label: string, onClick: (b: HTMLButtonElement) => void): HTMLButtonElement => {
           const b = document.createElement('button')
           b.type = 'button'
-          b.textContent = label
+          b.textContent = t(label)
           b.addEventListener('mousedown', (e) => e.preventDefault())
           b.addEventListener('click', (e) => {
             e.preventDefault()
@@ -263,7 +264,7 @@ export const Image = Node.create({
           const src = String(current.attrs.src ?? '')
           if (!docId || !src) return
           b.disabled = true
-          b.textContent = '描述中…'
+          b.textContent = t('描述中…')
           describeImage(docId, src)
             .then((alt) => {
               const pos = getPos()
@@ -274,7 +275,7 @@ export const Image = Node.create({
             .catch((e: unknown) => alert(e instanceof Error ? e.message : '描述失败'))
             .finally(() => {
               b.disabled = false
-              b.textContent = 'AI 描述'
+              b.textContent = t('AI 描述')
             })
         })
         describeBtn.hidden = !docId
@@ -296,7 +297,7 @@ export const Image = Node.create({
 
         // Read-only views show the caption as plain text.
         cap.contentEditable = 'plaintext-only'
-        cap.dataset.placeholder = '添加图注'
+        cap.dataset.placeholder = t('添加图注')
         const handle = document.createElement('div')
         handle.className = 'image-handle'
         handle.contentEditable = 'false'
@@ -457,7 +458,7 @@ export const Table = Node.create({
           const button = (label: string, fn: (rows: string[][]) => string[][]): void => {
             const b = document.createElement('button')
             b.type = 'button'
-            b.textContent = label
+            b.textContent = t(label)
             b.addEventListener('mousedown', (e) => e.preventDefault())
             b.addEventListener('click', () => commit(fn(parse())))
             bar.appendChild(b)
@@ -468,7 +469,7 @@ export const Table = Node.create({
           button('− 列', (r) => (r[0]!.length > 1 ? r.map((row) => row.slice(0, -1)) : r))
           const chart = document.createElement('button')
           chart.type = 'button'
-          chart.textContent = '生成图表'
+          chart.textContent = t('生成图表')
           chart.addEventListener('mousedown', (e) => e.preventDefault())
           chart.addEventListener('click', () => {
             const detail: AiDiagramNewRequest = { kind: 'mermaid', prompt: TABLE_CHART_PROMPT, context: tableMarkdown(parse()) }

@@ -95,14 +95,27 @@ function ensureWindow(): BrowserWindow | null {
   return createWindow()
 }
 
-async function confirmClipperPair(deviceName: string): Promise<boolean> {
+function inChinese(): boolean {
+  return app.getLocale().toLowerCase().startsWith('zh')
+}
+
+async function rendererInChinese(win: BrowserWindow | null): Promise<boolean> {
+  const lang = await win?.webContents.executeJavaScript('document.documentElement.lang').catch(() => null)
+  return lang === 'zh-CN' || (lang !== 'en' && inChinese())
+}
+
+async function confirmClipperPair(deviceName?: string): Promise<boolean> {
   const win = ensureWindow()
+  const zh = await rendererInChinese(win)
+  const name = deviceName || (zh ? '浏览器插件' : 'Browser extension')
   const opts = {
     type: 'question' as const,
-    title: '浏览器插件连接请求',
-    message: `允许「${deviceName}」连接本机 Stetpad 吗？`,
-    detail: '授权后，该浏览器插件可将剪藏内容保存到你的本机文档，或触发 AI 生成待审阅的修订建议。你随时可在应用「设置」中撤销授权。',
-    buttons: ['允许连接', '拒绝'],
+    title: zh ? '浏览器插件连接请求' : 'Browser extension connection request',
+    message: zh ? `允许「${name}」连接本机 Stetpad 吗？` : `Allow “${name}” to connect to Stetpad on this device?`,
+    detail: zh
+      ? '授权后，该浏览器插件可将剪藏内容保存到你的本机文档，或触发 AI 生成待审阅的修订建议。你随时可在应用「设置」中撤销授权。'
+      : 'This extension can save clips to your local documents and ask AI to suggest edits for review. You can revoke access at any time in Settings.',
+    buttons: zh ? ['允许连接', '拒绝'] : ['Allow connection', 'Deny'],
     defaultId: 0,
     cancelId: 1,
   }
@@ -135,7 +148,7 @@ async function handleDeepLink(rawUrl: string): Promise<void> {
   if (action === 'pair') {
     const code = u.searchParams.get('code') ?? ''
     const challenge = u.searchParams.get('challenge') ?? ''
-    const name = (u.searchParams.get('name') || '浏览器插件').slice(0, 60)
+    const name = u.searchParams.get('name')?.slice(0, 60)
     if (!code || !challenge) return
     if (!(await confirmClipperPair(name))) return
     await fetch(`http://127.0.0.1:${server.port}/api/clipper/pair/approve`, {
@@ -156,10 +169,14 @@ async function checkForUpdates(): Promise<void> {
   try {
     const { autoUpdater } = await import('electron-updater')
     autoUpdater.setFeedURL({ provider: 'generic', url: feed })
-    autoUpdater.on('update-downloaded', (info) => {
-      void dialog.showMessageBox({ message: `新版本 ${info.version} 已下载`, detail: '重启后生效。', buttons: ['现在重启', '稍后'] }).then((r) => {
-        if (r.response === 0) autoUpdater.quitAndInstall()
+    autoUpdater.on('update-downloaded', async (info) => {
+      const zh = await rendererInChinese(BrowserWindow.getAllWindows()[0] ?? null)
+      const r = await dialog.showMessageBox({
+        message: zh ? `新版本 ${info.version} 已下载` : `Version ${info.version} has been downloaded`,
+        detail: zh ? '重启后生效。' : 'Restart to install the update.',
+        buttons: zh ? ['现在重启', '稍后'] : ['Restart now', 'Later'],
       })
+      if (r.response === 0) autoUpdater.quitAndInstall()
     })
     await autoUpdater.checkForUpdates()
   } catch (err) {
@@ -283,7 +300,7 @@ if (!app.requestSingleInstanceLock() && !SMOKE) {
       void checkForUpdates()
     } catch (err) {
       console.error(err)
-      if (!SMOKE) dialog.showErrorBox('Stetpad 无法启动', String(err))
+      if (!SMOKE) dialog.showErrorBox(inChinese() ? 'Stetpad 无法启动' : 'Stetpad couldn’t start', String(err))
       app.exit(1)
     }
   })

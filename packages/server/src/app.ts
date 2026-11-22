@@ -79,7 +79,7 @@ export interface ServerConfig {
   /** Largest accepted video upload, in bytes. Default 1 GB. */
   maxVideoBytes?: number
   /** Prompts the desktop user when a browser extension requests pairing. */
-  onPairRequest?: (req: { deviceName: string }) => Promise<boolean>
+  onPairRequest?: (req: { deviceName?: string }) => Promise<boolean>
   /** Transport for AI image providers (tests). Default: the global fetch. */
   imageFetch?: typeof fetch
   /** Collect unreferenced asset files on a schedule (5 minutes after start, then daily). Default true. */
@@ -473,10 +473,10 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     if (isUntrustedWebOrigin(c)) return c.text('forbidden', 403)
     if (!config.onPairRequest) return c.json({ error: 'not available' }, 404)
     const body = await c.req.json<{ deviceName?: string }>().catch(() => ({} as { deviceName?: string }))
-    const deviceName = (body.deviceName ?? '浏览器插件').trim().slice(0, 60) || '浏览器插件'
-    const allowed = await config.onPairRequest({ deviceName })
+    const deviceName = body.deviceName?.trim().slice(0, 60)
+    const allowed = await config.onPairRequest({ deviceName: deviceName || undefined })
     if (!allowed) return c.json({ error: '已拒绝连接' }, 403)
-    const created = await store.createClipperToken(localUser!.id, deviceName)
+    const created = await store.createClipperToken(localUser!.id, deviceName || '浏览器插件')
     return c.json({ token: created.token, mode: 'local', user: localUser })
   })
 

@@ -145,7 +145,7 @@ export function useRuns(docId: string, onFinished: () => void, enabled = true) {
       // A run started earlier (even from a page that was closed) is picked up again, in the chat it belongs to.
       const all = await api<{ active: string | null; activeChat: string | null; runs: RunMeta[] }>(`/docs/${docId}/runs${r?.activeChat ? `?chat=${r.activeChat}` : ''}`)
       if (stale || !all.active || all.active === 'starting' || !all.activeChat) return
-      attach(all.activeChat, all.active, all.runs.find((x) => x.id === all.active)?.instruction || 'AI 任务')
+      attach(all.activeChat, all.active, all.runs.find((x) => x.id === all.active)?.instruction || t('AI 任务'))
     })().catch(() => {})
     return () => {
       stale = true
@@ -418,7 +418,7 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
     if (!canSend) return
     setSending(true)
     const context = refs
-    const title = context.length ? `${text}\n${context.map((r) => `「${KIND_NAME[r.kind]}：${r.label}」`).join(' ')}` : text
+    const title = context.length ? `${text}\n${context.map((r) => t(`「${KIND_NAME[r.kind]}：${r.label}」`)).join(' ')}` : text
     void start({ instruction: text, context: context.length ? context : undefined }, title, () => {
       setInput('')
       setMenu(null)
@@ -503,18 +503,18 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
         )}
         {past.map((r) => (
           <div key={r.id} className="turn">
-            <div className="ask">{r.instruction || '快捷操作'}</div>
-            <div className="answer"><span className="avatar" aria-hidden>AI</span><div className="answer-body">{r.summary || STATUS[r.status] || r.status}</div></div>
+            <div className="ask">{r.instruction ? <span translate="no">{r.instruction}</span> : '快捷操作'}</div>
+            <div className="answer"><span className="avatar" aria-hidden>AI</span><div className="answer-body">{r.summary ? <span translate="no">{r.summary}</span> : (STATUS[r.status] || r.status)}</div></div>
             {r.status !== 'done' && <div className="muted small">{STATUS[r.status] ?? r.status}</div>}
             {review(r.id)}
           </div>
         ))}
         {live && (
           <div className="turn">
-            <div className="ask">{live.title}</div>
+            <div className="ask" translate="no">{live.title}</div>
             {live.plan.length > 0 && (
               <ol className="plan">
-                {live.plan.map((p, i) => <li key={i} data-status={p.status}>{p.title}</li>)}
+                {live.plan.map((p, i) => <li key={i} data-status={p.status} translate="no">{p.title}</li>)}
               </ol>
             )}
             {live.steps.length > 0 && (
@@ -523,14 +523,14 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
                   <li key={i} data-ok={s.ok === undefined ? 'pending' : String(s.ok)}>
                     {s.detail}
                     {s.ok === false && <span className="error">　失败：{s.error}</span>}
-                    {!!s.notApplied && <span className="warn">　{s.notApplied} 处未应用（文字已被改动）</span>}
+                    {!!s.notApplied && <span className="warn">{`　${s.notApplied} 处未应用（文字已被改动）`}</span>}
                   </li>
                 ))}
               </ul>
             )}
             {live.note && <div className="muted small">{live.note}</div>}
-            {live.text && <div className="answer"><span className="avatar" aria-hidden>AI</span><div className="answer-body">{live.text}</div></div>}
-            {live.question && <div className="question" role="alert">AI 想问你：{live.question}<div className="muted small">直接在下面回复即可。</div></div>}
+            {live.text && <div className="answer"><span className="avatar" aria-hidden>AI</span><div className="answer-body" translate="no">{live.text}</div></div>}
+            {live.question && <div className="question" role="alert">AI 想问你：<span translate="no">{live.question}</span><div className="muted small">直接在下面回复即可。</div></div>}
             {live.error && <div className="error">{live.error}</div>}
             <div className="status-line small" role="status" data-status={live.status}>{live.status === 'running' && <span className="dot" />}{STATUS[live.status] ?? live.status}</div>
             {review(live.runId)}
@@ -623,8 +623,8 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
               }
             }}
             options={[
-              ...(models?.models ?? []).map((m) => ({ value: m.id, label: m.label + (m.verified ? '' : '（未验证）') })),
-              ...(models?.externalAgents ?? []).map((x) => ({ value: 'ext:' + x.id, label: x.label, group: '外部 Agent（用它自己的模型）' })),
+              ...(models?.models ?? []).map((m) => ({ value: m.id, label: m.label + (m.verified ? '' : t('（未验证）')), translateLabel: false })),
+              ...(models?.externalAgents ?? []).map((x) => ({ value: 'ext:' + x.id, label: x.label, group: '外部 Agent（用它自己的模型）', translateLabel: false })),
             ]}
           />
           {running ? (

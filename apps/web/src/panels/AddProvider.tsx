@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import { useState } from 'react'
 import { post } from '../api'
 import { Button } from '../components/ui/button'
@@ -85,7 +86,7 @@ export function AddProvider({ catalog, rows, onCancel, onDone }: AddProviderProp
   const tabs = REGIONS.filter((t) => t.value === 'all' || catalog.some((e) => e.region === t.value))
   const q = query.trim().toLowerCase()
   const shown = catalog.filter(
-    (e) => (region === 'all' || e.region === region) && (!q || e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q)),
+    (e) => (region === 'all' || e.region === region) && (!q || [e.name, t(e.name), e.id].some((name) => name.toLowerCase().includes(q))),
   )
 
   return (
@@ -108,7 +109,7 @@ export function AddProvider({ catalog, rows, onCancel, onDone }: AddProviderProp
         <div className="prov-grid">
           {shown.map((e) => (
             <button key={e.id} type="button" data-slot="prov-card" className="prov-card" onClick={() => setChosen(e)}>
-              <span className="prov-avatar" aria-hidden>{initialOf(e.name)}</span>
+              <span className="prov-avatar" aria-hidden>{initialOf(t(e.name))}</span>
               <span className="prov-card-body">
                 <span className="prov-card-name">{e.name}</span>
                 <span className="muted small prov-card-note">{e.note}</span>
@@ -247,7 +248,9 @@ function ConfigureProvider({ entry, rows, onBack, onCancel, onDone }: ConfigureP
         <input type="password" autoComplete="off" value={apiKey} placeholder={keyPlaceholder} onChange={(e) => setApiKey(e.target.value)} />
       </label>
       {entry?.keyUrl && (
-        <a className="small" href={entry.keyUrl} target="_blank" rel="noreferrer">去 {entry.name} 获取密钥 ↗</a>
+        <a className="small" href={entry.keyUrl} target="_blank" rel="noreferrer">
+          {`去 ${entry.name} 获取密钥 ↗`}
+        </a>
       )}
 
       {!isBuiltin && (entry ? <details className="addp-adv"><summary className="muted small">高级设置</summary>{endpointFields}</details> : endpointFields)}
@@ -262,7 +265,7 @@ function ConfigureProvider({ entry, rows, onBack, onCancel, onDone }: ConfigureP
 
       <div className="addp-models">
         <div className="row between">
-          <span className="muted small">已选 {selectedOpts.length} / 共 {list.length} 个模型</span>
+          <span className="muted small">{`已选 ${selectedOpts.length} / 共 ${list.length} 个模型`}</span>
         </div>
         <p className="muted small addp-hint">能力决定模型出现在哪些用途里，例如"识图"模型可用于图片描述。默认勾选文字和识图，不支持的请取消。</p>
         {list.length > 10 && <input aria-label="筛选模型" placeholder="筛选模型…" value={filter} onChange={(e) => setFilter(e.target.value)} />}
@@ -272,8 +275,8 @@ function ConfigureProvider({ entry, rows, onBack, onCancel, onDone }: ConfigureP
             <div key={m.id} className="row addp-model">
               <label className="row addp-model-main">
                 <input type="checkbox" checked={picked.includes(m.id)} onChange={(e) => togglePick(m.id, e.target.checked)} />
-                <code>{m.id}</code>
-                {m.label && m.label !== m.id && <span className="muted small">{m.label}</span>}
+                <code translate="no">{m.id}</code>
+                {m.label && m.label !== m.id && <span className="muted small" translate="no">{m.label}</span>}
               </label>
               <CapsPicker caps={normalizeCaps(m.caps)} disabled={!picked.includes(m.id)} onChange={(caps) => setCaps(m.id, caps)} />
             </div>
@@ -287,7 +290,7 @@ function ConfigureProvider({ entry, rows, onBack, onCancel, onDone }: ConfigureP
           默认模型
           <select aria-label="默认模型" value={effDefault} disabled={selectedOpts.length === 0} onChange={(e) => setDefaultPick(e.target.value)}>
             {selectedOpts.length === 0 && <option value="">先选择模型</option>}
-            {selectedOpts.map((m) => <option key={m.id} value={m.id}>{m.label ?? m.id}</option>)}
+            {selectedOpts.map((m) => <option key={m.id} value={m.id} translate="no">{m.label ?? m.id}</option>)}
           </select>
         </label>
       </div>

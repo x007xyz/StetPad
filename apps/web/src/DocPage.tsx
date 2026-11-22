@@ -1,4 +1,4 @@
-import { getLang } from './i18n'
+import { getLang, t } from './i18n'
 import { addComment, blocks, blockIdOf, changesInBlock, decide, deleteComment, findBlock, footnotesOf, listChanges, listComments, listDecided, decideAndLog, type DecidedChange, projectBlocks, replyToComment, resolveComment, type CommentView, type PendingChange } from '@stetpad/crdt'
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import { Editor } from '@tiptap/core'
@@ -691,7 +691,7 @@ export function DocPage({ id }: { id: string }) {
   const runAi = (preset: string | undefined, instruction: string, title: string): void => {
     const selection = selectionScope()
     if (!selection) return
-    void runs.start({ preset, instruction: instruction || undefined, selection }, title)
+    void runs.start({ preset, instruction: instruction || undefined, selection }, preset ? t(title) : title)
     setBubble(null)
     setCustom('')
     showTab('ai')
@@ -1261,7 +1261,7 @@ export function DocPage({ id }: { id: string }) {
             {view === 'side' && (
               <>
                 <div className="row between pad mx-auto max-w-[1180px] px-5">
-                  <span className="muted">{reviewRows.filter(rowChanged).length} 个段落有修订</span>
+                  <span className="muted">{`${reviewRows.filter(rowChanged).length} 个段落有修订`}</span>
                   <label className="row text-[13px]"><input type="checkbox" checked={onlyChanged} onChange={(e) => setOnlyChanged(e.target.checked)} /> 只看有修订的段落</label>
                 </div>
                 <DiffView rows={reviewRows} leftTitle="原文" rightTitle="修改稿" onlyChanged={onlyChanged} />

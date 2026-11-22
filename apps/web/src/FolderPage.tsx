@@ -421,28 +421,28 @@ function FolderAi({ folderId, changes, decided, blockText, onDecide, onFocus, di
         )}
         {past.map((r) => (
           <div key={r.id} className="turn">
-            <div className="ask">{r.instruction}</div>
-            <div className="answer"><span className="avatar" aria-hidden>AI</span><div className="answer-body">{r.summary || STATUS[r.status] || r.status}</div></div>
+            <div className="ask" translate="no">{r.instruction}</div>
+            <div className="answer"><span className="avatar" aria-hidden>AI</span><div className="answer-body">{r.summary ? <span translate="no">{r.summary}</span> : (STATUS[r.status] || r.status)}</div></div>
             {r.status !== 'done' && <div className="muted small">{STATUS[r.status] ?? r.status}</div>}
             {review(r.id)}
           </div>
         ))}
         {live && (
           <div className="turn">
-            <div className="ask">{live.title}</div>
+            <div className="ask" translate="no">{live.title}</div>
             {live.steps.length > 0 && (
               <ul className="steps">
                 {live.steps.map((s, i) => (
                   <li key={i} data-ok={s.ok === undefined ? 'pending' : String(s.ok)}>
                     {s.detail}
                     {s.ok === false && <span className="error">　失败：{s.error}</span>}
-                    {!!s.notApplied && <span className="warn">　{s.notApplied} 处未应用（文字已被改动）</span>}
+                    {!!s.notApplied && <span className="warn">{`　${s.notApplied} 处未应用（文字已被改动）`}</span>}
                   </li>
                 ))}
               </ul>
             )}
-            {live.text && <div className="answer"><span className="avatar" aria-hidden>AI</span><div className="answer-body">{live.text}</div></div>}
-            {live.question && <div className="question" role="alert">AI 想问你：{live.question}<div className="muted small">直接在下面回复即可。</div></div>}
+            {live.text && <div className="answer"><span className="avatar" aria-hidden>AI</span><div className="answer-body" translate="no">{live.text}</div></div>}
+            {live.question && <div className="question" role="alert">AI 想问你：<span translate="no">{live.question}</span><div className="muted small">直接在下面回复即可。</div></div>}
             {live.error && <div className="error">{live.error}</div>}
             <div className="status-line small" role="status" data-status={live.status}>{live.status === 'running' && <span className="dot" />}{STATUS[live.status] ?? live.status}</div>
             {review(live.runId)}

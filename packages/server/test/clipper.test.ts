@@ -28,6 +28,7 @@ describe('clipper server', () => {
   let base: string
   let token = ''
   let allowLocalPair = true
+  let pairedDeviceName: string | undefined
   const providers: HocuspocusProvider[] = []
 
   const call = async (path: string, init: RequestInit = {}, t = token) => {
@@ -55,7 +56,10 @@ describe('clipper server', () => {
     server = await startServer({
       dataDir: dir,
       port: 0,
-      onPairRequest: async () => allowLocalPair,
+      onPairRequest: async ({ deviceName }) => {
+        pairedDeviceName = deviceName
+        return allowLocalPair
+      },
     })
     base = `http://127.0.0.1:${server.port}`
     token = server.token
@@ -143,12 +147,21 @@ describe('clipper server', () => {
     allowLocalPair = false
     const denied = await call('/api/clipper/pair/request-local', { method: 'POST', body: JSON.stringify({ deviceName: 'Firefox' }) }, '')
     expect(denied.status).toBe(403)
+    expect(pairedDeviceName).toBe('Firefox')
 
     allowLocalPair = true
     const ok = await call('/api/clipper/pair/request-local', { method: 'POST', body: JSON.stringify({ deviceName: 'Firefox' }) }, '')
     expect(ok.status).toBe(200)
     expect((ok.body.token as string).startsWith('clp_')).toBe(true)
     expect((await call('/api/me', {}, ok.body.token)).status).toBe(200)
+  })
+
+  it('lets the desktop localize an unnamed browser without changing the saved fallback', async () => {
+    const response = await call('/api/clipper/pair/request-local', { method: 'POST', body: '{}' }, '')
+    expect(response.status).toBe(200)
+    expect(pairedDeviceName).toBeUndefined()
+    const list = await call('/api/clipper/tokens')
+    expect(list.body.tokens).toEqual(expect.arrayContaining([expect.objectContaining({ name: '浏览器插件' })]))
   })
 
   it('accepts an oversized clip from an installed clipper without silently changing the response', async () => {

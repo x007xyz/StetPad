@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { Button } from '../components/ui/button'
@@ -172,7 +173,7 @@ export function AiImageEditDialog({ docId, src, open, onClose, onReplace, onInse
                   新图
                 </button>
               </div>
-              <img src={shown} alt={showOriginal ? '原图' : result.prompt} className="max-h-[50vh] w-full rounded-md bg-muted object-contain" />
+              <img src={shown} alt={showOriginal ? t('原图') : result.prompt} className="max-h-[50vh] w-full rounded-md bg-muted object-contain" />
             </div>
           )}
           <div className="flex justify-end gap-2 pt-1">

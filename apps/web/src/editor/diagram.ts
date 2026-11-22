@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import type { Editor } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
@@ -296,7 +297,7 @@ export const diagramEditingPlugin = new Plugin({
 const hint = (text: string): HTMLElement => {
   const el = document.createElement('div')
   el.className = 'diagram-hint'
-  el.textContent = text
+  el.textContent = t(text)
   return el
 }
 
@@ -323,8 +324,8 @@ export function codeBlockView({ node, editor, getPos }: { node: PMNode; editor: 
   const zoom = document.createElement('button')
   zoom.type = 'button'
   zoom.className = 'diagram-zoom'
-  zoom.textContent = '放大'
-  zoom.setAttribute('aria-label', '放大查看')
+  zoom.textContent = t('放大')
+  zoom.setAttribute('aria-label', t('放大查看'))
   zoom.addEventListener('click', (e) => {
     e.preventDefault()
     e.stopPropagation()
@@ -371,13 +372,13 @@ export function codeBlockView({ node, editor, getPos }: { node: PMNode; editor: 
     const text = document.createElement('span')
     // Mermaid errors span lines ("Parse error on line 3:", the source excerpt, a caret line, "Expecting ...").
     const lines = full.split('\n').map((l) => l.trim()).filter((l) => l && !/^-*\^$/.test(l))
-    text.textContent = `渲染失败：${lines.join(' · ').slice(0, 300)}`
+    text.textContent = `${t('渲染失败：')} ${lines.join(' · ').slice(0, 300)}`
     line.append(text)
     if (editor.isEditable) {
       const fix = document.createElement('button')
       fix.type = 'button'
       fix.className = 'diagram-fix'
-      fix.textContent = 'AI 修复'
+      fix.textContent = t('AI 修复')
       fix.addEventListener('click', (ev) => {
         ev.preventDefault()
         const detail: AiDiagramRequest = { kind: k, previous: src, error: full }

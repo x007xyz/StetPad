@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import type { NodeViewRenderer } from '@tiptap/core'
 import { embedPlayerUrl } from '@stetpad/clip'
 import { applyTranscript, transcribeVideo } from './media'
@@ -91,9 +92,9 @@ export function videoNodeView(docId: string): NodeViewRenderer {
         const o = document.createElement('div')
         o.className = 'video-overlay'
         o.contentEditable = 'false'
-        o.title = '播放'
+        o.title = t('播放')
         o.setAttribute('role', 'button')
-        o.setAttribute('aria-label', '播放')
+        o.setAttribute('aria-label', t('播放'))
         o.innerHTML = '<span class="video-play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="#fff"/></svg></span>'
         // mousedown, not click: the overlay goes away once the block is selected, which can happen before a click.
         o.addEventListener('mousedown', (e) => {
@@ -107,7 +108,7 @@ export function videoNodeView(docId: string): NodeViewRenderer {
       const src = String(current.attrs.src ?? '')
       tools.hidden = !(editor.isEditable && docId && current.attrs.kind !== 'embed' && FILE_SRC.test(src))
       transcribeBtn.disabled = busy
-      transcribeBtn.textContent = busy ? '转写中…' : current.attrs.captions ? '重新转写' : '转写'
+      transcribeBtn.textContent = busy ? t('转写中…') : current.attrs.captions ? t('重新转写') : t('转写')
     }
 
     /** Transcribes the video: sets its subtitles and inserts the transcript after it. One at a time. */
@@ -144,13 +145,13 @@ export function videoNodeView(docId: string): NodeViewRenderer {
       const label = String(title ?? '')
       if (kind === 'embed') {
         const player = embedPlayerUrl(url)
-        if (!player) frame.appendChild(errorBox('[不支持的视频链接]'))
+        if (!player) frame.appendChild(errorBox(t('[不支持的视频链接]')))
         else {
           const box = document.createElement('div')
           box.className = 'video-embed'
           const iframe = document.createElement('iframe')
           iframe.src = player
-          iframe.title = label || '视频'
+          iframe.title = label || t('视频')
           iframe.setAttribute('allow', EMBED_ALLOW)
           iframe.allowFullscreen = true
           iframe.referrerPolicy = 'strict-origin-when-cross-origin'
@@ -172,14 +173,14 @@ export function videoNodeView(docId: string): NodeViewRenderer {
           track.kind = 'subtitles'
           track.src = captions
           track.srclang = 'zh'
-          track.label = '字幕'
+          track.label = t('字幕')
           track.default = true
           video.appendChild(track)
         }
         frame.appendChild(video)
         // A video without a poster frame gets one, in the background, while the document is being edited.
         if (editor.isEditable && docId && blockId && !poster) ensurePoster(editor, docId, String(blockId), url)
-      } else frame.appendChild(errorBox('[无效的视频]'))
+      } else frame.appendChild(errorBox(t('[无效的视频]')))
       syncOverlay()
       paintTools()
       // Leave the caption alone while the user is typing in it.
@@ -189,7 +190,7 @@ export function videoNodeView(docId: string): NodeViewRenderer {
 
     if (editor.isEditable) {
       cap.contentEditable = 'plaintext-only'
-      cap.dataset.placeholder = '添加图注'
+      cap.dataset.placeholder = t('添加图注')
       cap.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.isComposing) {
           e.preventDefault()

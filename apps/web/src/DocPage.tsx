@@ -826,7 +826,7 @@ export function DocPage({ id }: { id: string }) {
       await api(`/docs/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) })
     } catch {
       input.value = meta.title
-      alert('标题保存失败，请重试。')
+      workspace?.notify('标题保存失败，请重试。', { error: true })
       return
     }
     setMeta({ ...meta, title: title.trim() || '未命名文档' })

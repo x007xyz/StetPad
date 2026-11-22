@@ -228,6 +228,7 @@ function DocSection({ doc, first, author, trackingRef, force, onState, onRenamed
   onRenamed: () => void
 }) {
   const id = doc.id
+  const workspace = useWorkspaceOptional()
   const ydoc = useMemo(() => new Y.Doc(), [id])
   const [ready, setReady] = useState(false)
   const [near, setNear] = useState(false)
@@ -309,7 +310,7 @@ function DocSection({ doc, first, author, trackingRef, force, onState, onRenamed
       await api(`/docs/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) })
     } catch {
       input.value = doc.title
-      alert('标题保存失败，请重试。')
+      workspace?.notify('标题保存失败，请重试。', { error: true })
       return
     }
     onRenamed()

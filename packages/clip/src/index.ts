@@ -597,7 +597,13 @@ const mdOneLine = (s: string): string => s.replace(/[\r\n]+/g, ' ')
 const mdAlt = (s: string): string => mdOneLine(s).replace(/[[\]]/g, '')
 const mdItalic = (s: string): string => '*' + mdOneLine(s).replace(/([*_\\`])/g, '\\$1') + '*'
 
-const mdInlineText = (s: string): string => s.replace(/([\\`*_\[\]~<]|&(?=[\w#]+;))/g, '\\$1').replace(/\b(https?):(?=\/\/)/gi, '$1\\:')
+const mdEscapeText = (s: string): string => s.replace(/([\\`*_\[\]~<]|&(?=[\w#]+;))/g, '\\$1').replace(/\b(https?):(?=\/\/)/gi, '$1\\:')
+
+function mdInlineText(text: string): string {
+  // HTML imports store inline formulas as $…$ text. Keep their TeX verbatim.
+  return text.split(/((?<![\\$])\$(?=[^\s$])[^$\n]*?[^\s$\\]\$(?![\d$]))/g)
+    .map((part, i) => i % 2 ? part : mdEscapeText(part)).join('')
+}
 
 function mdCodeSpan(text: string): string {
   const fence = '`'.repeat((text.match(/`+/g) ?? []).reduce((length, run) => Math.max(length, run.length + 1), 1))

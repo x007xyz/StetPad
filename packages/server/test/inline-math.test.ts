@@ -1,6 +1,6 @@
 import { inflateRawSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
-import { blocksToDocx, blocksToHtml, blocksToMarkdown, fileToBlocks, protectInlineMath, restoreInlineMath, type Block } from '../src/content'
+import { blocksToDocx, blocksToHtml, blocksToMarkdown, fileToBlocks, htmlToBlocks, protectInlineMath, restoreInlineMath, type Block } from '../src/content'
 import { mathToSvg } from '../src/render'
 
 const para = (delta: Block['delta']): Block => ({ type: 'paragraph', attrs: {}, delta })
@@ -41,6 +41,14 @@ describe('inline math export', () => {
   it('writes the source as $...$ in Markdown', () => {
     const md = blocksToMarkdown([para([{ insert: '面积 ' }, math('x^2')])])
     expect(md).toContain('面积 $x^2$')
+  })
+
+  it('round-trips TeX extracted from HTML through Markdown without escaping it', async () => {
+    const tex = String.raw`x_1 + \alpha`
+    const blocks = htmlToBlocks(`<p>Formula <span data-math="${tex}"></span> intact.</p>`)
+    expect(await fileToBlocks('inline.md', enc(blocksToMarkdown(blocks)))).toEqual([
+      para([{ insert: 'Formula ' }, math(tex), { insert: ' intact.' }]),
+    ])
   })
 
   it('draws an inline svg in HTML, not the source', () => {

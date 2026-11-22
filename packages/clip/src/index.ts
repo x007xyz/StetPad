@@ -373,7 +373,7 @@ export function domToBlocks(root: any, opts: { baseUrl?: string } = {}): Block[]
     const prev = delta[delta.length - 1]
     const prevKey = prev?.attributes ? JSON.stringify(prev.attributes) : ''
     if (prev && prevKey === attrKey) {
-      if (prev.insert.endsWith(' ') && insert.startsWith(' ')) insert = insert.slice(1)
+      if (!marks.code && prev.insert.endsWith(' ') && insert.startsWith(' ')) insert = insert.slice(1)
       prev.insert += insert
       return
     }
@@ -385,7 +385,8 @@ export function domToBlocks(root: any, opts: { baseUrl?: string } = {}): Block[]
   const inline = (node: any, marks: Record<string, unknown>, delta: InlineDelta[]): void => {
     for (const child of node.childNodes ?? []) {
       if (child.nodeType === 3) {
-        const s = String(child.textContent).replace(/\s+/g, ' ')
+        const text = String(child.textContent)
+        const s = marks.code ? text : text.replace(/\s+/g, ' ')
         if (!s) continue
         pushDelta(delta, s, marks)
       } else if (child.nodeType === 1) {
@@ -414,9 +415,9 @@ export function domToBlocks(root: any, opts: { baseUrl?: string } = {}): Block[]
   }
 
   const trimmed = (delta: InlineDelta[]): InlineDelta[] => {
-    if (delta[0]) delta[0].insert = delta[0].insert.replace(/^\s+/, '')
+    if (delta[0] && !delta[0].attributes?.code) delta[0].insert = delta[0].insert.replace(/^\s+/, '')
     const last = delta[delta.length - 1]
-    if (last) last.insert = last.insert.replace(/\s+$/, '')
+    if (last && !last.attributes?.code) last.insert = last.insert.replace(/\s+$/, '')
     return delta.filter((d) => d.insert.length > 0)
   }
 
@@ -596,6 +597,14 @@ const mdOneLine = (s: string): string => s.replace(/[\r\n]+/g, ' ')
 const mdAlt = (s: string): string => mdOneLine(s).replace(/[[\]]/g, '')
 const mdItalic = (s: string): string => '*' + mdOneLine(s).replace(/([*_\\`])/g, '\\$1') + '*'
 
+const mdInlineText = (s: string): string => s.replace(/([\\`*_\[\]~<]|&(?=[\w#]+;))/g, '\\$1').replace(/\b(https?):(?=\/\/)/gi, '$1\\:')
+
+function mdCodeSpan(text: string): string {
+  const fence = '`'.repeat((text.match(/`+/g) ?? []).reduce((length, run) => Math.max(length, run.length + 1), 1))
+  const pad = /^[ `]|[ `]$/.test(text) && /[^ ]/.test(text) ? ' ' : ''
+  return fence + pad + text + pad + fence
+}
+
 function inlineMd(delta: InlineDelta[]): string {
   return delta
     .map((d) => {
@@ -604,7 +613,7 @@ function inlineMd(delta: InlineDelta[]): string {
       if (a.footnoteRef) return `[^${Number(a.footnoteRef)}]`
       // Inline math is not combined with other marks: the source goes out as written.
       if (a.math) return `$${s}$`
-      if (a.code) s = '`' + s + '`'
+      s = a.code ? mdCodeSpan(s) : mdInlineText(s)
       if (a.bold) s = `**${s}**`
       if (a.italic) s = `*${s}*`
       if (a.strike) s = `~~${s}~~`

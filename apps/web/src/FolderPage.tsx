@@ -305,7 +305,13 @@ function DocSection({ doc, first, author, trackingRef, force, onState, onRenamed
       input.value = title
       return
     }
-    await api(`/docs/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) })
+    try {
+      await api(`/docs/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) })
+    } catch {
+      input.value = doc.title
+      alert('标题保存失败，请重试。')
+      return
+    }
     onRenamed()
   }
 

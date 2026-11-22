@@ -819,9 +819,16 @@ export function DocPage({ id }: { id: string }) {
     return sections
   }
 
-  const rename = async (title: string): Promise<void> => {
+  const rename = async (input: HTMLInputElement): Promise<void> => {
+    const title = input.value
     if (!meta || title === meta.title) return
-    await api(`/docs/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) })
+    try {
+      await api(`/docs/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) })
+    } catch {
+      input.value = meta.title
+      alert('标题保存失败，请重试。')
+      return
+    }
     setMeta({ ...meta, title: title.trim() || '未命名文档' })
     document.title = title
     void workspace?.reload()
@@ -1152,7 +1159,7 @@ export function DocPage({ id }: { id: string }) {
       <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-background px-3 py-1.5">
         {/* Left: where am I */}
         <SidebarToggle />
-        <input className="min-w-0 flex-1 basis-40 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-semibold outline-none hover:bg-accent focus:border-ring focus:bg-background" aria-label="文档标题" defaultValue={meta?.title ?? ''} key={meta?.title} onBlur={(e) => rename(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
+        <input className="min-w-0 flex-1 basis-40 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-semibold outline-none hover:bg-accent focus:border-ring focus:bg-background" aria-label="文档标题" defaultValue={meta?.title ?? ''} key={meta?.title} onBlur={(e) => rename(e.currentTarget)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
         <span className={`sync flex items-center gap-1.5 text-xs text-muted-foreground ${status}`}>
           <span aria-hidden className={cn('size-1.5 rounded-full', status === 'connected' ? 'bg-emerald-500' : status === 'connecting' ? 'bg-amber-400' : 'bg-orange-500')} />
           <span role="status" className="max-sm:sr-only">{status === 'connected' ? '已同步' : status === 'connecting' ? '连接中…' : '离线，修改已保存在本机'}</span>

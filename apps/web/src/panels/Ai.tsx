@@ -578,6 +578,7 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
           value={input}
           placeholder="让 AI 修改这篇文档…（@ 引用评论或段落，Enter 发送）"
           onChange={(e) => onInput(e.target.value, e.target.selectionStart)}
+          onBlur={() => setMenu(null)}
           onKeyDown={(e) => {
             if (menu && !e.nativeEvent.isComposing) {
               if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {

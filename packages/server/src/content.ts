@@ -401,10 +401,23 @@ function protectLine(line: string, lexer: Lexer, tex: string[]): string {
 export function protectInlineMath(md: string): { body: string; tex: string[] } {
   const tex: string[] = []
   if (!md.includes('$')) return { body: md, tex }
+  const doc = marked.lexer(md, { gfm: true })
   const lexer = new Lexer({ ...marked.defaults, gfm: true })
-  Object.assign(lexer.tokens.links, marked.lexer(md, { gfm: true }).links)
+  Object.assign(lexer.tokens.links, doc.links)
   const lines = md.split('\n')
   const code = fencedCodeLines(lines)
+  // Indented code blocks too, as marked finds them: their text is never read as inline Markdown.
+  let from = 0
+  let line = 0
+  for (const t of doc) {
+    const at = md.indexOf(t.raw, from)
+    if (at < 0) continue
+    line += md.slice(from, at).split('\n').length - 1
+    const span = t.raw.replace(/\n+$/, '').split('\n').length
+    if (t.type === 'code') code.fill(true, line, line + span)
+    line += t.raw.split('\n').length - 1
+    from = at + t.raw.length
+  }
   const body = lines
     .map((line, i) => {
       if (code[i] || LINK_DEF.test(line)) return line

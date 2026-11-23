@@ -157,6 +157,11 @@ describe('inline math import from Markdown', () => {
     expect(protectInlineMath('<a name="n">\n$a https://e.com/$b c\n</a>').tex).toEqual(['a https://e.com/'])
   })
 
+  it('leaves indented code alone, and a tag shown there opens no anchor', () => {
+    const src = 'Example:\n\n    <a href="u"> $x$\n\nsee https://e.com/$a$b $y$'
+    expect(protectInlineMath(src).tex).toEqual(['y'])
+  })
+
   it('scans many formula lines with many link definitions in linear time', () => {
     const md = '$x$ [a](u)\n'.repeat(5000) + '\n' + Array.from({ length: 5000 }, (_, i) => `[r${i}]: https://e.com/${i}`).join('\n')
     const start = performance.now()

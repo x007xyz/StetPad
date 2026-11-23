@@ -18,7 +18,7 @@ import {
 import { Readability } from '@mozilla/readability'
 import { parseHTML } from 'linkedom'
 import mammoth from 'mammoth'
-import { Lexer, marked, type Links, type Token } from 'marked'
+import { Lexer, marked, type Token } from 'marked'
 import { AlignmentType, Document as DocxDocument, ExternalHyperlink, FootnoteReferenceRun, HeadingLevel, ImageRun, LevelFormat, Packer, Paragraph as DocxParagraph, Table as DocxTable, TableCell, TableRow, TextRun, WidthType } from 'docx'
 import * as Y from 'yjs'
 import { mathToSvg, svgToPng } from './render'
@@ -339,14 +339,15 @@ const TOKEN = /(\d+)/g
 /** A link reference definition: `[label]: destination`. */
 const LINK_DEF = /^ {0,3}\[[^\]]+\]:/
 
-/** A stretch of a line that marked reads as code or HTML (`opaque`), or as a link or image. */
+/** A stretch of a line that marked reads as code (`opaque`), HTML, a link or an image. */
 type Verbatim = { start: number; end: number; opaque: boolean }
 
 /** The verbatim stretches among inline `tokens` that start at offset `at`, in order; code in a link text follows its link. */
 function verbatimSpans(tokens: Token[], at: number, out: Verbatim[] = []): Verbatim[] {
   for (const t of tokens) {
     const end = at + t.raw.length
-    if (t.type === 'codespan' || t.type === 'html') out.push({ start: at, end, opaque: true })
+    if (t.type === 'codespan') out.push({ start: at, end, opaque: true })
+    else if (t.type === 'html') out.push({ start: at, end, opaque: false })
     else if (t.type === 'link' || t.type === 'image') {
       out.push({ start: at, end, opaque: false })
       if (t.raw.startsWith('[')) verbatimSpans(t.tokens ?? [], at + 1, out)
@@ -362,12 +363,11 @@ function verbatimSpans(tokens: Token[], at: number, out: Verbatim[] = []): Verba
 
 /**
  * Replaces the formulas on one line with placeholders, pushing their sources to `tex`. Code, HTML,
- * links and images come from marked's own reading of the line, so they match the later parse. A
- * formula may hold whole links, but no code or HTML, and may not end inside any of them.
+ * links and images come from marked's own reading of the line (`lexer` holds the document's link
+ * definitions), so they match the later parse. A formula may hold whole HTML tags (`$<u>_i$`) and
+ * links, but no code, and may not end inside any of them.
  */
-function protectLine(line: string, links: Links, tex: string[]): string {
-  const lexer = new Lexer({ ...marked.defaults, gfm: true })
-  Object.assign(lexer.tokens.links, links)
+function protectLine(line: string, lexer: Lexer, tex: string[]): string {
   const spans = verbatimSpans(lexer.inlineTokens(line), 0)
   const formula = new RegExp(INLINE_TEX.source, 'g')
   let out = ''
@@ -401,12 +401,13 @@ function protectLine(line: string, links: Links, tex: string[]): string {
 export function protectInlineMath(md: string): { body: string; tex: string[] } {
   const tex: string[] = []
   if (!md.includes('$')) return { body: md, tex }
-  const { links } = marked.lexer(md, { gfm: true })
+  const lexer = new Lexer({ ...marked.defaults, gfm: true })
+  Object.assign(lexer.tokens.links, marked.lexer(md, { gfm: true }).links)
   const lines = md.split('\n')
   const code = fencedCodeLines(lines)
   const body = lines
     .map((line, i) =>
-      code[i] || !line.includes('$') || /^\s*\|/.test(line) || LINK_DEF.test(line) ? line : protectLine(line, links, tex),
+      code[i] || !line.includes('$') || /^\s*\|/.test(line) || LINK_DEF.test(line) ? line : protectLine(line, lexer, tex),
     )
     .join('\n')
   return { body, tex }

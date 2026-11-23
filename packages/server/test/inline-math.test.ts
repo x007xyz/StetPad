@@ -144,6 +144,17 @@ describe('inline math import from Markdown', () => {
     expect(body).toBe(src.replace('$k$', `\u{e000}0\u{e001}`))
   })
 
+  it('keeps a formula with an HTML-like tag whole beside a link', () => {
+    expect(protectInlineMath('$<u>_i$ [l](u)').tex).toEqual(['<u>_i'])
+  })
+
+  it('scans many formula lines with many link definitions in linear time', () => {
+    const md = '$x$ [a](u)\n'.repeat(5000) + '\n' + Array.from({ length: 5000 }, (_, i) => `[r${i}]: https://e.com/${i}`).join('\n')
+    const start = performance.now()
+    expect(protectInlineMath(md).tex).toHaveLength(5000)
+    expect(performance.now() - start).toBeLessThan(1000)
+  })
+
   it('scans a line of many formulas in linear time', () => {
     const start = performance.now()
     const { tex } = protectInlineMath('$x$ '.repeat(20000))

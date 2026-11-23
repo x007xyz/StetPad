@@ -92,13 +92,13 @@ export function ChangesPanel({ changes, blockText, onDecide, onFocus, canDecide 
   onFocus: (id: string) => void
 }) {
   if (changes.length === 0) {
-    return <p className="muted pad">没有待处理的修订。AI 的修改、以及你在修订模式下的修改，会列在这里。</p>
+    return <p className="panel-header muted pad">没有待处理的修订。AI 的修改、以及你在修订模式下的修改，会列在这里。</p>
   }
   const all = changes.map((c) => c.id)
   const authors = [...new Set(changes.map((c) => c.author))]
   return (
     <div className="changes">
-      <div className="row between pad">
+      <div className="panel-header row between pad">
         <strong>{changes.length} 条待处理</strong>
         {canDecide && (
           <span className="row">

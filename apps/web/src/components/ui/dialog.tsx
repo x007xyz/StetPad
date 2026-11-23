@@ -42,12 +42,13 @@ export const SheetContent = React.forwardRef<
       aria-describedby={undefined}
       className={cn(
         'fixed z-50 flex flex-col bg-sidebar text-foreground shadow-2xl outline-none',
-        side === 'left' ? 'inset-y-0 left-0 w-[280px] max-w-[85vw] border-r border-border' : 'inset-x-0 bottom-0 h-[78vh] rounded-t-xl border-t border-border bg-background',
+        side === 'left' ? 'inset-y-0 left-0 w-[280px] max-w-[85vw] border-r border-border' : 'bottom-sheet inset-x-0 bottom-0 h-[78vh] rounded-t-xl border-t border-border bg-background',
         className,
       )}
       {...props}
     >
       <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
+      {side === 'bottom' && <DialogPrimitive.Close aria-label="关闭" className="absolute right-2.5 top-2 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-4" /></DialogPrimitive.Close>}
       {children}
     </DialogPrimitive.Content>
   </DialogPrimitive.Portal>

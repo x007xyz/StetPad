@@ -61,6 +61,8 @@ button { cursor: pointer; }
 .muted { color: var(--muted-foreground); } .small { font-size: 12px; } .error { color: var(--destructive); } .warn { color: var(--warn); }
 .row { display: flex; align-items: center; gap: 8px; } .between { justify-content: space-between; } .end { justify-content: flex-end; margin-top: 14px; } .wrap { flex-wrap: wrap; }
 .pad { padding: 10px 14px; margin: 0; }
+/* Reserve the bottom sheet's close control in each panel's existing top row. */
+.bottom-sheet .panel-header, .bottom-sheet .panel-header-content > :first-child { padding-right: 44px; }
 .center { min-height: 100%; display: grid; place-items: center; padding: 16px; }
 .chip { border: 1px solid var(--border); border-radius: 999px; padding: 0 8px; font-size: 12px; color: var(--muted-foreground); white-space: nowrap; }
 .sect { font-size: 13px; font-weight: 600; margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border); }

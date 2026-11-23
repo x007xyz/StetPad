@@ -599,6 +599,8 @@ const mdItalic = (s: string): string => '*' + mdOneLine(s).replace(/([*_\\`])/g,
 
 const mdEscapeText = (s: string): string => s.replace(/([\\`*_\[\]~<]|&(?=[\w#]+;))/g, '\\$1').replace(/\b(https?):(?=\/\/)/gi, '$1\\:')
 
+const mdEscapeDestination = (s: string): string => s.replace(/[\\()]/g, '\\$&')
+
 function mdInlineText(text: string): string {
   // HTML imports store inline formulas as $…$ text. Keep their TeX verbatim.
   return text.split(/((?<![\\$])\$(?=[^\s$])[^$\n]*?[^\s$\\]\$(?![\d$]))/g)
@@ -624,7 +626,7 @@ function inlineMd(delta: InlineDelta[]): string {
       if (a.italic) s = `*${s}*`
       if (a.strike) s = `~~${s}~~`
       const href = (a.link as { href?: string } | undefined)?.href
-      if (href) s = `[${s}](${String(href).replace(/[\\()]/g, '\\$&')})`
+      if (href) s = `[${s}](${mdEscapeDestination(String(href))})`
       return s
     })
     .join('')
@@ -718,8 +720,9 @@ export function blocksToMarkdown(input: Block[]): string {
         out.push('---')
         break
       case 'image': {
+        const src = mdEscapeDestination(String(b.attrs.src ?? ''))
         const caption = mdOneLine(String(b.attrs.caption ?? ''))
-        out.push(`![${mdAlt(String(b.attrs.alt ?? ''))}](${String(b.attrs.src ?? '')}${caption ? ` "${caption.replace(/"/g, "'")}"` : ''})`)
+        out.push(`![${mdAlt(String(b.attrs.alt ?? ''))}](${src}${caption ? ` "${caption.replace(/"/g, "'")}"` : ''})`)
         break
       }
       case 'video': {

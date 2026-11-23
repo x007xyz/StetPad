@@ -89,6 +89,26 @@ describe('search', () => {
     }
   })
 
+  it.each(['missing', 'cached'])('finds rendered numbers and booleans in table cells with %s search text', async (stored) => {
+    const { body: { id }, status } = await call('/api/import/create', {
+      method: 'POST',
+      body: json({ title: 'Imported table', blocks: [{ type: 'table', attrs: { rows: [['Values', 804632, false, null]] }, delta: [] }] }),
+    }, me.token)
+    expect(status).toBe(200)
+    if (stored === 'cached') {
+      await sql.run('update documents set text_content = ?, search_text_version = 1 where id = ?', ['Values', id])
+    }
+    try {
+      for (const query of ['804632', 'false']) {
+        const hit = (await search(query, me.token)).find((result) => result.id === id)
+        expect(hit).toMatchObject({ id, titleMatch: false, snippet: expect.stringContaining(query) })
+      }
+      expect(await search('null', me.token)).toEqual([])
+    } finally {
+      await store.deleteDoc(id)
+    }
+  })
+
   it.each(['école', 'ÉCOLE', 'École'])('finds Unicode titles for %s regardless of case', async (query) => {
     const docs = []
     for (const title of ['ÉCOLE Notes', 'école Notes', 'École Notes']) {

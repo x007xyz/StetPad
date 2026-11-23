@@ -13,7 +13,7 @@ function tableCellText(rows: unknown): string[] {
   try {
     const grid: unknown = JSON.parse(rows)
     return Array.isArray(grid)
-      ? grid.flatMap((row: unknown) => Array.isArray(row) ? row.filter((cell): cell is string => typeof cell === 'string') : [])
+      ? grid.flatMap((row: unknown) => Array.isArray(row) ? row.map((cell: unknown) => String(cell ?? '')) : [])
       : []
   } catch {
     return []

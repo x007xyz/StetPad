@@ -23,7 +23,7 @@ export type TrashedDocRow = DocRow & { deleted_at: number }
 /** One search hit. `snippet` is '' when only the title matched. */
 export interface SearchHit { id: string; title: string; space_id: string | null; folder_id: string | null; updated_at: number; snippet: string; titleMatch: boolean }
 type Bytes = Uint8Array
-const SEARCH_TEXT_VERSION = 1
+const SEARCH_TEXT_VERSION = 2
 
 /** The few things the store needs from a database. `?` marks a parameter. */
 export interface Sql {

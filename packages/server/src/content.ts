@@ -18,7 +18,7 @@ import {
 import { Readability } from '@mozilla/readability'
 import { parseHTML } from 'linkedom'
 import mammoth from 'mammoth'
-import { Lexer, marked, type Token } from 'marked'
+import { Lexer, marked, type MarkedToken, type Token } from 'marked'
 import { AlignmentType, Document as DocxDocument, ExternalHyperlink, FootnoteReferenceRun, HeadingLevel, ImageRun, LevelFormat, Packer, Paragraph as DocxParagraph, Table as DocxTable, TableCell, TableRow, TextRun, WidthType } from 'docx'
 import * as Y from 'yjs'
 import { mathToSvg, svgToPng } from './render'
@@ -62,18 +62,41 @@ function fencedCodeLines(lines: string[]): boolean[] {
 
 const MATH_DELIM = /^[ \t]*\$\$[ \t]*\r?$/
 const MATH_LINE = /^[ \t]*\$\$(.+?)\$\$[ \t]*\r?$/
+const INDENTED_MATH = /^(?: {4}| {0,3}\t)[ \t]*\$\$/
+
+/** Align tokens with their container source, including newlines omitted from token boundaries. */
+function markCodeTokenLines(tokens: MarkedToken[], source: string, fenced: boolean[], indented: boolean[], line = 0): void {
+  let offset = 0
+  for (const token of tokens) {
+    const start = source.indexOf(token.raw, offset)
+    if (start === -1) continue
+    line += source.slice(offset, start).match(/\n/g)?.length ?? 0
+    const next = line + (token.raw.match(/\n/g)?.length ?? 0)
+    if (token.type === 'code') {
+      const code = token.codeBlockStyle === 'indented' ? indented : fenced
+      code.fill(true, line, next + (token.raw.endsWith('\n') ? 0 : 1))
+    } else if (token.type === 'list') markCodeTokenLines(token.items, token.raw, fenced, indented, line)
+    else if (token.type === 'list_item' || token.type === 'blockquote') markCodeTokenLines(token.tokens as MarkedToken[], token.text, fenced, indented, line)
+    offset = start + token.raw.length
+    line = next
+  }
+}
 
 /**
  * `$$` display formulas on their own lines become ```math fences, so marked
- * emits them as `<pre><code class="language-math">`. Fenced code is left alone.
+ * emits them as `<pre><code class="language-math">`. Fenced and indented code is left alone.
  */
 export function mathToFence(md: string): string {
   const lines = md.split('\n')
-  const code = fencedCodeLines(lines)
+  const fenced = fencedCodeLines(lines)
+  const indented = new Array<boolean>(lines.length).fill(false)
+  if (lines.some((line, i) => !fenced[i] && INDENTED_MATH.test(line))) {
+    markCodeTokenLines(marked.lexer(md, { gfm: true }) as MarkedToken[], md.replace(/\r\n?/g, '\n'), fenced, indented)
+  }
   const out: string[] = []
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!
-    if (code[i]) {
+    if (fenced[i] || indented[i]) {
       out.push(line)
       continue
     }
@@ -82,7 +105,8 @@ export function mathToFence(md: string): string {
       out.push('```math', one[1]!.trim(), '```')
       continue
     }
-    const end = MATH_DELIM.test(line) ? lines.findIndex((l, j) => j > i && !code[j] && MATH_DELIM.test(l)) : -1
+    // Inside a display formula, indentation belongs to the formula, not to Markdown code.
+    const end = MATH_DELIM.test(line) ? lines.findIndex((l, j) => j > i && !fenced[j] && MATH_DELIM.test(l)) : -1
     if (end === -1) {
       out.push(line)
       continue
@@ -445,7 +469,11 @@ export function restoreInlineMath(list: Block[], tex: string[]): Block[] {
     }
     for (const d of b.delta) {
       d.insert.split(/(\d+)/).forEach((part, i) => {
-        if (i % 2) push(tex[Number(part)] ?? '', { math: true })
+        if (i % 2) {
+          const src = tex[Number(part)] ?? ''
+          if (b.type === 'codeBlock' || d.attributes?.code) push(`$${src}$`, d.attributes)
+          else push(src, { math: true })
+        }
         else push(part, d.attributes)
       })
     }

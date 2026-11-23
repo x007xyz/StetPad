@@ -41,16 +41,14 @@ export const SheetContent = React.forwardRef<
       ref={ref}
       aria-describedby={undefined}
       className={cn(
-        'fixed z-50 flex flex-col bg-sidebar text-foreground shadow-2xl outline-none',
+        'fixed z-50 flex flex-col bg-sidebar text-foreground shadow-2xl outline-none [&_.chat-bar]:pr-11 [&_.ai:not(:has(.chat-bar))_.ai-log]:pr-9',
         side === 'left' ? 'inset-y-0 left-0 w-[280px] max-w-[85vw] border-r border-border' : 'inset-x-0 bottom-0 h-[78vh] rounded-t-xl border-t border-border bg-background',
         className,
       )}
       {...props}
     >
-      <div className="flex shrink-0 items-center justify-between px-2.5 pt-1.5">
-        <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
-        <DialogPrimitive.Close aria-label="关闭" className="ml-auto rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-4" /></DialogPrimitive.Close>
-      </div>
+      <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
+      <DialogPrimitive.Close aria-label="关闭" className="absolute right-2.5 top-2 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-4" /></DialogPrimitive.Close>
       {children}
     </DialogPrimitive.Content>
   </DialogPrimitive.Portal>

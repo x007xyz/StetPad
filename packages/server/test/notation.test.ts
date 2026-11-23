@@ -544,6 +544,19 @@ describe('import', () => {
 })
 
 describe('export', () => {
+  it.each(['a`b', '`edge``', ' padded ', '   '])('round-trips inline code containing %j through Markdown', async (code) => {
+    const block: Block = { ...para(''), delta: [{ insert: 'Code: ' }, { insert: code, attributes: { code: {} } }] }
+    expect(await fileToBlocks('inline.md', enc(blocksToMarkdown([block])))).toEqual([block])
+  })
+
+  it.each([
+    '[draft](https://example.invalid)',
+    'Literal *asterisks*, _underscores_, `backticks`, [brackets] and \\backslashes.',
+  ])('round-trips literal Markdown text %j without adding marks', async (text) => {
+    const block = para(text)
+    expect(await fileToBlocks('inline.md', enc(blocksToMarkdown([block])))).toEqual([block])
+  })
+
   it.each([
     '1. a\n2. b\n\nend paragraph',
     '- a\n- b\n\n# Heading',

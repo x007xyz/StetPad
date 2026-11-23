@@ -558,6 +558,20 @@ describe('export', () => {
   })
 
   it.each([
+    '# Heading', '1. Item', '> Quote', '---', '- Bullet', '+ Bullet', '2) Item',
+    '* Bullet', '```ts', '~~~',
+  ])('round-trips paragraph %j without changing its block type', async (text) => {
+    const block = para(text)
+    expect(await fileToBlocks('paragraph.md', enc(blocksToMarkdown([block])))).toEqual([block])
+  })
+
+  it('round-trips a literal ordered list marker split across runs before bold text', async () => {
+    const block: Block = { ...para(''), delta: [{ insert: '1' }, { insert: '. ' }, { insert: 'Item', attributes: { bold: {} } }] }
+    expect(await fileToBlocks('paragraph.md', enc(blocksToMarkdown([block]))))
+      .toEqual([{ ...block, delta: [{ insert: '1. ' }, block.delta[2]] }])
+  })
+
+  it.each([
     'https://example.invalid/part)tail',
     'https://example.invalid/part(tail',
     'https://example.invalid/part(tail)',
@@ -644,6 +658,13 @@ describe('export', () => {
     const table: Block = { type: 'table', attrs: { rows: JSON.stringify([[cell, 'tail'], [cell, 'tail']]) }, delta: [] }
     const back = await fileToBlocks('table.md', enc(blocksToMarkdown([table])))
     expect(back).toEqual([table])
+  })
+
+  it.each([
+    '**keep stars**', '&copy;', '&#169;', '[label](https://example.invalid)', '`code`', '$a_b*c$',
+  ])('round-trips literal inline Markdown %j in table cells', async (cell) => {
+    const table: Block = { type: 'table', attrs: { rows: JSON.stringify([[cell, 'tail'], [cell, 'tail']]) }, delta: [] }
+    expect(await fileToBlocks('table.md', enc(blocksToMarkdown([table])))).toEqual([table])
   })
 
   it('html writes figures, video, iframe and escapes attributes', () => {

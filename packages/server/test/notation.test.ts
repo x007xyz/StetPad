@@ -535,6 +535,13 @@ describe('import', () => {
     ])
   })
 
+  it('preserves dollar signs in indented list code', async () => {
+    const blocks = await fileToBlocks('a.md', enc('- item\n\n      $$PID$$\n      echo $name$\n'))
+    expect(blocks).toEqual([
+      { type: 'bulletItem', attrs: { indent: 0 }, delta: [{ insert: 'item ' }, { insert: '$$PID$$\necho $name$\n', attributes: { code: {} } }] },
+    ])
+  })
+
   it('display math is found in a file with CRLF line endings', async () => {
     const blocks = await fileToBlocks('a.md', enc('Before\r\n\r\n$$a+b$$\r\n'))
     expect(blocks.filter((b) => b.type === 'codeBlock').map((b) => [b.attrs.language, b.delta.map((d) => d.insert).join('')])).toEqual([['math', 'a+b']])

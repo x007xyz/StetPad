@@ -404,7 +404,7 @@ export function restoreInlineMath(list: Block[], tex: string[]): Block[] {
       d.insert.split(/(\d+)/).forEach((part, i) => {
         if (i % 2) {
           const src = tex[Number(part)] ?? ''
-          if (b.type === 'codeBlock') push(`$${src}$`)
+          if (b.type === 'codeBlock' || d.attributes?.code) push(`$${src}$`, d.attributes)
           else push(src, { math: true })
         }
         else push(part, d.attributes)

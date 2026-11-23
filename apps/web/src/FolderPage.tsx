@@ -120,7 +120,11 @@ export function FolderPage({ id }: { id: string }) {
 
   const rename = async (input: HTMLInputElement): Promise<void> => {
     const name = input.value
-    if (!info || !name.trim() || name.trim() === info.name) return
+    if (!info) return
+    if (!name.trim() || name.trim() === info.name) {
+      input.value = info.name
+      return
+    }
     try {
       await api(`/folders/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) })
     } catch {

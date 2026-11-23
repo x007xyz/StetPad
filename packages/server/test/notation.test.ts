@@ -499,6 +499,22 @@ describe('import', () => {
     ])
   })
 
+  it('keeps display math delimiters literal in indented code', async () => {
+    const md = '    $$NAME$$\n\n\t$$\n\tx\n\t$$\n\n   $$y$$\n'
+    const blocks = await fileToBlocks('a.md', enc(md))
+    expect(blocks).toEqual([
+      { type: 'codeBlock', attrs: { language: '' }, delta: [{ insert: '$$NAME$$\n\n$$\nx\n$$' }] },
+      { type: 'codeBlock', attrs: { language: 'math' }, delta: [{ insert: 'y' }] },
+    ])
+  })
+
+  it('keeps inline dollars literal alongside display math delimiters in indented code', async () => {
+    const blocks = await fileToBlocks('a.md', enc('    $$NAME$$\n    echo $name$\n'))
+    expect(blocks).toEqual([
+      { type: 'codeBlock', attrs: { language: '' }, delta: [{ insert: '$$NAME$$\necho $name$' }] },
+    ])
+  })
+
   it('display math is found in a file with CRLF line endings', async () => {
     const blocks = await fileToBlocks('a.md', enc('Before\r\n\r\n$$a+b$$\r\n'))
     expect(blocks.filter((b) => b.type === 'codeBlock').map((b) => [b.attrs.language, b.delta.map((d) => d.insert).join('')])).toEqual([['math', 'a+b']])

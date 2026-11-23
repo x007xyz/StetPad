@@ -60,12 +60,12 @@ function fencedCodeLines(lines: string[]): boolean[] {
   })
 }
 
-const MATH_DELIM = /^[ \t]*\$\$[ \t]*\r?$/
-const MATH_LINE = /^[ \t]*\$\$(.+?)\$\$[ \t]*\r?$/
+const MATH_DELIM = /^ {0,3}\$\$[ \t]*\r?$/
+const MATH_LINE = /^ {0,3}\$\$(.+?)\$\$[ \t]*\r?$/
 
 /**
  * `$$` display formulas on their own lines become ```math fences, so marked
- * emits them as `<pre><code class="language-math">`. Fenced code is left alone.
+ * emits them as `<pre><code class="language-math">`. Fenced and indented code is left alone.
  */
 export function mathToFence(md: string): string {
   const lines = md.split('\n')
@@ -387,7 +387,11 @@ export function restoreInlineMath(list: Block[], tex: string[]): Block[] {
     }
     for (const d of b.delta) {
       d.insert.split(/(\d+)/).forEach((part, i) => {
-        if (i % 2) push(tex[Number(part)] ?? '', { math: true })
+        if (i % 2) {
+          const src = tex[Number(part)] ?? ''
+          if (b.type === 'codeBlock') push(`$${src}$`)
+          else push(src, { math: true })
+        }
         else push(part, d.attributes)
       })
     }

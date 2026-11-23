@@ -368,8 +368,6 @@ function verbatimSpans(tokens: Token[], at: number, out: Verbatim[] = []): Verba
  * links, but no code, and may not end inside any of them.
  */
 function protectLine(line: string, lexer: Lexer, tex: string[]): string {
-  lexer.state.inLink = false
-  lexer.state.inRawBlock = false
   const spans = verbatimSpans(lexer.inlineTokens(line), 0)
   const formula = new RegExp(INLINE_TEX.source, 'g')
   let out = ''
@@ -408,9 +406,13 @@ export function protectInlineMath(md: string): { body: string; tex: string[] } {
   const lines = md.split('\n')
   const code = fencedCodeLines(lines)
   const body = lines
-    .map((line, i) =>
-      code[i] || !line.includes('$') || /^\s*\|/.test(line) || LINK_DEF.test(line) ? line : protectLine(line, lexer, tex),
-    )
+    .map((line, i) => {
+      if (code[i] || LINK_DEF.test(line)) return line
+      if (line.includes('$') && !/^\s*\|/.test(line)) return protectLine(line, lexer, tex)
+      // Lex skipped lines with tags too, so an `<a>` left open or closed there is tracked as marked does.
+      if (line.includes('<')) lexer.inlineTokens(line)
+      return line
+    })
     .join('\n')
   return { body, tex }
 }

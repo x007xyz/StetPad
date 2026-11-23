@@ -162,6 +162,14 @@ describe('inline math import from Markdown', () => {
     expect(protectInlineMath(src).tex).toEqual(['y'])
   })
 
+  it('reads CRLF files like LF files, in linear time', () => {
+    const src = 'Example:\n\n    <a href="u"> $x$\n\nsee https://e.com/$a$b $y$\n'
+    expect(protectInlineMath(src.replace(/\n/g, '\r\n'))).toEqual(protectInlineMath(src))
+    const start = performance.now()
+    expect(protectInlineMath('p $x$\r\n\r\n'.repeat(20000)).tex).toHaveLength(20000)
+    expect(performance.now() - start).toBeLessThan(1000)
+  })
+
   it('scans many formula lines with many link definitions in linear time', () => {
     const md = '$x$ [a](u)\n'.repeat(5000) + '\n' + Array.from({ length: 5000 }, (_, i) => `[r${i}]: https://e.com/${i}`).join('\n')
     const start = performance.now()

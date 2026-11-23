@@ -401,6 +401,8 @@ function protectLine(line: string, lexer: Lexer, tex: string[]): string {
 export function protectInlineMath(md: string): { body: string; tex: string[] } {
   const tex: string[] = []
   if (!md.includes('$')) return { body: md, tex }
+  // marked reads `\r\n` and `\r` as `\n`; matching it keeps its token text findable in `md`.
+  md = md.replace(/\r\n?/g, '\n')
   const doc = marked.lexer(md, { gfm: true })
   const lexer = new Lexer({ ...marked.defaults, gfm: true })
   Object.assign(lexer.tokens.links, doc.links)
@@ -411,7 +413,7 @@ export function protectInlineMath(md: string): { body: string; tex: string[] } {
   let line = 0
   for (const t of doc) {
     const at = md.indexOf(t.raw, from)
-    if (at < 0) continue
+    if (at < 0) break
     line += md.slice(from, at).split('\n').length - 1
     const span = t.raw.replace(/\n+$/, '').split('\n').length
     if (t.type === 'code') code.fill(true, line, line + span)

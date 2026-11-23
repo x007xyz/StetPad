@@ -346,6 +346,7 @@ function FolderAi({ folderId, changes, decided, blockText, onDecide, onFocus, di
   const [live, setLive] = useState<Live | null>(null)
   const [error, setError] = useState('')
   const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
   const abort = useRef<AbortController | null>(null)
   const end = useRef<HTMLDivElement>(null)
 
@@ -394,16 +395,20 @@ function FolderAi({ folderId, changes, decided, blockText, onDecide, onFocus, di
 
   const running = live?.status === 'running'
   const noModel = models !== null && models.models.length === 0
+  const canSend = !!input.trim() && !noModel && !running && !disabled && !sending
   const send = async (): Promise<void> => {
     const text = input.trim()
-    if (!text || running || disabled) return
-    setInput('')
+    if (!canSend) return
+    setSending(true)
     setError('')
     try {
       const { runId } = await post<{ runId: string }>(`/folders/${folderId}/runs`, { instruction: text, modelId: model || undefined })
+      setInput('')
       attach(runId, text)
     } catch (e) {
       setError(e instanceof Error ? e.message : '启动失败')
+    } finally {
+      setSending(false)
     }
   }
   const past = history.filter((r) => r.id !== live?.runId)
@@ -471,7 +476,7 @@ function FolderAi({ folderId, changes, decided, blockText, onDecide, onFocus, di
           <Select className="max-w-[200px]" size="sm" aria-label="模型" value={model} onValueChange={setModel} options={(models?.models ?? []).map((m) => ({ value: m.id, label: m.label + (m.verified ? '' : '（未验证）') }))} />
           {running
             ? <Button size="sm" onClick={() => void post(`/runs/${live!.runId}/cancel`)}>停止</Button>
-            : <Button size="sm" variant="default" disabled={!input.trim() || noModel || disabled} onClick={() => void send()}>发送</Button>}
+            : <Button size="sm" variant="default" disabled={!canSend} onClick={() => void send()}>发送</Button>}
         </div>
       </div>
     </div>

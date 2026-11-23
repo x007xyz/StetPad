@@ -35,6 +35,35 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+it.each(['no model', '400', 'network', 'success', 'empty', 'no documents'] as const)('preserves the folder composer unless a run starts: %s', async (outcome) => {
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+  const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+    if (url.endsWith('/models')) return Promise.resolve(Response.json({ models: outcome === 'no model' ? [] : [{ id: 'test', label: 'Test', verified: true }], default: 'test' }))
+    if (url === '/api/folders/a') return Promise.resolve(Response.json(folder('a', outcome === 'no documents')))
+    if (url.endsWith('/runs') && init?.method === 'POST') {
+      if (outcome === 'network') return Promise.reject(new Error('Network unavailable'))
+      return Promise.resolve(outcome === 'success' ? Response.json({ runId: 'run' }) : Response.json({ error: 'Cannot start' }, { status: 400 }))
+    }
+    if (url.endsWith('/events')) return new Promise<Response>(() => {})
+    return Promise.resolve(Response.json({ runs: [], active: null }))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  await act(async () => root.render(<FolderPage id="a" />))
+  const area = container.querySelector('textarea')!
+  const draft = outcome === 'empty' ? '   ' : 'Keep my draft'
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(area, draft)
+    area.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  const send = [...container.querySelectorAll('button')].find((button) => button.textContent === '发送')!
+  const blocked = outcome === 'no model' || outcome === 'empty' || outcome === 'no documents'
+  expect(send.disabled).toBe(blocked)
+  await act(async () => area.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  expect(area.value).toBe(outcome === 'success' ? '' : draft)
+  const posts = fetchMock.mock.calls.filter(([url, init]) => url.endsWith('/runs') && init?.method === 'POST')
+  expect(posts).toHaveLength(blocked ? 0 : 1)
+})
+
 it.each(['success', 'empty', 'error'])('ignores a stale folder %s after keyed navigation', async (stale) => {
   const a = deferred<Response>()
   const b = deferred<Response>()

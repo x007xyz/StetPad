@@ -48,6 +48,46 @@ it.each(['http', 'network', 'success'])('handles document creation (%s)', async 
   }
 })
 
+it('ignores overlapping document creation calls but allows a later create', async () => {
+  vi.mocked(go).mockClear()
+  const pending = deferred<Response>()
+  const create = vi.fn()
+    .mockReturnValueOnce(pending.promise)
+    .mockResolvedValueOnce(Response.json({ id: 'second-doc' }))
+  vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) =>
+    url === '/api/docs' && init?.method === 'POST' ? create() : Promise.resolve(Response.json([])),
+  ))
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  let createDoc!: () => Promise<void>
+  function Consumer() {
+    createDoc = useWorkspace().createDoc
+    return null
+  }
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<Shell session={{ user: { id: 'me', email: '' } }}><Consumer /></Shell>))
+    await act(async () => {
+      const first = createDoc()
+      const second = createDoc()
+      pending.resolve(Response.json({ id: 'first-doc' }))
+      await Promise.all([first, second])
+    })
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(go).toHaveBeenCalledTimes(1)
+    expect(go).toHaveBeenCalledWith({ page: 'doc', id: 'first-doc' })
+
+    await act(async () => createDoc())
+    expect(create).toHaveBeenCalledTimes(2)
+    expect(go).toHaveBeenLastCalledWith({ page: 'doc', id: 'second-doc' })
+  } finally {
+    act(() => root.unmount())
+    container.remove()
+    vi.unstubAllGlobals()
+  }
+})
+
 it.each([
   ['Linux x86_64', 'Ctrl K'],
   ['Win32', 'Ctrl K'],

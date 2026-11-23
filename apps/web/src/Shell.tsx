@@ -76,6 +76,7 @@ export function Shell({ session, activeId, activeFolderId, trashActive, children
   const [toast, setToast] = useState<{ text: string; nonce: number; error?: boolean } | null>(null)
   const [trashVersion, setTrashVersion] = useState(0)
   const reloadVersion = useRef(0)
+  const creatingDoc = useRef(false)
   const notify = useCallback((text: string, options?: { error?: boolean }): void => {
     setToast({ text, nonce: Date.now(), error: options?.error })
   }, [])
@@ -92,11 +93,15 @@ export function Shell({ session, activeId, activeFolderId, trashActive, children
   }, [reload, activeId])
 
   const createDoc = useCallback(async (): Promise<void> => {
+    if (creatingDoc.current) return
+    creatingDoc.current = true
     setMobileOpen(false)
     try {
       go({ page: 'doc', id: (await post<DocMeta>('/docs')).id })
     } catch {
       notify('新建文档失败，请重试。', { error: true })
+    } finally {
+      creatingDoc.current = false
     }
   }, [notify])
   const removeDoc = useCallback(async (d: DocMeta): Promise<void> => {

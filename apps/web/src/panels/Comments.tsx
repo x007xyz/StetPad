@@ -39,7 +39,7 @@ export function CommentsPanel({ list, focusId, aiHint, onReply, onResolve, onDel
 
   return (
     <div className="comments" ref={root}>
-      <div className="row between pad">
+      <div className="panel-header row between pad">
         <strong>{open.length} 条未解决</strong>
         {list.length > open.length && (
           <label className="row"><input type="checkbox" checked={showResolved} onChange={(e) => setShowResolved(e.target.checked)} /> 显示已解决</label>

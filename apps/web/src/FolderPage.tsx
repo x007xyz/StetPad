@@ -425,7 +425,7 @@ function FolderAi({ folderId, changes, decided, blockText, onDecide, onFocus, di
 
   return (
     <div className="ai">
-      <div className="ai-log">
+      <div className="panel-header-content ai-log">
         {past.length === 0 && !live && (
           <p className="muted pad">
             这里的 AI 能阅读并修改这个文件夹里的全部文档，例如"统一各篇的语气""检查前后的术语是否一致"。修改会以修订的形式出现在对应文档里，由你逐条确认。

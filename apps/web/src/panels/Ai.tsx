@@ -319,7 +319,7 @@ function ChatBar({ runs }: { runs: ReturnType<typeof useRuns> }) {
     if (t && t !== chats.find((c) => c.id === id)?.title) void renameChat(id, t)
   }
   return (
-    <div className="chat-bar">
+    <div className="panel-header chat-bar">
       <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setEditing(null) }}>
         <PopoverTrigger asChild>
           <button className="chat-current" translate="no" aria-label={t('切换对话')} title={label(cur)}>

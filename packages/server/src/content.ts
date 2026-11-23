@@ -336,14 +336,19 @@ export function applyMdFootnotes(list: Block[], defs: Map<string, string>): Bloc
 const INLINE_TEX = /(?<![\\$])\$(?=[^\s$])([^$\n]*?[^\s$\\])\$(?![\d$])/g
 const TOKEN = /(\d+)/g
 
-/** A code span: a run of backticks, then text, then a run of the same length. */
-const CODE_SPAN = /(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)/g
+/**
+ * Inline syntax a formula placeholder must not enter: a code span (a run of backticks, then text,
+ * then a run of the same length), a link or image with its destination, or an autolink.
+ */
+const VERBATIM = /(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)|!?\[(?:[^[\]\n]|\[[^[\]\n]*\])*\]\((?:[^()\n]|\([^()\n]*\))*\)|<[a-z][\w+.-]*:[^\s<>]*>/gi
+/** A link reference definition: `[label]: destination`. */
+const LINK_DEF = /^ {0,3}\[[^\]]+\]:/
 
-/** Applies `f` to the parts of `line` outside code spans. */
-function outsideCodeSpans(line: string, f: (part: string) => string): string {
+/** Applies `f` to the parts of `line` outside code spans, links, images and autolinks. */
+function outsideVerbatim(line: string, f: (part: string) => string): string {
   let out = ''
   let last = 0
-  for (const m of line.matchAll(CODE_SPAN)) {
+  for (const m of line.matchAll(VERBATIM)) {
     out += f(line.slice(last, m.index)) + m[0]
     last = m.index + m[0].length
   }
@@ -352,8 +357,8 @@ function outsideCodeSpans(line: string, f: (part: string) => string): string {
 
 /**
  * Replaces inline `$…$` with placeholders before Markdown parsing, so that `*` and `_` inside a
- * formula are not read as emphasis. Code (fenced blocks, code spans), tables and lines with links or
- * images are left alone. `restoreInlineMath` puts the formulas back as math-marked text.
+ * formula are not read as emphasis. Code (fenced blocks, code spans), tables, links, images and link
+ * reference definitions are left alone. `restoreInlineMath` puts the formulas back as math-marked text.
  */
 export function protectInlineMath(md: string): { body: string; tex: string[] } {
   const tex: string[] = []
@@ -362,9 +367,9 @@ export function protectInlineMath(md: string): { body: string; tex: string[] } {
   const body = lines
     .map((line, i) => {
       if (code[i]) return line
-      if (/^\s*\|/.test(line) || line.includes('](') || line.includes('![')) return line
-      return outsideCodeSpans(line, (part) =>
-        part.replace(INLINE_TEX, (_m, src: string) => {
+      if (/^\s*\|/.test(line) || LINK_DEF.test(line)) return line
+      return outsideVerbatim(line, (part) =>
+        part.includes('](') ? part : part.replace(INLINE_TEX, (_m, src: string) => {
           tex.push(src)
           return `${tex.length - 1}`
         }),

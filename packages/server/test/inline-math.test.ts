@@ -93,6 +93,25 @@ describe('inline math import from Markdown', () => {
     expect(b!.delta.find((d) => d.insert === 'x')?.attributes?.italic).toBeTruthy()
   })
 
+  it('turns $…$ into math on a line with a link', async () => {
+    const [b] = await fileToBlocks('notes.md', enc('式子 $a+b$ 见[文档](https://example.com/a)'))
+    expect(b!.delta).toEqual([
+      { insert: '式子 ' },
+      math('a+b'),
+      { insert: ' 见' },
+      { insert: '文档', attributes: { link: { href: 'https://example.com/a' } } },
+    ])
+  })
+
+  it('leaves dollars inside link and image destinations alone', () => {
+    const { body, tex } = protectInlineMath('[a](https://e.com/?q=$x$) ![b]($p$.png) <https://e.com/$w$> $y$\n[r]: https://e.com/$z$')
+    expect(tex).toEqual(['y'])
+    expect(body).toContain('[a](https://e.com/?q=$x$)')
+    expect(body).toContain('![b]($p$.png)')
+    expect(body).toContain('<https://e.com/$w$>')
+    expect(body).toContain('[r]: https://e.com/$z$')
+  })
+
   it('leaves dollars inside a double- or triple-backtick code span alone', () => {
     const { body, tex } = protectInlineMath('```a `$x$` b``` and ``$y$`` and $z$')
     expect(tex).toEqual(['z'])

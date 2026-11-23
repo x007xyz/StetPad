@@ -23,6 +23,7 @@ export type TrashedDocRow = DocRow & { deleted_at: number }
 /** One search hit. `snippet` is '' when only the title matched. */
 export interface SearchHit { id: string; title: string; space_id: string | null; folder_id: string | null; updated_at: number; snippet: string; titleMatch: boolean }
 type Bytes = Uint8Array
+const SEARCH_TEXT_VERSION = 2
 
 /** The few things the store needs from a database. `?` marks a parameter. */
 export interface Sql {
@@ -136,6 +137,7 @@ export class Store {
       // Trash (soft delete) and the plain text kept for search.
       `alter table documents add column deleted_at ${int}`,
       'alter table documents add column text_content text',
+      `alter table documents add column search_text_version ${int} not null default 0`,
     ]) {
       await this.sql.exec(stmt).catch(() => {})
     }
@@ -202,17 +204,24 @@ export class Store {
   // --- search and plain text
   /** The documents a user may read: their own. */
   private static SCOPE = 'user_id = ?'
+  private static NEEDS_TEXT = '(text_content is null or search_text_version <> ?)'
   /** Stores the plain text of a document, as saved by the collaboration service. */
   setDocText(id: string, text: string): Promise<void> {
-    return this.sql.run('update documents set text_content = ? where id = ?', [text, id])
+    return this.sql.run('update documents set text_content = ?, search_text_version = ? where id = ?', [text, SEARCH_TEXT_VERSION, id])
   }
-  /** Stores plain text only if none is stored yet, so a computed value never replaces a fresher one. */
+  /** Fills missing or outdated plain text without replacing a value already written by the current extractor. */
   fillDocText(id: string, text: string): Promise<void> {
-    return this.sql.run('update documents set text_content = ? where id = ? and text_content is null', [text, id])
+    return this.sql.run(
+      `update documents set text_content = ?, search_text_version = ? where id = ? and ${Store.NEEDS_TEXT}`,
+      [text, SEARCH_TEXT_VERSION, id, SEARCH_TEXT_VERSION],
+    )
   }
-  /** Live documents the user can read whose plain text has never been stored. */
-  async docsMissingText(userId: string): Promise<string[]> {
-    return (await this.sql.all<{ id: string }>(`select id from documents where text_content is null and deleted_at is null and ${Store.SCOPE}`, [userId])).map((r) => r.id)
+  /** Live documents the user can read with missing or outdated search text. */
+  async docsNeedingText(userId: string): Promise<string[]> {
+    return (await this.sql.all<{ id: string }>(
+      `select id from documents where ${Store.NEEDS_TEXT} and deleted_at is null and ${Store.SCOPE}`,
+      [SEARCH_TEXT_VERSION, userId],
+    )).map((r) => r.id)
   }
   /**
    * Live documents the user can read whose title or text contains `q` (case-insensitive substring).

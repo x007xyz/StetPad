@@ -8,9 +8,23 @@ export interface VersionContent {
   original: RichBlock[]
 }
 
-/** The document as plain text, one line per block (the revised text). Kept for search. */
+function tableCellText(rows: unknown): string[] {
+  if (typeof rows !== 'string') return []
+  try {
+    const grid: unknown = JSON.parse(rows)
+    return Array.isArray(grid)
+      ? grid.flatMap((row: unknown) => Array.isArray(row) ? row.map((cell: unknown) => String(cell ?? '')) : [])
+      : []
+  } catch {
+    return []
+  }
+}
+
+/** The revised document text, with blocks and table cells separated by newlines. Kept for search. */
 export function docPlainText(doc: Y.Doc): string {
-  return projectBlocks(doc, 'revised').map((b) => b.text).join('\n')
+  return projectBlocks(doc, 'revised').map((b) =>
+    b.type === 'table' ? [b.text, ...tableCellText(b.attrs.rows)].filter(Boolean).join('\n') : b.text,
+  ).join('\n')
 }
 
 /**

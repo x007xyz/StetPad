@@ -49,6 +49,26 @@ test('shows an empty folder then its moved document in folder view', async ({ pa
   await expect(editor(page)).toContainText('Folder view body')
 })
 
+test('restores the folder name when its header is cleared', async ({ page, request }) => {
+  const headers = { Authorization: 'Bearer dev' }
+  const folder = await request.post('/api/folders', { headers, data: { name: 'Folder to keep' } })
+  await expect(folder).toBeOK()
+  const { id } = await folder.json()
+  await page.goto(`/#/f/${id}`)
+
+  const name = page.getByRole('textbox', { name: '文件夹名称', exact: true })
+  await expect(name).toHaveValue('Folder to keep')
+  await name.fill('')
+  await name.blur()
+  await expect(name).toHaveValue('Folder to keep')
+
+  await name.fill('   ')
+  await name.press('Enter')
+  await expect(name).toHaveValue('Folder to keep')
+  await page.reload()
+  await expect(name).toHaveValue('Folder to keep')
+})
+
 test('persists a cleared document title in folder view', async ({ page, request }) => {
   const headers = { Authorization: 'Bearer dev' }
   const folder = await request.post('/api/folders', { headers, data: { name: 'Title reset folder' } })

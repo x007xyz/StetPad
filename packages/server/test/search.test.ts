@@ -1,5 +1,5 @@
 import { HocuspocusProvider } from '@hocuspocus/provider'
-import { insertBlock, projectBlocks } from '@stetpad/crdt'
+import { findBlock, insertBlock, projectBlocks } from '@stetpad/crdt'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -69,6 +69,24 @@ describe('search', () => {
     expect(hits[1]!.snippet.length).toBeLessThanOrEqual(110)
     // The computed text is kept for next time.
     expect((await sql.all<{ text_content: string }>('select text_content from documents where id = ?', [byBody.id]))[0]!.text_content).toContain('alpha milestone')
+  })
+
+  it.each(['missing', 'legacy'])('finds table cell text with %s stored search text', async (stored) => {
+    const content = new Y.Doc()
+    insertBlock(content, 0, 'p', 'Project notes')
+    insertBlock(content, 1, 't', '', 'table', { rows: JSON.stringify([['Heading', ''], ['Other cell', 'Budget forecast']]) })
+    const doc = await store.createDoc(me.id, 'Example table', Y.encodeStateAsUpdate(content))
+    if (stored === 'legacy') {
+      await sql.run('update documents set text_content = ? where id = ?', ['Project notes\n', doc.id])
+    }
+    try {
+      expect(await search('budget forecast', me.token)).toEqual([
+        expect.objectContaining({ id: doc.id, titleMatch: false, snippet: expect.stringContaining('Budget forecast') }),
+      ])
+      expect((await sql.all<{ text_content: string }>('select text_content from documents where id = ?', [doc.id]))[0]!.text_content).toContain('Budget forecast')
+    } finally {
+      await store.deleteDoc(doc.id)
+    }
   })
 
   it.each(['école', 'ÉCOLE', 'École'])('finds Unicode titles for %s regardless of case', async (query) => {
@@ -157,6 +175,27 @@ describe('search', () => {
     insertBlock(doc, 1, 'bz', 'Zebra crossing notes')
     await until(async () => ((await sql.all<{ text_content: string | null }>('select text_content from documents where id = ?', [id]))[0]?.text_content ?? '').includes('Zebra'), 'text saved', 10000)
     expect((await search('zebra', a.token)).map((h) => h.id)).toEqual([id])
+  })
+
+  it('updates the stored search text when a live table cell changes', async () => {
+    const { body: { id } } = await call('/api/import/create', {
+      method: 'POST',
+      body: json({ title: 'Live table', blocks: [{ type: 'table', attrs: { rows: [['Previous cell']] }, delta: [] }] }),
+    }, me.token)
+    await search('Previous cell', me.token)
+    const provider = new HocuspocusProvider({ url: base.replace('http', 'ws') + '/collab', name: id, document: new Y.Doc(), token: me.token })
+    providers.push(provider)
+    const doc = provider.document
+    await until(() => projectBlocks(doc, 'physical').length === 1, 'initial table')
+    await until(() => provider.synced, 'provider sync')
+    const tableId = projectBlocks(doc, 'physical')[0]!.blockId
+    doc.transact(() => {
+      findBlock(doc, tableId)!.setAttribute('rows', JSON.stringify([['Updated cell']]))
+      insertBlock(doc, 1, 'p', 'New paragraph')
+    })
+    await until(async () => ((await sql.all<{ text_content: string | null }>('select text_content from documents where id = ?', [id]))[0]?.text_content ?? '').includes('New paragraph'), 'text saved')
+    expect((await search('Updated cell', me.token)).map((h) => h.id)).toEqual([id])
+    expect(await search('Previous cell', me.token)).toEqual([])
   })
 
   it('returns at most 30 hits', async () => {

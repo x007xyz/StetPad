@@ -3,10 +3,50 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import type { DocMeta, Folder } from './api'
+import { go } from './App'
 import { deferred } from './lib/deferred.test-utils'
-import { Shell } from './Shell'
+import { Shell, useWorkspace } from './Shell'
 
 vi.mock('./App', () => ({ go: vi.fn() }))
+
+it.each(['http', 'network', 'success'])('handles document creation (%s)', async (result) => {
+  vi.mocked(go).mockClear()
+  const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    if (init?.method !== 'POST') return Response.json([])
+    if (result === 'network') throw new TypeError('Failed to fetch')
+    return result === 'http'
+      ? Response.json({ error: 'Creation failed' }, { status: 500 })
+      : Response.json({ id: 'new-doc' })
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  let createDoc!: () => Promise<void>
+  function Consumer() {
+    createDoc = useWorkspace().createDoc
+    return null
+  }
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<Shell session={{ user: { id: 'me', email: '' } }}><Consumer /></Shell>))
+    await act(async () => {
+      await expect(createDoc()).resolves.toBeUndefined()
+    })
+    expect(fetchMock).toHaveBeenCalledWith('/api/docs', expect.objectContaining({ method: 'POST' }))
+    if (result === 'success') {
+      expect(go).toHaveBeenCalledWith({ page: 'doc', id: 'new-doc' })
+      expect(container.querySelector('[role="alert"]')).toBeNull()
+    } else {
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain('新建文档失败，请重试。')
+      expect(go).not.toHaveBeenCalled()
+    }
+  } finally {
+    act(() => root.unmount())
+    container.remove()
+    vi.unstubAllGlobals()
+  }
+})
 
 it.each([
   ['Linux x86_64', 'Ctrl K'],

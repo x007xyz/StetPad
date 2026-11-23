@@ -93,8 +93,12 @@ export function Shell({ session, activeId, activeFolderId, trashActive, children
 
   const createDoc = useCallback(async (): Promise<void> => {
     setMobileOpen(false)
-    go({ page: 'doc', id: (await post<DocMeta>('/docs')).id })
-  }, [])
+    try {
+      go({ page: 'doc', id: (await post<DocMeta>('/docs')).id })
+    } catch {
+      notify('新建文档失败，请重试。', { error: true })
+    }
+  }, [notify])
   const removeDoc = useCallback(async (d: DocMeta): Promise<void> => {
     if (!(await confirmAction({ title: `把"${d.title || '无标题'}"移到回收站？`, body: '30 天内可以在回收站恢复。', confirmLabel: '移到回收站', danger: true }))) return
     try {

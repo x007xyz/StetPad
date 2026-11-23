@@ -515,6 +515,26 @@ describe('import', () => {
     ])
   })
 
+  it.each([
+    ['- item\n\n    $$\n    x\n    $$\n', 'bulletItem', '    x'],
+    ['1. item\n\n    $$a+b$$\n', 'orderedItem', 'a+b'],
+  ])('imports display math on an indented list continuation: %j', async (md, type, tex) => {
+    const blocks = await fileToBlocks('a.md', enc(md))
+    expect(blocks).toEqual([
+      { type, attrs: { indent: 0 }, delta: [{ insert: 'item' }] },
+      { type: 'codeBlock', attrs: { language: 'math' }, delta: [{ insert: tex }] },
+    ])
+  })
+
+  it('keeps deeper list continuation code literal next to display math', async () => {
+    const md = '- item\n\n      $$code$$\n\n    $$a+b$$\n'
+    const blocks = await fileToBlocks('a.md', enc(md))
+    expect(blocks).toEqual([
+      { type: 'bulletItem', attrs: { indent: 0 }, delta: [{ insert: 'item ' }, { insert: '$$code$$\n', attributes: { code: {} } }] },
+      { type: 'codeBlock', attrs: { language: 'math' }, delta: [{ insert: 'a+b' }] },
+    ])
+  })
+
   it('display math is found in a file with CRLF line endings', async () => {
     const blocks = await fileToBlocks('a.md', enc('Before\r\n\r\n$$a+b$$\r\n'))
     expect(blocks.filter((b) => b.type === 'codeBlock').map((b) => [b.attrs.language, b.delta.map((d) => d.insert).join('')])).toEqual([['math', 'a+b']])

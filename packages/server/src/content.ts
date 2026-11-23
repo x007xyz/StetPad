@@ -18,7 +18,7 @@ import {
 import { Readability } from '@mozilla/readability'
 import { parseHTML } from 'linkedom'
 import mammoth from 'mammoth'
-import { marked } from 'marked'
+import { marked, type MarkedToken } from 'marked'
 import { AlignmentType, Document as DocxDocument, ExternalHyperlink, FootnoteReferenceRun, HeadingLevel, ImageRun, LevelFormat, Packer, Paragraph as DocxParagraph, Table as DocxTable, TableCell, TableRow, TextRun, WidthType } from 'docx'
 import * as Y from 'yjs'
 import { mathToSvg, svgToPng } from './render'
@@ -60,8 +60,20 @@ function fencedCodeLines(lines: string[]): boolean[] {
   })
 }
 
-const MATH_DELIM = /^ {0,3}\$\$[ \t]*\r?$/
-const MATH_LINE = /^ {0,3}\$\$(.+?)\$\$[ \t]*\r?$/
+const MATH_DELIM = /^[ \t]*\$\$[ \t]*\r?$/
+const MATH_LINE = /^[ \t]*\$\$(.+?)\$\$[ \t]*\r?$/
+const INDENTED_MATH = /^(?: {4}| {0,3}\t)[ \t]*\$\$/
+
+/** Marked strips container prefixes when lexing their children but retains the same line breaks. */
+function markCodeTokenLines(tokens: MarkedToken[], code: boolean[], line = 0): void {
+  for (const token of tokens) {
+    const next = line + (token.raw.match(/\n/g)?.length ?? 0)
+    if (token.type === 'code') code.fill(true, line, next + (token.raw.endsWith('\n') ? 0 : 1))
+    else if (token.type === 'list') markCodeTokenLines(token.items, code, line)
+    else if (token.type === 'list_item' || token.type === 'blockquote') markCodeTokenLines(token.tokens as MarkedToken[], code, line)
+    line = next
+  }
+}
 
 /**
  * `$$` display formulas on their own lines become ```math fences, so marked
@@ -70,6 +82,9 @@ const MATH_LINE = /^ {0,3}\$\$(.+?)\$\$[ \t]*\r?$/
 export function mathToFence(md: string): string {
   const lines = md.split('\n')
   const code = fencedCodeLines(lines)
+  if (lines.some((line, i) => !code[i] && INDENTED_MATH.test(line))) {
+    markCodeTokenLines(marked.lexer(md, { gfm: true }) as MarkedToken[], code)
+  }
   const out: string[] = []
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!

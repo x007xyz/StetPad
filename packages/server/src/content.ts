@@ -336,16 +336,31 @@ export function applyMdFootnotes(list: Block[], defs: Map<string, string>): Bloc
 const INLINE_TEX = /(?<![\\$])\$(?=[^\s$])([^$\n]*?[^\s$\\])\$(?![\d$])/g
 const TOKEN = /(\d+)/g
 
+/** A code span: a run of backticks, then text, then a run of the same length. */
+const CODE_SPAN = /(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)/g
+
+/** Applies `f` to the parts of `line` outside code spans. */
+function outsideCodeSpans(line: string, f: (part: string) => string): string {
+  let out = ''
+  let last = 0
+  for (const m of line.matchAll(CODE_SPAN)) {
+    out += f(line.slice(last, m.index)) + m[0]
+    last = m.index + m[0].length
+  }
+  return out + f(line.slice(last))
+}
+
 const LINK_TEXT = String.raw`\[(?:\\.|[^[\]\\\n]|\[[^[\]\n]*\])*\]`
-const LINK_DEST = String.raw`\((?:<[^<>\n]*>|\\.|[^()\\\n]|\([^()\n]*\))*\)`
+const LINK_DEST = String.raw`\([ \t]*<[^<>\n]*>[^()\n]*\)|\((?:\\.|[^()\\\n]|\([^()\n]*\))*\)`
 /**
- * Inline syntax a formula placeholder must not enter: a code span (a run of backticks, then text,
- * then a run of the same length), an inline or reference link or image, an autolink, or a bare URL.
+ * Inline `$…$` (group 1 is its source), or syntax a formula placeholder must not enter: an inline or
+ * reference link or image, an autolink, or a bare URL. Whichever starts first wins, so a formula
+ * containing brackets or a URL stays one formula, and a link or URL containing dollars stays intact.
  */
-const VERBATIM = new RegExp(
+const INLINE_TEX_OR_LINK = new RegExp(
   [
-    String.raw`(?<!\`)(\`+)(?!\`).*?(?<!\`)\1(?!\`)`,
-    String.raw`!?${LINK_TEXT}(?:${LINK_DEST}|\[[^\]\n]*\])`,
+    INLINE_TEX.source,
+    String.raw`!?${LINK_TEXT}(?:${LINK_DEST}|\[[^\]\n]*\](?!\())`,
     String.raw`<[a-z][\w+.-]*:[^\s<>]*>`,
     String.raw`(?:(?:ftp|https?):\/\/|www\.)[^\s<]*`,
   ].join('|'),
@@ -353,17 +368,6 @@ const VERBATIM = new RegExp(
 )
 /** A link reference definition: `[label]: destination`. */
 const LINK_DEF = /^ {0,3}\[[^\]]+\]:/
-
-/** Applies `f` to the parts of `line` outside the inline syntax matched by `VERBATIM`. */
-function outsideVerbatim(line: string, f: (part: string) => string): string {
-  let out = ''
-  let last = 0
-  for (const m of line.matchAll(VERBATIM)) {
-    out += f(line.slice(last, m.index)) + m[0]
-    last = m.index + m[0].length
-  }
-  return out + f(line.slice(last))
-}
 
 /**
  * Replaces inline `$…$` with placeholders before Markdown parsing, so that `*` and `_` inside a
@@ -378,8 +382,9 @@ export function protectInlineMath(md: string): { body: string; tex: string[] } {
     .map((line, i) => {
       if (code[i]) return line
       if (/^\s*\|/.test(line) || LINK_DEF.test(line)) return line
-      return outsideVerbatim(line, (part) =>
-        part.includes('](') ? part : part.replace(INLINE_TEX, (_m, src: string) => {
+      return outsideCodeSpans(line, (part) =>
+        part.replace(INLINE_TEX_OR_LINK, (m, src: string | undefined) => {
+          if (src === undefined) return m
           tex.push(src)
           return `${tex.length - 1}`
         }),

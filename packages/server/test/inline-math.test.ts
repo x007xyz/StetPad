@@ -119,6 +119,17 @@ describe('inline math import from Markdown', () => {
     expect(body).toBe(src.replace('$y$', `\u{e000}0\u{e001}`))
   })
 
+  it('keeps a formula with brackets or a URL whole beside a link', () => {
+    const { tex } = protectInlineMath(String.raw`$A[i][j]$ and $\text{see https://e.com}$ [l](u) [a][b](mailto:x$y$@e.com)`)
+    expect(tex).toEqual(['A[i][j]', String.raw`\text{see https://e.com}`])
+  })
+
+  it('scans a link with many angle brackets and no closing paren in linear time', () => {
+    const start = performance.now()
+    protectInlineMath(`[a](${'<b>'.repeat(5000)} "( $x$`)
+    expect(performance.now() - start).toBeLessThan(200)
+  })
+
   it('leaves dollars inside a double- or triple-backtick code span alone', () => {
     const { body, tex } = protectInlineMath('```a `$x$` b``` and ``$y$`` and $z$')
     expect(tex).toEqual(['z'])

@@ -665,7 +665,7 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   // --- documents
   api.get('/docs', async (c) => c.json(await store.listDocs(c.get('user').id)))
   api.post('/docs', async (c) => {
-    const body = await c.req.json<{ title?: unknown; empty?: boolean; folderId?: string }>().catch(() => ({} as { title?: unknown; empty?: boolean; folderId?: string }))
+    const body = (await c.req.json<{ title?: unknown; empty?: boolean; folderId?: string } | null>().catch(() => null)) ?? {}
     if (body.title !== undefined && typeof body.title !== 'string') return c.json({ error: '文档标题必须是字符串' }, 400)
     const folder = body.folderId ? await folderFor(c, body.folderId) : null
     if (body.folderId && !folder) return notFound(c)
@@ -780,7 +780,7 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   }
   api.get('/folders', async (c) => c.json(await store.listFolders(c.get('user').id)))
   api.post('/folders', async (c) => {
-    const body = await c.req.json<{ name?: unknown }>().catch(() => ({} as { name?: unknown }))
+    const body = (await c.req.json<{ name?: unknown } | null>().catch(() => null)) ?? {}
     if (body.name !== undefined && typeof body.name !== 'string') return c.json({ error: '文件夹名称必须是字符串' }, 400)
     return c.json(await store.createFolder(c.get('user').id, body.name?.trim().slice(0, 80) || '新建文件夹'))
   })

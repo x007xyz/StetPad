@@ -368,6 +368,8 @@ function verbatimSpans(tokens: Token[], at: number, out: Verbatim[] = []): Verba
  * links, but no code, and may not end inside any of them.
  */
 function protectLine(line: string, lexer: Lexer, tex: string[]): string {
+  lexer.state.inLink = false
+  lexer.state.inRawBlock = false
   const spans = verbatimSpans(lexer.inlineTokens(line), 0)
   const formula = new RegExp(INLINE_TEX.source, 'g')
   let out = ''

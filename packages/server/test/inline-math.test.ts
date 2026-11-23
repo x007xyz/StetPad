@@ -148,6 +148,11 @@ describe('inline math import from Markdown', () => {
     expect(protectInlineMath('$<u>_i$ [l](u)').tex).toEqual(['<u>_i'])
   })
 
+  it('reads each line afresh after an anchor that closes on a skipped line', () => {
+    const src = '<a href="u">$x$\nend</a>\n\nsee https://e.com/$a$b'
+    expect(protectInlineMath(src).tex).toEqual(['x'])
+  })
+
   it('scans many formula lines with many link definitions in linear time', () => {
     const md = '$x$ [a](u)\n'.repeat(5000) + '\n' + Array.from({ length: 5000 }, (_, i) => `[r${i}]: https://e.com/${i}`).join('\n')
     const start = performance.now()

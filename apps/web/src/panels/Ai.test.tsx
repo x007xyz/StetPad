@@ -27,12 +27,54 @@ afterEach(() => {
   localStorage.clear()
 })
 
-function Composer() {
+function Composer({ blocks = [], docId = 'composer' }: { blocks?: { blockId: string; text: string }[]; docId?: string }) {
   const state = useRuns('composer', finished)
   const [refs, setRefs] = useState<ContextItem[]>([{ id: 'ref', kind: 'text', label: 'Reference', text: 'Reference text', blockIds: [] }])
-  return <TooltipProvider><AiPanel docId="composer" runs={state} changes={[]} decided={[]} blockText={() => ''}
-    onDecide={() => {}} onFocus={() => {}} refs={refs} setRefs={setRefs} comments={[]} listBlocks={() => []} focusSignal={0} /></TooltipProvider>
+  return <TooltipProvider><AiPanel docId={docId} runs={state} changes={[]} decided={[]} blockText={() => ''}
+    onDecide={() => {}} onFocus={() => {}} refs={refs} setRefs={setRefs} comments={[]} listBlocks={() => blocks} focusSignal={0} /></TooltipProvider>
 }
+
+it.each([false, true])('closes the reference picker on blur with blocks: %s', async (hasBlocks) => {
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(Response.json({ models: [], chats: [], runs: [], knownRunIds: [], active: null }))))
+  await act(async () => root.render(<Composer docId={`blur-${hasBlocks}`} blocks={hasBlocks ? [{ blockId: 'block', text: 'A paragraph' }] : []} />))
+  const area = document.querySelector('textarea')!
+  await act(async () => {
+    area.focus()
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(area, '@')
+    area.setSelectionRange(1, 1)
+    area.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  expect(document.querySelector('[role="listbox"]')).not.toBeNull()
+  act(() => area.blur())
+  expect(document.querySelector('[role="listbox"]')).toBeNull()
+  expect(area.value).toBe('@')
+})
+
+it('selects a reference on mouse down without blurring the composer', async () => {
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(Response.json({ models: [], chats: [], runs: [], knownRunIds: [], active: null }))))
+  await act(async () => root.render(<Composer docId="mouse" blocks={[{ blockId: 'block', text: 'A paragraph' }]} />))
+  const area = document.querySelector('textarea')!
+  await act(async () => {
+    area.focus()
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(area, '@')
+    area.setSelectionRange(1, 1)
+    area.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  const option = document.querySelector<HTMLButtonElement>('[role="option"]')!
+  const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+  act(() => {
+    option.dispatchEvent(down)
+    if (!down.defaultPrevented) option.focus()
+    option.click()
+  })
+  expect(down.defaultPrevented).toBe(true)
+  expect(document.activeElement).toBe(area)
+  expect(document.querySelector('.ref-chips')!.textContent).toContain('A paragraph')
+  expect(document.querySelector('[role="listbox"]')).toBeNull()
+  expect(area.value).toBe('')
+})
 
 it.each(['no model', '400', 'network', 'success', 'empty'] as const)('preserves the composer unless a run starts: %s', async (outcome) => {
   HTMLElement.prototype.scrollIntoView = vi.fn()

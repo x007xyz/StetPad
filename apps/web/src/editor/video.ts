@@ -39,7 +39,7 @@ function errorBox(message: string): HTMLElement {
  * `docId` is the document the video belongs to: the transcribe button and the
  * background poster frame need it. Without it, neither is offered.
  */
-export function videoNodeView(docId: string): NodeViewRenderer {
+export function videoNodeView(docId: string, onError?: (text: string) => void): NodeViewRenderer {
   return ({ node, editor, getPos }) => {
     let current = node
     let selected = false
@@ -119,9 +119,9 @@ export function videoNodeView(docId: string): NodeViewRenderer {
       paintTools()
       transcribeVideo(docId, src)
         .then((transcript) => {
-          if (!applyTranscript(editor, blockId, transcript)) alert('视频已不在文档里，字幕没有写入')
+          if (!applyTranscript(editor, blockId, transcript)) onError?.('视频已不在文档里，字幕没有写入')
         })
-        .catch((err: unknown) => alert(err instanceof Error ? err.message : '转写失败'))
+        .catch((err: unknown) => onError?.(err instanceof Error ? err.message : '转写失败'))
         .finally(() => {
           busy = false
           paintTools()

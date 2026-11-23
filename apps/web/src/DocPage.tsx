@@ -381,7 +381,7 @@ export function DocPage({ id }: { id: string }) {
         pumpUploads()
       })
       .catch((e: unknown) => {
-        if (!ctrl.signal.aborted) alert(e instanceof Error ? e.message : '上传失败')
+        if (!ctrl.signal.aborted) workspace?.notify(e instanceof Error ? e.message : '上传失败', { error: true })
         uploadQueue.current = []
         if (uploadRun.current === run) {
           uploadRun.current = null
@@ -417,6 +417,7 @@ export function DocPage({ id }: { id: string }) {
       element: mount.current,
       extensions: docEditorExtensions({
         ydoc, docId: id,
+        onError: (text) => workspace?.notify(text, { error: true }),
         user: () => ({ author, tracking: trackingRef.current }),
         footnote: { onOpen: (id, rect, pinned) => fnOpenRef.current(id, rect, pinned), onLeave: () => fnLeaveRef.current(), onShortcut: () => fnShortcutRef.current() },
         caret: providerRef.current ? { provider: providerRef.current, user: { name: author, color: COLORS[Math.floor(Math.random() * COLORS.length)]! } } : undefined,
@@ -443,7 +444,7 @@ export function DocPage({ id }: { id: string }) {
           event.preventDefault()
           const $from = view.state.selection.$from
           const pos = $from.depth >= 1 ? $from.after(1) : $from.pos
-          if (files.length) insertImageFiles(ed, id, files, pos).catch((e: unknown) => alert(e instanceof Error ? e.message : '上传失败'))
+          if (files.length) insertImageFiles(ed, id, files, pos).catch((e: unknown) => workspace?.notify(e instanceof Error ? e.message : '上传失败', { error: true }))
           if (videos.length) startUploadsRef.current(videos, { pos }, 'video')
           if (attachments.length) startUploadsRef.current(attachments, { pos }, 'file')
           return true
@@ -460,7 +461,7 @@ export function DocPage({ id }: { id: string }) {
           const hit = view.posAtCoords({ left: event.clientX, top: event.clientY })
           const $pos = view.state.doc.resolve(hit ? hit.pos : view.state.selection.from)
           const pos = $pos.depth >= 1 ? $pos.after(1) : $pos.pos
-          if (files.length) insertImageFiles(ed, id, files, pos).catch((e: unknown) => alert(e instanceof Error ? e.message : '上传失败'))
+          if (files.length) insertImageFiles(ed, id, files, pos).catch((e: unknown) => workspace?.notify(e instanceof Error ? e.message : '上传失败', { error: true }))
           if (videos.length) startUploadsRef.current(videos, { pos }, 'video')
           if (attachments.length) startUploadsRef.current(attachments, { pos }, 'file')
           return true
@@ -532,7 +533,7 @@ export function DocPage({ id }: { id: string }) {
       chain.insertContent([{ type: 'image', attrs: { src: url, alt: file.name } }, { type: 'paragraph' }]).run()
       describeInBackground(ed, id, url, file.name)
     } catch (e) {
-      alert(e instanceof Error ? e.message : '上传失败')
+      workspace?.notify(e instanceof Error ? e.message : '上传失败', { error: true })
     }
   }
 
@@ -884,7 +885,7 @@ export function DocPage({ id }: { id: string }) {
   const saveDrawio = useCallback((blockId: string, xml: string, preview: string): void => {
     const ed = editorRef.current
     if (!ed || !ed.isEditable) return
-    if (!commitDrawio(ed, blockId, xml, preview)) alert('找不到这个图，修改未保存到文档')
+    if (!commitDrawio(ed, blockId, xml, preview)) workspace?.notify('找不到这个图，修改未保存到文档', { error: true })
   }, [])
 
   /** Inserts at the point the slash command left; if the document changed meanwhile, at the current selection. */
@@ -925,14 +926,14 @@ export function DocPage({ id }: { id: string }) {
   const swapImage = useCallback((blockId: string, url: string): void => {
     const ed = editorRef.current
     if (!ed || !ed.isEditable) return
-    if (!replaceImageSrc(ed, blockId, url)) alert('找不到这张图片，修改未保存到文档')
+    if (!replaceImageSrc(ed, blockId, url)) workspace?.notify('找不到这张图片，修改未保存到文档', { error: true })
   }, [])
 
   /** Adds the edited picture as a new image after the original, and describes it in the background. */
   const addImageAfter = useCallback((blockId: string, url: string, alt: string): void => {
     const ed = editorRef.current
     if (!ed || !ed.isEditable) return
-    if (!insertImageAfter(ed, blockId, url, alt)) alert('找不到这张图片，未能插入')
+    if (!insertImageAfter(ed, blockId, url, alt)) workspace?.notify('找不到这张图片，未能插入', { error: true })
     else describeInBackground(ed, id, url, alt)
   }, [id])
 

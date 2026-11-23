@@ -183,7 +183,7 @@ export const Image = Node.create({
   selectable: true,
   draggable: true,
   // The document the image belongs to; the AI buttons need it.
-  addOptions: () => ({ docId: '' }),
+  addOptions: () => ({ docId: '', onError: undefined as ((text: string) => void) | undefined }),
   addAttributes: () => ({
     src: { default: '' },
     alt: { default: '' },
@@ -272,7 +272,7 @@ export const Image = Node.create({
                 editor.view.dispatch(editor.view.state.tr.setNodeAttribute(pos, 'alt', alt))
               }
             })
-            .catch((e: unknown) => alert(e instanceof Error ? e.message : '描述失败'))
+            .catch((e: unknown) => this.options.onError?.(e instanceof Error ? e.message : '描述失败'))
             .finally(() => {
               b.disabled = false
               b.textContent = t('AI 描述')
@@ -511,7 +511,7 @@ export const Video = Node.create({
   selectable: true,
   draggable: true,
   // The document the video belongs to; the transcribe button and the poster frame need it.
-  addOptions: () => ({ docId: '' }),
+  addOptions: () => ({ docId: '', onError: undefined as ((text: string) => void) | undefined }),
   addAttributes: () => ({
     src: { default: '' },
     kind: { default: 'file' },
@@ -554,7 +554,7 @@ export const Video = Node.create({
     return caption ? ['figure', figure, media, ['figcaption', {}, caption]] : ['figure', figure, media]
   },
   addNodeView() {
-    return videoNodeView(this.options.docId)
+    return videoNodeView(this.options.docId, this.options.onError)
   },
 })
 

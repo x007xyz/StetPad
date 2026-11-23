@@ -25,15 +25,16 @@ export interface EditorExtensionOptions {
   docId: string
   user: () => { author: string; tracking: boolean }
   placeholder: string
+  onError?: (text: string) => void
   caret?: Parameters<typeof CollaborationCaret.configure>[0]
   footnote?: Partial<FootnoteOptions>
 }
 
-export function editorExtensions({ ydoc, docId, user, placeholder, caret, footnote }: EditorExtensionOptions) {
+export function editorExtensions({ ydoc, docId, user, placeholder, caret, footnote, onError }: EditorExtensionOptions) {
   return [
     Document, Text, Paragraph,
     Heading.configure({ levels: [1, 2, 3] }),
-    BulletItem, OrderedItem, TaskItem, Quote, Callout, CodeBlock, Divider, Image.configure({ docId }), Video.configure({ docId }), Drawio.configure({ docId }), Table, FileBlock, LinkCard,
+    BulletItem, OrderedItem, TaskItem, Quote, Callout, CodeBlock, Divider, Image.configure({ docId, onError }), Video.configure({ docId, onError }), Drawio.configure({ docId }), Table, FileBlock, LinkCard,
     Bold, Italic, Underline, Strike, Code, Highlight, InlineMath,
     Link.configure({ openOnClick: false, autolink: true }),
     Footnote.configure(footnote),

@@ -17,7 +17,7 @@ const droppedNote = (dropped: { name: string | null; mime: string }[]): string =
 
 /** The landing page: the documents, plus import by drag and drop. */
 export function Home() {
-  const { docs, createDoc } = useWorkspace()
+  const { docs, createDoc, notify } = useWorkspace()
   const [preview, setPreview] = useState<Preview | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
@@ -44,7 +44,7 @@ export function Home() {
       go({ page: 'doc', id: doc.id })
       // Files the package could not bring across are named after the document opens.
       const dropped = doc.dropped ?? []
-      if (dropped.length > 0) window.setTimeout(() => alert(droppedNote(dropped)), 300)
+      if (dropped.length > 0) window.setTimeout(() => notify(droppedNote(dropped), { error: true }), 300)
     } catch (e) {
       setError(e instanceof Error ? e.message : '导入失败')
     } finally {

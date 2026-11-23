@@ -112,6 +112,13 @@ describe('inline math import from Markdown', () => {
     expect(body).toContain('[r]: https://e.com/$z$')
   })
 
+  it('leaves dollars inside escaped or bracketed destinations, bare URLs and reference links alone', () => {
+    const src = String.raw`[a](u\)$x$) [b](<u)$p$>) https://e.com/?q=$w$ [c $v$][r] $y$`
+    const { body, tex } = protectInlineMath(src)
+    expect(tex).toEqual(['y'])
+    expect(body).toBe(src.replace('$y$', `\u{e000}0\u{e001}`))
+  })
+
   it('leaves dollars inside a double- or triple-backtick code span alone', () => {
     const { body, tex } = protectInlineMath('```a `$x$` b``` and ``$y$`` and $z$')
     expect(tex).toEqual(['z'])

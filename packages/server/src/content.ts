@@ -336,15 +336,25 @@ export function applyMdFootnotes(list: Block[], defs: Map<string, string>): Bloc
 const INLINE_TEX = /(?<![\\$])\$(?=[^\s$])([^$\n]*?[^\s$\\])\$(?![\d$])/g
 const TOKEN = /(\d+)/g
 
+const LINK_TEXT = String.raw`\[(?:\\.|[^[\]\\\n]|\[[^[\]\n]*\])*\]`
+const LINK_DEST = String.raw`\((?:<[^<>\n]*>|\\.|[^()\\\n]|\([^()\n]*\))*\)`
 /**
  * Inline syntax a formula placeholder must not enter: a code span (a run of backticks, then text,
- * then a run of the same length), a link or image with its destination, or an autolink.
+ * then a run of the same length), an inline or reference link or image, an autolink, or a bare URL.
  */
-const VERBATIM = /(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)|!?\[(?:[^[\]\n]|\[[^[\]\n]*\])*\]\((?:[^()\n]|\([^()\n]*\))*\)|<[a-z][\w+.-]*:[^\s<>]*>/gi
+const VERBATIM = new RegExp(
+  [
+    String.raw`(?<!\`)(\`+)(?!\`).*?(?<!\`)\1(?!\`)`,
+    String.raw`!?${LINK_TEXT}(?:${LINK_DEST}|\[[^\]\n]*\])`,
+    String.raw`<[a-z][\w+.-]*:[^\s<>]*>`,
+    String.raw`(?:(?:ftp|https?):\/\/|www\.)[^\s<]*`,
+  ].join('|'),
+  'gi',
+)
 /** A link reference definition: `[label]: destination`. */
 const LINK_DEF = /^ {0,3}\[[^\]]+\]:/
 
-/** Applies `f` to the parts of `line` outside code spans, links, images and autolinks. */
+/** Applies `f` to the parts of `line` outside the inline syntax matched by `VERBATIM`. */
 function outsideVerbatim(line: string, f: (part: string) => string): string {
   let out = ''
   let last = 0

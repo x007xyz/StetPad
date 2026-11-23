@@ -339,18 +339,19 @@ const TOKEN = /(\d+)/g
 /** A code span: a run of backticks, then text, then a run of the same length. */
 const CODE_SPAN = /(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)/g
 
-const LINK_TEXT = String.raw`\[(?:\\.|[^[\]\\\n]|\[[^[\]\n]*\])*\]`
+/** A link's text; a backtick in it must close a code span inside it, since code spans bind tighter than links. */
+const LINK_TEXT = String.raw`\[(?:\\.|\`[^\`\n]*\`|[^[\]\\\`\n]|\[[^[\]\n]*\])*\]`
 const LINK_DEST = String.raw`\([ \t]*<[^<>\n]*>(?:[^()\n]|\([^()\n]*\))*\)|\((?:\\.|[^()\\\n]|\([^()\n]*\))*\)`
 /**
  * Syntax a formula placeholder must not enter: a code span (group 1 is its backticks), an inline or
- * reference link or image, an autolink, or a bare URL.
+ * reference link or image, an autolink, or a bare URL without trailing punctuation, as marked reads it.
  */
 const VERBATIM = new RegExp(
   [
     CODE_SPAN.source,
     String.raw`!?${LINK_TEXT}(?:${LINK_DEST}|\[[^\]\n]*\](?!\())`,
     String.raw`<[a-z][\w+.-]*:[^\s<>]*>`,
-    String.raw`(?:(?:ftp|https?):\/\/|www\.)[^\s<]*`,
+    String.raw`(?:(?:ftp|https?):\/\/|www\.)[^\s<]*[^\s<?!.,:;*_'"~)]`,
   ].join('|'),
   'gi',
 )
@@ -365,28 +366,32 @@ const LINK_DEF = /^ {0,3}\[[^\]]+\]:/
 function protectLine(line: string, tex: string[]): string {
   const formula = new RegExp(INLINE_TEX.source, 'g')
   const verbatim = new RegExp(VERBATIM.source, 'gi')
+  const next = (re: RegExp, from: number) => ((re.lastIndex = from), re.exec(line))
   let out = ''
   let at = 0
-  for (;;) {
-    formula.lastIndex = verbatim.lastIndex = at
-    const f = formula.exec(line)
-    if (!f) break
-    let v = verbatim.exec(line)
+  let f = next(formula, 0)
+  let v = next(verbatim, 0)
+  while (f) {
     if (v && v.index < f.index) {
-      out += line.slice(at, v.index + v[0].length)
-      at = v.index + v[0].length
+      const to = v.index + v[0].length
+      out += line.slice(at, to)
+      at = to
+      if (f.index < at) f = next(formula, at)
+      v = next(verbatim, at)
       continue
     }
     const end = f.index + f[0].length
     while (v && v.index < end && v[1] === undefined && v.index + v[0].length <= end) v = verbatim.exec(line)
     if (v && v.index < end) {
-      out += line.slice(at, f.index + 1)
-      at = f.index + 1
+      const from = f.index + 1
+      f = next(formula, from)
+      v = next(verbatim, from)
       continue
     }
     tex.push(f[1]!)
     out += line.slice(at, f.index) + `\ue000${tex.length - 1}\ue001`
     at = end
+    f = next(formula, at)
   }
   return out + line.slice(at)
 }

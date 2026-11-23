@@ -131,6 +131,19 @@ describe('inline math import from Markdown', () => {
     expect(body).toBe(src.replace('$k$', `\u{e000}0\u{e001}`))
   })
 
+  it('keeps a URL formula before punctuation whole, and code after a link lookalike verbatim', () => {
+    const { body, tex } = protectInlineMath(String.raw`$\text{see https://e.com}$. [` + '`](x) $y$` $z$')
+    expect(tex).toEqual([String.raw`\text{see https://e.com}`, 'z'])
+    expect(body).toContain('`](x) $y$`')
+  })
+
+  it('scans a line of many formulas in linear time', () => {
+    const start = performance.now()
+    const { tex } = protectInlineMath('$x$ '.repeat(20000))
+    expect(tex).toHaveLength(20000)
+    expect(performance.now() - start).toBeLessThan(200)
+  })
+
   it('scans a link with many angle brackets and no closing paren in linear time', () => {
     const start = performance.now()
     protectInlineMath(`[a](${'<b>'.repeat(5000)} "( $x$`)

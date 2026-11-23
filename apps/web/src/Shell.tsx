@@ -264,7 +264,7 @@ function SidebarBody({ ctx, activeId, activeFolderId, trashActive, onNavigate }:
       </button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="mr-0.5 hidden rounded p-1 text-muted-foreground hover:text-foreground focus-visible:block group-focus-within:block group-hover:block data-[state=open]:block" aria-label={`移动 ${d.title}`}><FolderInput className="size-3.5" /></button>
+          <button className="mr-0.5 hidden rounded p-1 text-muted-foreground hover:text-foreground focus-visible:block group-focus-within:block group-hover:block data-[state=open]:block [@media(hover:none)]:block" aria-label={`移动 ${d.title}`}><FolderInput className="size-3.5" /></button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
           <div className="px-2 py-1 text-xs text-muted-foreground">移动到…</div>
@@ -275,7 +275,7 @@ function SidebarBody({ ctx, activeId, activeFolderId, trashActive, onNavigate }:
           {d.folder_id && <><DropdownMenuSeparator /><DropdownMenuItem onSelect={() => void moveDoc(d.id, null)}>移出文件夹</DropdownMenuItem></>}
         </DropdownMenuContent>
       </DropdownMenu>
-      <button className="mr-1 hidden rounded p-1 text-muted-foreground hover:text-destructive focus-visible:block group-focus-within:block group-hover:block" aria-label={`删除 ${d.title}`} onClick={() => removeDoc(d)}><Trash2 className="size-3.5" /></button>
+      <button className="mr-1 hidden rounded p-1 text-muted-foreground hover:text-destructive focus-visible:block group-focus-within:block group-hover:block [@media(hover:none)]:block" aria-label={`删除 ${d.title}`} onClick={() => removeDoc(d)}><Trash2 className="size-3.5" /></button>
     </li>
   )
   return (

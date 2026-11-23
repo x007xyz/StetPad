@@ -1,5 +1,5 @@
 import { ChevronRight, ChevronsLeft, FilePlus2, FileText, Folder as FolderIcon, FolderInput, FolderPlus, PanelLeft, Pencil, Plus, Search, Settings as SettingsIcon, Trash, Trash2 } from 'lucide-react'
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { api, post, type DocMeta, type Folder } from './api'
 import { go, type Session } from './App'
 import { ConfirmHost, confirmAction } from './components/confirm'
@@ -23,7 +23,7 @@ interface Ctx {
   removeFolder: (f: Folder) => Promise<void>
   moveDoc: (docId: string, folderId: string | null) => Promise<void>
   reload: () => Promise<void>
-  createDoc: () => Promise<void>
+  createDoc: (event?: MouseEvent<HTMLButtonElement>) => Promise<void>
   removeDoc: (d: DocMeta) => Promise<void>
   notify: (text: string, options?: { error?: boolean }) => void
   /** Bumped whenever the shell moves a document to the trash. */
@@ -92,8 +92,8 @@ export function Shell({ session, activeId, activeFolderId, trashActive, children
     void reload()
   }, [reload, activeId])
 
-  const createDoc = useCallback(async (): Promise<void> => {
-    if (creatingDoc.current) return
+  const createDoc = useCallback(async (event?: MouseEvent<HTMLButtonElement>): Promise<void> => {
+    if ((event && event.detail > 1) || creatingDoc.current) return
     creatingDoc.current = true
     setMobileOpen(false)
     try {

@@ -88,6 +88,37 @@ it('ignores overlapping document creation calls but allows a later create', asyn
   }
 })
 
+it('ignores a repeat sidebar click after the first create has finished', async () => {
+  vi.mocked(go).mockClear()
+  const create = vi.fn(async () => Response.json({ id: 'new-doc' }))
+  vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) =>
+    url === '/api/docs' && init?.method === 'POST' ? create() : Promise.resolve(Response.json([])),
+  ))
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<Shell session={{ user: { id: 'me', email: '' } }}>Content</Shell>))
+    const button = container.querySelector<HTMLButtonElement>('button[aria-label="新建文档"]')!
+    const click = (detail: number) => act(async () => {
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, detail }))
+    })
+
+    await click(1)
+    expect(go).toHaveBeenCalledWith({ page: 'doc', id: 'new-doc' })
+    await click(2)
+    expect(create).toHaveBeenCalledTimes(1)
+
+    await click(0)
+    expect(create).toHaveBeenCalledTimes(2)
+  } finally {
+    act(() => root.unmount())
+    container.remove()
+    vi.unstubAllGlobals()
+  }
+})
+
 it.each([
   ['Linux x86_64', 'Ctrl K'],
   ['Win32', 'Ctrl K'],

@@ -118,9 +118,16 @@ export function FolderPage({ id }: { id: string }) {
     page.current?.querySelector(`[data-doc-id="${docId}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const rename = async (name: string): Promise<void> => {
+  const rename = async (input: HTMLInputElement): Promise<void> => {
+    const name = input.value
     if (!info || !name.trim() || name.trim() === info.name) return
-    await api(`/folders/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) })
+    try {
+      await api(`/folders/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) })
+    } catch {
+      input.value = info.name
+      workspace?.notify('文件夹名称保存失败，请重试。', { error: true })
+      return
+    }
     setInfo({ ...info, name: name.trim() })
     document.title = name.trim()
     void workspace?.reload()
@@ -151,7 +158,7 @@ export function FolderPage({ id }: { id: string }) {
         <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-background px-3 py-1.5">
           <SidebarToggle />
           <input className="min-w-0 flex-1 basis-40 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-semibold outline-none hover:bg-accent focus:border-ring focus:bg-background" aria-label="文件夹名称"
-            defaultValue={info?.name ?? ''} key={info?.name} onBlur={(e) => rename(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
+            defaultValue={info?.name ?? ''} key={info?.name} onBlur={(e) => rename(e.currentTarget)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span aria-hidden className={cn('size-1.5 rounded-full', status === 'connected' ? 'bg-emerald-500' : status === 'connecting' ? 'bg-amber-400' : 'bg-orange-500')} />
             <span role="status" className="max-sm:sr-only">{status === 'connected' ? '已同步' : status === 'connecting' ? '连接中…' : '离线，修改已保存在本机'}</span>

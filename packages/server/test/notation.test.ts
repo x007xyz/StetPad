@@ -558,6 +558,15 @@ describe('export', () => {
   })
 
   it.each([
+    'https://example.invalid/part)tail',
+    'https://example.invalid/part(tail',
+    'https://example.invalid/part(tail)',
+  ])('round-trips inline link destination %j through Markdown', async (href) => {
+    const block: Block = { ...para(''), delta: [{ insert: 'Label', attributes: { link: { href } } }] }
+    expect(await fileToBlocks('inline.md', enc(blocksToMarkdown([block])))).toEqual([block])
+  })
+
+  it.each([
     '1. a\n2. b\n\nend paragraph',
     '- a\n- b\n\n# Heading',
   ])('separates a list from the following block through Markdown round-trip: %s', async (md) => {

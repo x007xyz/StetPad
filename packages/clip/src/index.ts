@@ -624,7 +624,7 @@ function inlineMd(delta: InlineDelta[]): string {
       if (a.italic) s = `*${s}*`
       if (a.strike) s = `~~${s}~~`
       const href = (a.link as { href?: string } | undefined)?.href
-      if (href) s = `[${s}](${href})`
+      if (href) s = `[${s}](${String(href).replace(/[\\()]/g, '\\$&')})`
       return s
     })
     .join('')

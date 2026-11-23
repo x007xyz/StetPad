@@ -162,6 +162,23 @@ describe('markdown import of footnotes', () => {
     expect(blocks[0]!.delta).toEqual([{ insert: 'A ' }, { insert: 'claim', attributes: { footnote: { id: expect.any(String), note: 'Real note.' } } }, { insert: '.' }])
   })
 
+  it.each([
+    ['`config[^key]`', 'config[^key]', { code: {} }],
+    ['``config`[^key]``', 'config`[^key]', { code: {} }],
+    ['``config\n[^key]``', 'config [^key]', { code: {} }],
+    [String.raw`\[^key\]`, '[^key]', undefined],
+    [String.raw`\[^key]`, '[^key]', undefined],
+    [String.raw`[^key\]`, '[^key]', undefined],
+  ])('keeps literal footnote syntax in %j alongside a real reference', async (literal, insert, attributes) => {
+    const src = `Use ${literal} and text[^key].\n\n[^key]: Real note.\n`
+    const blocks = await fileToBlocks('notes.md', new TextEncoder().encode(src))
+    expect(blocks[0]!.delta).toEqual([
+      ...(attributes ? [{ insert: 'Use ' }, { insert, attributes }, { insert: ' and ' }] : [{ insert: `Use ${insert} and ` }]),
+      { insert: 'text', attributes: { footnote: { id: expect.any(String), note: 'Real note.' } } },
+      { insert: '.' },
+    ])
+  })
+
   it('does not end a fence at a delimiter indented as code content', async () => {
     const src = 'A claim[^1].\n\n```\n    ```\n[^1]: in code\n```\n\nB claim[^2].\n\n[^1]: Real one.\n[^2]: Real two.\n'
     const blocks = await fileToBlocks('notes.md', new TextEncoder().encode(src))

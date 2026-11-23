@@ -47,7 +47,10 @@ export const SheetContent = React.forwardRef<
       )}
       {...props}
     >
-      <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
+      <div className="flex shrink-0 items-center justify-between px-5 pb-1 pt-4">
+        <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
+        <DialogPrimitive.Close aria-label="关闭" className="ml-auto rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-4" /></DialogPrimitive.Close>
+      </div>
       {children}
     </DialogPrimitive.Content>
   </DialogPrimitive.Portal>

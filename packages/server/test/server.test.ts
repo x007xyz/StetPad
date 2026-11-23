@@ -57,6 +57,14 @@ describe('server', () => {
     expect((await call('/api/docs', {}, 'nope')).status).toBe(401)
   })
 
+  it.each([
+    { path: '/api/docs', defaults: { title: '未命名文档', folder_id: null } },
+    { path: '/api/folders', defaults: { name: '新建文件夹' } },
+  ])('creates a default item on $path with a null JSON body', async ({ path, defaults }) => {
+    const result = await call(path, { method: 'POST', body: 'null' })
+    expect(result).toMatchObject({ status: 200, body: { id: expect.any(String), ...defaults } })
+  })
+
   it.each([42, false, {}, null])('rejects a non-string document title (%j)', async (title) => {
     const result = await call('/api/docs', { method: 'POST', body: JSON.stringify({ title }) })
     expect(result).toEqual({ status: 400, body: { error: expect.any(String) } })

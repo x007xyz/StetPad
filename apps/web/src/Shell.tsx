@@ -210,7 +210,7 @@ export function Shell({ session, activeId, activeFolderId, trashActive, children
 function Toast({ text, error, onClose }: { text: string; error?: boolean; onClose: () => void }) {
   return (
     <div role={error ? 'alert' : 'status'} className="fixed bottom-4 left-1/2 z-[70] flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-popover px-4 py-2 text-sm text-popover-foreground shadow-lg">
-      <span className={cn('min-w-0 truncate', error && 'text-destructive')}>{text}</span>
+      <span className={cn('min-w-0', error ? 'break-words text-destructive' : 'truncate')}>{text}</span>
       {!error && <button className="shrink-0 font-medium text-link hover:underline" onClick={() => { onClose(); go({ page: 'trash' }) }}>查看回收站</button>}
       <button className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="关闭提示" onClick={onClose}>×</button>
     </div>

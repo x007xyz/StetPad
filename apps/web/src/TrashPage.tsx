@@ -7,7 +7,7 @@ import { SidebarToggle, useWorkspace } from './Shell'
 
 /** 回收站: the trashed documents. */
 export function TrashPage() {
-  const { reload, trashVersion } = useWorkspace()
+  const { reload, trashVersion, notify } = useWorkspace()
   const [list, setList] = useState<TrashDoc[] | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
@@ -35,7 +35,7 @@ export function TrashPage() {
       await run()
       await Promise.all([load(), reload()])
     } catch (e) {
-      alert(e instanceof Error ? e.message : '操作失败')
+      notify(e instanceof Error ? e.message : '操作失败', { error: true })
     } finally {
       setBusy(null)
     }

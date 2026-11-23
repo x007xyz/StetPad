@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { deferred } from './lib/deferred.test-utils'
 import { FolderPage } from './FolderPage'
 
-const workspace = vi.hoisted(() => ({ docs: [] as unknown[] }))
+const workspace = vi.hoisted(() => ({ docs: [] as unknown[], notify: vi.fn(), reload: vi.fn() }))
 vi.mock('./Shell', () => ({ useWorkspaceOptional: () => workspace, SidebarToggle: () => null }))
 vi.mock('y-indexeddb', () => ({ IndexeddbPersistence: class { destroy() {} } }))
 vi.mock('@hocuspocus/provider', () => ({ HocuspocusProvider: class { destroy() {} } }))
@@ -17,6 +17,8 @@ const folder = (id: string, empty = false) => ({ id, name: `${id} folder`, docs:
 
 beforeEach(() => {
   workspace.docs = []
+  workspace.notify.mockReset()
+  workspace.reload.mockReset()
   vi.stubGlobal('IntersectionObserver', class {
     observe() {}
     disconnect() {}
@@ -109,4 +111,31 @@ it.each(['success', 'empty', 'error'])('ignores a stale %s workspace reload of t
   expect(container.textContent).toContain('new document')
   expect(container.textContent).not.toContain('a document')
   expect(container.textContent).not.toContain('找不到这个文件夹')
+})
+
+it.each(['http', 'network', 'success'] as const)('handles a folder rename in the header (%s)', async (outcome) => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/folders/a' && init?.method === 'PATCH') {
+      if (outcome === 'network') throw new TypeError('Failed to fetch')
+      return outcome === 'http' ? Response.json({ error: 'Internal error' }, { status: 500 }) : Response.json({ ok: true })
+    }
+    if (url === '/api/folders/a') return Response.json(folder('a'))
+    return Response.json({ runs: [], active: null, models: [] })
+  }))
+  await act(async () => root.render(<FolderPage id="a" />))
+  const input = container.querySelector<HTMLInputElement>('input[aria-label="文件夹名称"]')!
+  expect(input.value).toBe('a folder')
+  input.value = 'Renamed'
+  await act(async () => input.dispatchEvent(new FocusEvent('focusout', { bubbles: true })))
+  const saved = outcome === 'success' ? 'Renamed' : 'a folder'
+  expect(container.querySelector<HTMLInputElement>('input[aria-label="文件夹名称"]')!.value).toBe(saved)
+  expect(container.querySelector('h1')?.textContent).toBe(saved)
+  expect(document.title).toBe(saved)
+  if (outcome === 'success') {
+    expect(workspace.notify).not.toHaveBeenCalled()
+    expect(workspace.reload).toHaveBeenCalledOnce()
+  } else {
+    expect(workspace.notify).toHaveBeenCalledWith('文件夹名称保存失败，请重试。', { error: true })
+    expect(workspace.reload).not.toHaveBeenCalled()
+  }
 })

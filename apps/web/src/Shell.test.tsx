@@ -125,3 +125,40 @@ it('keeps the latest sidebar documents and folders after navigation', async () =
     vi.unstubAllGlobals()
   }
 })
+
+it.each(['http', 'network', 'success'] as const)('handles a folder rename in the sidebar (%s)', async (outcome) => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  let name = 'Saved folder'
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/folders/f1' && init?.method === 'PATCH') {
+      if (outcome === 'network') throw new TypeError('Failed to fetch')
+      if (outcome === 'http') return Response.json({ error: 'Internal error' }, { status: 500 })
+      name = (JSON.parse(String(init.body)) as { name: string }).name
+      return Response.json({ ok: true })
+    }
+    if (url === '/api/folders') return Response.json([{ id: 'f1', name, created_at: 0 }])
+    return Response.json([])
+  }))
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<Shell session={{ user: { id: 'me', email: '' } }}>Content</Shell>))
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="重命名 Saved folder"]')!.click())
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="文件夹名称"]')!
+    input.value = 'Renamed'
+    await act(async () => input.dispatchEvent(new FocusEvent('focusout', { bubbles: true })))
+    const alert = container.querySelector('[role="alert"]')?.textContent ?? ''
+    if (outcome === 'success') {
+      expect(container.querySelector('li[aria-label="文件夹 Renamed"]')).not.toBeNull()
+      expect(alert).not.toContain('文件夹名称保存失败')
+    } else {
+      expect(container.querySelector('li[aria-label="文件夹 Saved folder"]')).not.toBeNull()
+      expect(alert).toContain('文件夹名称保存失败，请重试。')
+    }
+  } finally {
+    act(() => root.unmount())
+    container.remove()
+    vi.unstubAllGlobals()
+  }
+})

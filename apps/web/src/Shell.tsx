@@ -142,9 +142,14 @@ export function Shell({ session, activeId, activeFolderId, trashActive, children
   }, [reload])
   const renameFolder = useCallback(async (f: Folder, name: string): Promise<void> => {
     if (!name.trim() || name.trim() === f.name) return
-    await api(`/folders/${f.id}`, { method: 'PATCH', body: JSON.stringify({ name }) })
+    try {
+      await api(`/folders/${f.id}`, { method: 'PATCH', body: JSON.stringify({ name }) })
+    } catch {
+      notify('文件夹名称保存失败，请重试。', { error: true })
+      return
+    }
     await reload()
-  }, [reload])
+  }, [reload, notify])
   const removeFolder = useCallback(async (f: Folder): Promise<void> => {
     if (!(await confirmAction({ title: `删除文件夹"${f.name}"？`, body: '其中的文档不会被删除，会移到文档列表。', confirmLabel: '删除', danger: true }))) return
     await api(`/folders/${f.id}`, { method: 'DELETE' })

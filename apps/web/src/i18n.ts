@@ -40,6 +40,7 @@ export function fmtDate(t: number): string {
 const EXACT: Record<string, string> = {
   '新建文档失败，请重试。': 'Failed to create the document. Please try again.',
   '标题保存失败，请重试。': 'Failed to save the title. Please try again.',
+  '文件夹名称保存失败，请重试。': 'Failed to save the folder name. Please try again.',
   '手动保存': 'Manual save', '自动保存': 'Auto save', '导入': 'Import', 'AI 操作前': 'Before AI', 'AI 操作后': 'After AI', '修订处理完': 'Changes reviewed', '恢复前': 'Before restore',
   // Folder page
   '空文件夹（把文档拖进来）': 'Empty folder (drag documents here)',

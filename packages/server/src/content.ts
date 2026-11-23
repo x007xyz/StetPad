@@ -18,7 +18,7 @@ import {
 import { Readability } from '@mozilla/readability'
 import { parseHTML } from 'linkedom'
 import mammoth from 'mammoth'
-import { marked } from 'marked'
+import { Lexer, marked, type Token } from 'marked'
 import { AlignmentType, Document as DocxDocument, ExternalHyperlink, FootnoteReferenceRun, HeadingLevel, ImageRun, LevelFormat, Packer, Paragraph as DocxParagraph, Table as DocxTable, TableCell, TableRow, TextRun, WidthType } from 'docx'
 import * as Y from 'yjs'
 import { mathToSvg, svgToPng } from './render'
@@ -336,39 +336,97 @@ export function applyMdFootnotes(list: Block[], defs: Map<string, string>): Bloc
 const INLINE_TEX = /(?<![\\$])\$(?=[^\s$])([^$\n]*?[^\s$\\])\$(?![\d$])/g
 const TOKEN = /(\d+)/g
 
-/** A code span: a run of backticks, then text, then a run of the same length. */
-const CODE_SPAN = /(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)/g
+/** A link reference definition: `[label]: destination`. */
+const LINK_DEF = /^ {0,3}\[[^\]]+\]:/
 
-/** Applies `f` to the parts of `line` outside code spans. */
-function outsideCodeSpans(line: string, f: (part: string) => string): string {
-  let out = ''
-  let last = 0
-  for (const m of line.matchAll(CODE_SPAN)) {
-    out += f(line.slice(last, m.index)) + m[0]
-    last = m.index + m[0].length
+/** A stretch of a line that marked reads as code (`opaque`), HTML, a link or an image. */
+type Verbatim = { start: number; end: number; opaque: boolean }
+
+/** The verbatim stretches among inline `tokens` that start at offset `at`, in order; code in a link text follows its link. */
+function verbatimSpans(tokens: Token[], at: number, out: Verbatim[] = []): Verbatim[] {
+  for (const t of tokens) {
+    const end = at + t.raw.length
+    if (t.type === 'codespan') out.push({ start: at, end, opaque: true })
+    else if (t.type === 'html') out.push({ start: at, end, opaque: false })
+    else if (t.type === 'link' || t.type === 'image') {
+      out.push({ start: at, end, opaque: false })
+      if (t.raw.startsWith('[')) verbatimSpans(t.tokens ?? [], at + 1, out)
+    }
+    else if (t.type === 'em' || t.type === 'strong' || t.type === 'del') {
+      // The delimiters are the same length on both sides of the inner text.
+      verbatimSpans(t.tokens ?? [], at + (t.raw.length - t.text.length) / 2, out)
+    }
+    at = end
   }
-  return out + f(line.slice(last))
+  return out
+}
+
+/**
+ * Replaces the formulas on one line with placeholders, pushing their sources to `tex`. Code, HTML,
+ * links and images come from marked's own reading of the line (`lexer` holds the document's link
+ * definitions), so they match the later parse. A formula may hold whole HTML tags (`$<u>_i$`) and
+ * links, but no code, and may not end inside any of them.
+ */
+function protectLine(line: string, lexer: Lexer, tex: string[]): string {
+  const spans = verbatimSpans(lexer.inlineTokens(line), 0)
+  const formula = new RegExp(INLINE_TEX.source, 'g')
+  let out = ''
+  let at = 0
+  let s = 0
+  for (let f = formula.exec(line); f; f = formula.exec(line)) {
+    while (s < spans.length && spans[s]!.end <= f.index) s++
+    if (s < spans.length && spans[s]!.start <= f.index) {
+      formula.lastIndex = spans[s]!.end
+      continue
+    }
+    const end = f.index + f[0].length
+    let k = s
+    while (k < spans.length && spans[k]!.start < end && !spans[k]!.opaque && spans[k]!.end <= end) k++
+    if (k < spans.length && spans[k]!.start < end) {
+      formula.lastIndex = f.index + 1
+      continue
+    }
+    tex.push(f[1]!)
+    out += line.slice(at, f.index) + `\ue000${tex.length - 1}\ue001`
+    at = end
+  }
+  return out + line.slice(at)
 }
 
 /**
  * Replaces inline `$…$` with placeholders before Markdown parsing, so that `*` and `_` inside a
- * formula are not read as emphasis. Code (fenced blocks, code spans), tables and lines with links or
- * images are left alone. `restoreInlineMath` puts the formulas back as math-marked text.
+ * formula are not read as emphasis. Code (fenced blocks, code spans), HTML, tables, links, images and
+ * link reference definitions are left alone. `restoreInlineMath` puts the formulas back as math-marked text.
  */
 export function protectInlineMath(md: string): { body: string; tex: string[] } {
   const tex: string[] = []
+  if (!md.includes('$')) return { body: md, tex }
+  // marked reads `\r\n` and `\r` as `\n`; matching it keeps its token text findable in `md`.
+  md = md.replace(/\r\n?/g, '\n')
+  const doc = marked.lexer(md, { gfm: true })
+  const lexer = new Lexer({ ...marked.defaults, gfm: true })
+  Object.assign(lexer.tokens.links, doc.links)
   const lines = md.split('\n')
   const code = fencedCodeLines(lines)
+  // Indented code blocks too, as marked finds them: their text is never read as inline Markdown.
+  let from = 0
+  let line = 0
+  for (const t of doc) {
+    const at = md.indexOf(t.raw, from)
+    if (at < 0) break
+    line += md.slice(from, at).split('\n').length - 1
+    const span = t.raw.replace(/\n+$/, '').split('\n').length
+    if (t.type === 'code') code.fill(true, line, line + span)
+    line += t.raw.split('\n').length - 1
+    from = at + t.raw.length
+  }
   const body = lines
     .map((line, i) => {
-      if (code[i]) return line
-      if (/^\s*\|/.test(line) || line.includes('](') || line.includes('![')) return line
-      return outsideCodeSpans(line, (part) =>
-        part.replace(INLINE_TEX, (_m, src: string) => {
-          tex.push(src)
-          return `${tex.length - 1}`
-        }),
-      )
+      if (code[i] || LINK_DEF.test(line)) return line
+      if (line.includes('$') && !/^\s*\|/.test(line)) return protectLine(line, lexer, tex)
+      // Lex skipped lines with tags too, so an `<a>` left open or closed there is tracked as marked does.
+      if (line.includes('<')) lexer.inlineTokens(line)
+      return line
     })
     .join('\n')
   return { body, tex }

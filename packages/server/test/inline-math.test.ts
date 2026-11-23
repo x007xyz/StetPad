@@ -93,6 +93,103 @@ describe('inline math import from Markdown', () => {
     expect(b!.delta.find((d) => d.insert === 'x')?.attributes?.italic).toBeTruthy()
   })
 
+  it('turns $…$ into math on a line with a link', async () => {
+    const [b] = await fileToBlocks('notes.md', enc('式子 $a+b$ 见[文档](https://example.com/a)'))
+    expect(b!.delta).toEqual([
+      { insert: '式子 ' },
+      math('a+b'),
+      { insert: ' 见' },
+      { insert: '文档', attributes: { link: { href: 'https://example.com/a' } } },
+    ])
+  })
+
+  it('leaves dollars inside link and image destinations alone', () => {
+    const { body, tex } = protectInlineMath('[a](https://e.com/?q=$x$) ![b]($p$.png) <https://e.com/$w$> $y$\n[r]: https://e.com/$z$')
+    expect(tex).toEqual(['y'])
+    expect(body).toContain('[a](https://e.com/?q=$x$)')
+    expect(body).toContain('![b]($p$.png)')
+    expect(body).toContain('<https://e.com/$w$>')
+    expect(body).toContain('[r]: https://e.com/$z$')
+  })
+
+  it('leaves dollars inside escaped or bracketed destinations, bare URLs and reference links alone', () => {
+    const src = String.raw`[a](u\)$x$) [b](<u)$p$>) https://e.com/?q=$w$ [c $v$][r] $y$` + '\n\n[r]: https://e.com'
+    const { body, tex } = protectInlineMath(src)
+    expect(tex).toEqual(['y'])
+    expect(body).toBe(src.replace('$y$', `\u{e000}0\u{e001}`))
+  })
+
+  it('keeps a formula with brackets or a URL whole beside a link', () => {
+    const { tex } = protectInlineMath(String.raw`$A[i][j]$ and $\text{see https://e.com}$ [l](u) [a][b](mailto:x$y$@e.com)`)
+    expect(tex).toEqual(['A[i][j]', String.raw`\text{see https://e.com}`])
+  })
+
+  it('does not pair a price with a dollar inside a link, a code-labelled link or a titled link', () => {
+    const src = 'Costs $5, see [a](https://e.com/?p=$y) [`c`](a$x$b.png) [t](<https://e.com/)$w$v> "t(1)") $k$'
+    const { body, tex } = protectInlineMath(src)
+    expect(tex).toEqual(['k'])
+    expect(body).toBe(src.replace('$k$', `\u{e000}0\u{e001}`))
+  })
+
+  it('keeps a URL formula before punctuation whole, and code after a link lookalike verbatim', () => {
+    const { body, tex } = protectInlineMath(String.raw`$\text{see https://e.com}$. [` + '`](x) $y$` $z$')
+    expect(tex).toEqual([String.raw`\text{see https://e.com}`, 'z'])
+    expect(body).toContain('`](x) $y$`')
+  })
+
+  it('reads links the way marked does: balanced URL parens, code in link text', () => {
+    const src = 'Costs $5, see https://e.com/A_(b$) [``a`b``](mailto:x?subject=$y$) $a [`]`](u) b$ $k$'
+    const { body, tex } = protectInlineMath(src)
+    expect(tex).toEqual(['k'])
+    expect(body).toBe(src.replace('$k$', `\u{e000}0\u{e001}`))
+  })
+
+  it('keeps a formula with an HTML-like tag whole beside a link', () => {
+    expect(protectInlineMath('$<u>_i$ [l](u)').tex).toEqual(['<u>_i'])
+  })
+
+  it('reads each line afresh after an anchor that closes on a skipped line', () => {
+    const src = '<a href="u">$x$\nend</a>\n\nsee https://e.com/$a$b'
+    expect(protectInlineMath(src).tex).toEqual(['x'])
+  })
+
+  it('reads URLs inside a multiline anchor as marked does', () => {
+    expect(protectInlineMath('<a name="n">\n$a https://e.com/$b c\n</a>').tex).toEqual(['a https://e.com/'])
+  })
+
+  it('leaves indented code alone, and a tag shown there opens no anchor', () => {
+    const src = 'Example:\n\n    <a href="u"> $x$\n\nsee https://e.com/$a$b $y$'
+    expect(protectInlineMath(src).tex).toEqual(['y'])
+  })
+
+  it('reads CRLF files like LF files, in linear time', () => {
+    const src = 'Example:\n\n    <a href="u"> $x$\n\nsee https://e.com/$a$b $y$\n'
+    expect(protectInlineMath(src.replace(/\n/g, '\r\n'))).toEqual(protectInlineMath(src))
+    const start = performance.now()
+    expect(protectInlineMath('p $x$\r\n\r\n'.repeat(20000)).tex).toHaveLength(20000)
+    expect(performance.now() - start).toBeLessThan(1000)
+  })
+
+  it('scans many formula lines with many link definitions in linear time', () => {
+    const md = '$x$ [a](u)\n'.repeat(5000) + '\n' + Array.from({ length: 5000 }, (_, i) => `[r${i}]: https://e.com/${i}`).join('\n')
+    const start = performance.now()
+    expect(protectInlineMath(md).tex).toHaveLength(5000)
+    expect(performance.now() - start).toBeLessThan(1000)
+  })
+
+  it('scans a line of many formulas in linear time', () => {
+    const start = performance.now()
+    const { tex } = protectInlineMath('$x$ '.repeat(20000))
+    expect(tex).toHaveLength(20000)
+    expect(performance.now() - start).toBeLessThan(200)
+  })
+
+  it('scans a link with many angle brackets and no closing paren in linear time', () => {
+    const start = performance.now()
+    protectInlineMath(`[a](${'<b>'.repeat(5000)} "( $x$`)
+    expect(performance.now() - start).toBeLessThan(200)
+  })
+
   it('leaves dollars inside a double- or triple-backtick code span alone', () => {
     const { body, tex } = protectInlineMath('```a `$x$` b``` and ``$y$`` and $z$')
     expect(tex).toEqual(['z'])

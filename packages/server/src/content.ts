@@ -339,27 +339,15 @@ const TOKEN = /(\d+)/g
 /** A code span: a run of backticks, then text, then a run of the same length. */
 const CODE_SPAN = /(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)/g
 
-/** Applies `f` to the parts of `line` outside code spans. */
-function outsideCodeSpans(line: string, f: (part: string) => string): string {
-  let out = ''
-  let last = 0
-  for (const m of line.matchAll(CODE_SPAN)) {
-    out += f(line.slice(last, m.index)) + m[0]
-    last = m.index + m[0].length
-  }
-  return out + f(line.slice(last))
-}
-
 const LINK_TEXT = String.raw`\[(?:\\.|[^[\]\\\n]|\[[^[\]\n]*\])*\]`
-const LINK_DEST = String.raw`\([ \t]*<[^<>\n]*>[^()\n]*\)|\((?:\\.|[^()\\\n]|\([^()\n]*\))*\)`
+const LINK_DEST = String.raw`\([ \t]*<[^<>\n]*>(?:[^()\n]|\([^()\n]*\))*\)|\((?:\\.|[^()\\\n]|\([^()\n]*\))*\)`
 /**
- * Inline `$…$` (group 1 is its source), or syntax a formula placeholder must not enter: an inline or
- * reference link or image, an autolink, or a bare URL. Whichever starts first wins, so a formula
- * containing brackets or a URL stays one formula, and a link or URL containing dollars stays intact.
+ * Syntax a formula placeholder must not enter: a code span (group 1 is its backticks), an inline or
+ * reference link or image, an autolink, or a bare URL.
  */
-const INLINE_TEX_OR_LINK = new RegExp(
+const VERBATIM = new RegExp(
   [
-    INLINE_TEX.source,
+    CODE_SPAN.source,
     String.raw`!?${LINK_TEXT}(?:${LINK_DEST}|\[[^\]\n]*\](?!\())`,
     String.raw`<[a-z][\w+.-]*:[^\s<>]*>`,
     String.raw`(?:(?:ftp|https?):\/\/|www\.)[^\s<]*`,
@@ -368,6 +356,40 @@ const INLINE_TEX_OR_LINK = new RegExp(
 )
 /** A link reference definition: `[label]: destination`. */
 const LINK_DEF = /^ {0,3}\[[^\]]+\]:/
+
+/**
+ * Replaces the formulas on one line with placeholders, pushing their sources to `tex`. Scanning left
+ * to right, whichever of a formula or verbatim syntax starts first wins. A formula may hold whole links
+ * and URLs, but not a code span or syntax its closing `$` falls inside; then its `$` is plain text.
+ */
+function protectLine(line: string, tex: string[]): string {
+  const formula = new RegExp(INLINE_TEX.source, 'g')
+  const verbatim = new RegExp(VERBATIM.source, 'gi')
+  let out = ''
+  let at = 0
+  for (;;) {
+    formula.lastIndex = verbatim.lastIndex = at
+    const f = formula.exec(line)
+    if (!f) break
+    let v = verbatim.exec(line)
+    if (v && v.index < f.index) {
+      out += line.slice(at, v.index + v[0].length)
+      at = v.index + v[0].length
+      continue
+    }
+    const end = f.index + f[0].length
+    while (v && v.index < end && v[1] === undefined && v.index + v[0].length <= end) v = verbatim.exec(line)
+    if (v && v.index < end) {
+      out += line.slice(at, f.index + 1)
+      at = f.index + 1
+      continue
+    }
+    tex.push(f[1]!)
+    out += line.slice(at, f.index) + `\ue000${tex.length - 1}\ue001`
+    at = end
+  }
+  return out + line.slice(at)
+}
 
 /**
  * Replaces inline `$…$` with placeholders before Markdown parsing, so that `*` and `_` inside a
@@ -379,17 +401,7 @@ export function protectInlineMath(md: string): { body: string; tex: string[] } {
   const lines = md.split('\n')
   const code = fencedCodeLines(lines)
   const body = lines
-    .map((line, i) => {
-      if (code[i]) return line
-      if (/^\s*\|/.test(line) || LINK_DEF.test(line)) return line
-      return outsideCodeSpans(line, (part) =>
-        part.replace(INLINE_TEX_OR_LINK, (m, src: string | undefined) => {
-          if (src === undefined) return m
-          tex.push(src)
-          return `${tex.length - 1}`
-        }),
-      )
-    })
+    .map((line, i) => (code[i] || /^\s*\|/.test(line) || LINK_DEF.test(line) ? line : protectLine(line, tex)))
     .join('\n')
   return { body, tex }
 }

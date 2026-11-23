@@ -124,6 +124,13 @@ describe('inline math import from Markdown', () => {
     expect(tex).toEqual(['A[i][j]', String.raw`\text{see https://e.com}`])
   })
 
+  it('does not pair a price with a dollar inside a link, a code-labelled link or a titled link', () => {
+    const src = 'Costs $5, see [a](https://e.com/?p=$y) [`c`](a$x$b.png) [t](<https://e.com/)$w$v> "t(1)") $k$'
+    const { body, tex } = protectInlineMath(src)
+    expect(tex).toEqual(['k'])
+    expect(body).toBe(src.replace('$k$', `\u{e000}0\u{e001}`))
+  })
+
   it('scans a link with many angle brackets and no closing paren in linear time', () => {
     const start = performance.now()
     protectInlineMath(`[a](${'<b>'.repeat(5000)} "( $x$`)

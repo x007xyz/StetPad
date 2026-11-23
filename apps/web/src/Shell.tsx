@@ -25,6 +25,7 @@ interface Ctx {
   reload: () => Promise<void>
   createDoc: () => Promise<void>
   removeDoc: (d: DocMeta) => Promise<void>
+  notify: (text: string, options?: { error?: boolean }) => void
   /** Bumped whenever the shell moves a document to the trash. */
   trashVersion: number
   openSearch: () => void
@@ -75,6 +76,9 @@ export function Shell({ session, activeId, activeFolderId, trashActive, children
   const [toast, setToast] = useState<{ text: string; nonce: number; error?: boolean } | null>(null)
   const [trashVersion, setTrashVersion] = useState(0)
   const reloadVersion = useRef(0)
+  const notify = useCallback((text: string, options?: { error?: boolean }): void => {
+    setToast({ text, nonce: Date.now(), error: options?.error })
+  }, [])
 
   const reload = useCallback(async (): Promise<void> => {
     const version = ++reloadVersion.current
@@ -159,8 +163,8 @@ export function Shell({ session, activeId, activeFolderId, trashActive, children
   }, [isMobile])
 
   const ctx: Ctx = useMemo(() => ({
-    session, docs, folders, createFolder, renameFolder, removeFolder, moveDoc, reload, createDoc, removeDoc, trashVersion, openSearch, sidebarOpen, toggleSidebar, openSettings: () => setSettings(true), isMobile,
-  }), [session, docs, folders, createFolder, renameFolder, removeFolder, moveDoc, reload, createDoc, removeDoc, trashVersion, openSearch, sidebarOpen, toggleSidebar, isMobile])
+    session, docs, folders, createFolder, renameFolder, removeFolder, moveDoc, reload, createDoc, removeDoc, notify, trashVersion, openSearch, sidebarOpen, toggleSidebar, openSettings: () => setSettings(true), isMobile,
+  }), [session, docs, folders, createFolder, renameFolder, removeFolder, moveDoc, reload, createDoc, removeDoc, notify, trashVersion, openSearch, sidebarOpen, toggleSidebar, isMobile])
 
   const sidebar = (
     <SidebarBody
@@ -196,7 +200,7 @@ export function Shell({ session, activeId, activeFolderId, trashActive, children
 /** A short notice at the bottom of the screen, with one follow-up action. */
 function Toast({ text, error, onClose }: { text: string; error?: boolean; onClose: () => void }) {
   return (
-    <div role="status" className="fixed bottom-4 left-1/2 z-[70] flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-popover px-4 py-2 text-sm text-popover-foreground shadow-lg">
+    <div role={error ? 'alert' : 'status'} className="fixed bottom-4 left-1/2 z-[70] flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-popover px-4 py-2 text-sm text-popover-foreground shadow-lg">
       <span className={cn('min-w-0 truncate', error && 'text-destructive')}>{text}</span>
       {!error && <button className="shrink-0 font-medium text-link hover:underline" onClick={() => { onClose(); go({ page: 'trash' }) }}>查看回收站</button>}
       <button className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="关闭提示" onClick={onClose}>×</button>

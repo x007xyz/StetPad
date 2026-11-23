@@ -487,18 +487,19 @@ const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;'
  */
 function withFootnoteRefs(input: Block[]): { blocks: Block[]; notes: FootnoteInfo[] } {
   const notes = footnotesOf(input)
-  const number = new Map(notes.map((n) => [n.id, n.number]))
+  if (!notes.length) return { blocks: input, notes }
   // Position "block:run" of the last run of each id.
   const last = new Map<string, string>()
   input.forEach((b, bi) => b.delta.forEach((d, di) => {
     const f = footnoteAttr(d.attributes)
     if (f) last.set(f.id, `${bi}:${di}`)
   }))
+  const refs = new Map(notes.map(({ id, number }) => [last.get(id), number]))
   const blocks = input.map((b, bi) => ({
     ...b,
     delta: b.delta.flatMap((d, di) => {
-      const ids = [...last].filter(([, at]) => at === `${bi}:${di}`).map(([id]) => id)
-      return [d, ...ids.map((id) => ({ insert: '', attributes: { footnoteRef: number.get(id) } }))]
+      const ref = refs.get(`${bi}:${di}`)
+      return ref === undefined ? d : [d, { insert: '', attributes: { footnoteRef: ref } }]
     }),
   }))
   return { blocks, notes }

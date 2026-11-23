@@ -656,8 +656,7 @@ export function footnoteNotes(list: { delta: InlineDelta[] }[]): { id: string; n
 }
 
 /** The blocks with an empty `footnoteRef` run after the last run of each footnote. */
-function withFootnoteRefs(list: Block[]): Block[] {
-  const notes = footnoteNotes(list)
+function withFootnoteRefs(list: Block[], notes: ReturnType<typeof footnoteNotes>): Block[] {
   if (!notes.length) return list
   const number = new Map(notes.map((n) => [n.id, n.number]))
   const last = new Map<string, string>()
@@ -665,18 +664,19 @@ function withFootnoteRefs(list: Block[]): Block[] {
     const id = (d.attributes?.footnote as { id?: unknown } | undefined)?.id
     if (typeof id === 'string' && number.has(id)) last.set(id, `${bi}:${di}`)
   }))
+  const refs = new Map(Array.from(last, ([id, at]) => [at, number.get(id)]))
   return list.map((b, bi) => ({
     ...b,
     delta: b.delta.flatMap((d, di) => {
-      const ids = [...last].filter(([, at]) => at === `${bi}:${di}`).map(([id]) => id)
-      return [d, ...ids.map((id) => ({ insert: '', attributes: { footnoteRef: number.get(id) } }))]
+      const ref = refs.get(`${bi}:${di}`)
+      return ref === undefined ? d : [d, { insert: '', attributes: { footnoteRef: ref } }]
     }),
   }))
 }
 
 export function blocksToMarkdown(input: Block[]): string {
   const notes = footnoteNotes(input)
-  const list = withFootnoteRefs(input)
+  const list = withFootnoteRefs(input, notes)
   const out: (string | { code: string })[] = []
   const markers: { type: string; n: number; width: number }[] = []
   for (const b of list) {

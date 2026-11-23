@@ -18,7 +18,7 @@ import {
 import { Readability } from '@mozilla/readability'
 import { parseHTML } from 'linkedom'
 import mammoth from 'mammoth'
-import { marked } from 'marked'
+import { Lexer, marked, type Links, type Token } from 'marked'
 import { AlignmentType, Document as DocxDocument, ExternalHyperlink, FootnoteReferenceRun, HeadingLevel, ImageRun, LevelFormat, Packer, Paragraph as DocxParagraph, Table as DocxTable, TableCell, TableRow, TextRun, WidthType } from 'docx'
 import * as Y from 'yjs'
 import { mathToSvg, svgToPng } from './render'
@@ -336,77 +336,78 @@ export function applyMdFootnotes(list: Block[], defs: Map<string, string>): Bloc
 const INLINE_TEX = /(?<![\\$])\$(?=[^\s$])([^$\n]*?[^\s$\\])\$(?![\d$])/g
 const TOKEN = /(\d+)/g
 
-/** A code span: a run of backticks, then text, then a run of the same length. */
-const CODE_SPAN = /(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)/g
-
-/** A link's text; a backtick in it must close a code span inside it, since code spans bind tighter than links. */
-const LINK_TEXT = String.raw`\[(?:\\.|\`[^\`\n]*\`|[^[\]\\\`\n]|\[[^[\]\n]*\])*\]`
-const LINK_DEST = String.raw`\([ \t]*<[^<>\n]*>(?:[^()\n]|\([^()\n]*\))*\)|\((?:\\.|[^()\\\n]|\([^()\n]*\))*\)`
-/**
- * Syntax a formula placeholder must not enter: a code span (group 1 is its backticks), an inline or
- * reference link or image, an autolink, or a bare URL without trailing punctuation, as marked reads it.
- */
-const VERBATIM = new RegExp(
-  [
-    CODE_SPAN.source,
-    String.raw`!?${LINK_TEXT}(?:${LINK_DEST}|\[[^\]\n]*\](?!\())`,
-    String.raw`<[a-z][\w+.-]*:[^\s<>]*>`,
-    String.raw`(?:(?:ftp|https?):\/\/|www\.)[^\s<]*[^\s<?!.,:;*_'"~)]`,
-  ].join('|'),
-  'gi',
-)
 /** A link reference definition: `[label]: destination`. */
 const LINK_DEF = /^ {0,3}\[[^\]]+\]:/
 
+/** A stretch of a line that marked reads as code or HTML (`opaque`), or as a link or image. */
+type Verbatim = { start: number; end: number; opaque: boolean }
+
+/** The verbatim stretches among inline `tokens` that start at offset `at`, in order; code in a link text follows its link. */
+function verbatimSpans(tokens: Token[], at: number, out: Verbatim[] = []): Verbatim[] {
+  for (const t of tokens) {
+    const end = at + t.raw.length
+    if (t.type === 'codespan' || t.type === 'html') out.push({ start: at, end, opaque: true })
+    else if (t.type === 'link' || t.type === 'image') {
+      out.push({ start: at, end, opaque: false })
+      if (t.raw.startsWith('[')) verbatimSpans(t.tokens ?? [], at + 1, out)
+    }
+    else if (t.type === 'em' || t.type === 'strong' || t.type === 'del') {
+      // The delimiters are the same length on both sides of the inner text.
+      verbatimSpans(t.tokens ?? [], at + (t.raw.length - t.text.length) / 2, out)
+    }
+    at = end
+  }
+  return out
+}
+
 /**
- * Replaces the formulas on one line with placeholders, pushing their sources to `tex`. Scanning left
- * to right, whichever of a formula or verbatim syntax starts first wins. A formula may hold whole links
- * and URLs, but not a code span or syntax its closing `$` falls inside; then its `$` is plain text.
+ * Replaces the formulas on one line with placeholders, pushing their sources to `tex`. Code, HTML,
+ * links and images come from marked's own reading of the line, so they match the later parse. A
+ * formula may hold whole links, but no code or HTML, and may not end inside any of them.
  */
-function protectLine(line: string, tex: string[]): string {
+function protectLine(line: string, links: Links, tex: string[]): string {
+  const lexer = new Lexer({ ...marked.defaults, gfm: true })
+  Object.assign(lexer.tokens.links, links)
+  const spans = verbatimSpans(lexer.inlineTokens(line), 0)
   const formula = new RegExp(INLINE_TEX.source, 'g')
-  const verbatim = new RegExp(VERBATIM.source, 'gi')
-  const next = (re: RegExp, from: number) => ((re.lastIndex = from), re.exec(line))
   let out = ''
   let at = 0
-  let f = next(formula, 0)
-  let v = next(verbatim, 0)
-  while (f) {
-    if (v && v.index < f.index) {
-      const to = v.index + v[0].length
-      out += line.slice(at, to)
-      at = to
-      if (f.index < at) f = next(formula, at)
-      v = next(verbatim, at)
+  let s = 0
+  for (let f = formula.exec(line); f; f = formula.exec(line)) {
+    while (s < spans.length && spans[s]!.end <= f.index) s++
+    if (s < spans.length && spans[s]!.start <= f.index) {
+      formula.lastIndex = spans[s]!.end
       continue
     }
     const end = f.index + f[0].length
-    while (v && v.index < end && v[1] === undefined && v.index + v[0].length <= end) v = verbatim.exec(line)
-    if (v && v.index < end) {
-      const from = f.index + 1
-      f = next(formula, from)
-      v = next(verbatim, from)
+    let k = s
+    while (k < spans.length && spans[k]!.start < end && !spans[k]!.opaque && spans[k]!.end <= end) k++
+    if (k < spans.length && spans[k]!.start < end) {
+      formula.lastIndex = f.index + 1
       continue
     }
     tex.push(f[1]!)
     out += line.slice(at, f.index) + `\ue000${tex.length - 1}\ue001`
     at = end
-    f = next(formula, at)
   }
   return out + line.slice(at)
 }
 
 /**
  * Replaces inline `$…$` with placeholders before Markdown parsing, so that `*` and `_` inside a
- * formula are not read as emphasis. Code (fenced blocks, code spans), tables, links, images and link
- * reference definitions are left alone. `restoreInlineMath` puts the formulas back as math-marked text.
+ * formula are not read as emphasis. Code (fenced blocks, code spans), HTML, tables, links, images and
+ * link reference definitions are left alone. `restoreInlineMath` puts the formulas back as math-marked text.
  */
 export function protectInlineMath(md: string): { body: string; tex: string[] } {
   const tex: string[] = []
+  if (!md.includes('$')) return { body: md, tex }
+  const { links } = marked.lexer(md, { gfm: true })
   const lines = md.split('\n')
   const code = fencedCodeLines(lines)
   const body = lines
-    .map((line, i) => (code[i] || /^\s*\|/.test(line) || LINK_DEF.test(line) ? line : protectLine(line, tex)))
+    .map((line, i) =>
+      code[i] || !line.includes('$') || /^\s*\|/.test(line) || LINK_DEF.test(line) ? line : protectLine(line, links, tex),
+    )
     .join('\n')
   return { body, tex }
 }

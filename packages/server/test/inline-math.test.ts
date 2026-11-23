@@ -113,7 +113,7 @@ describe('inline math import from Markdown', () => {
   })
 
   it('leaves dollars inside escaped or bracketed destinations, bare URLs and reference links alone', () => {
-    const src = String.raw`[a](u\)$x$) [b](<u)$p$>) https://e.com/?q=$w$ [c $v$][r] $y$`
+    const src = String.raw`[a](u\)$x$) [b](<u)$p$>) https://e.com/?q=$w$ [c $v$][r] $y$` + '\n\n[r]: https://e.com'
     const { body, tex } = protectInlineMath(src)
     expect(tex).toEqual(['y'])
     expect(body).toBe(src.replace('$y$', `\u{e000}0\u{e001}`))
@@ -135,6 +135,13 @@ describe('inline math import from Markdown', () => {
     const { body, tex } = protectInlineMath(String.raw`$\text{see https://e.com}$. [` + '`](x) $y$` $z$')
     expect(tex).toEqual([String.raw`\text{see https://e.com}`, 'z'])
     expect(body).toContain('`](x) $y$`')
+  })
+
+  it('reads links the way marked does: balanced URL parens, code in link text', () => {
+    const src = 'Costs $5, see https://e.com/A_(b$) [``a`b``](mailto:x?subject=$y$) $a [`]`](u) b$ $k$'
+    const { body, tex } = protectInlineMath(src)
+    expect(tex).toEqual(['k'])
+    expect(body).toBe(src.replace('$k$', `\u{e000}0\u{e001}`))
   })
 
   it('scans a line of many formulas in linear time', () => {

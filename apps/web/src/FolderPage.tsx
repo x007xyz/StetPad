@@ -287,6 +287,7 @@ function DocSection({ doc, first, author, trackingRef, force, onState, onRenamed
       element: mount.current,
       extensions: folderEditorExtensions({
         ydoc, docId: id,
+        onError: (text) => workspace?.notify(text, { error: true }),
         user: () => ({ author, tracking: trackingRef.current }),
         caret: providerRef.current ? { provider: providerRef.current, user: { name: author, color: COLORS[Math.floor(Math.random() * COLORS.length)]! } } : undefined,
       }),

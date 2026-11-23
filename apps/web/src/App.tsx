@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { api } from './api'
-import { DocPage } from './DocPage'
-import { FolderPage } from './FolderPage'
 import { Home } from './Home'
 import { t } from './i18n'
 import { Shell } from './Shell'
 import { TrashPage } from './TrashPage'
+
+const DocPage = lazy(() => import('./DocPage').then((m) => ({ default: m.DocPage })))
+const FolderPage = lazy(() => import('./FolderPage').then((m) => ({ default: m.FolderPage })))
 
 type Route =
   | { page: 'home' }
@@ -55,7 +56,9 @@ export function App() {
   if (session === null) return <div className="center muted">加载中…</div>
   return (
     <Shell session={session} activeId={route.page === 'doc' ? route.id : undefined} activeFolderId={route.page === 'folder' ? route.id : undefined} trashActive={route.page === 'trash'}>
-      {route.page === 'doc' ? <DocPage key={route.id} id={route.id} /> : route.page === 'folder' ? <FolderPage key={route.id} id={route.id} /> : route.page === 'trash' ? <TrashPage /> : <Home />}
+      <Suspense fallback={<div className="center muted">加载中…</div>}>
+        {route.page === 'doc' ? <DocPage key={route.id} id={route.id} /> : route.page === 'folder' ? <FolderPage key={route.id} id={route.id} /> : route.page === 'trash' ? <TrashPage /> : <Home />}
+      </Suspense>
     </Shell>
   )
 }

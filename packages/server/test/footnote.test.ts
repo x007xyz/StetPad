@@ -2,7 +2,7 @@ import { blockText, findBlock, insertBlock, projectBlocks, type RichBlock } from
 import { inflateRawSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
-import { blocksToDocx, blocksToHtml, blocksToMarkdown, fileToBlocks } from '../src/content'
+import { blocksToDocx, blocksToHtml, blocksToMarkdown, fileToBlocks, type Block } from '../src/content'
 import { DocTools } from '../src/tools'
 
 const AI = 'AI · test-model'
@@ -44,6 +44,34 @@ function unzip(bytes: Uint8Array): Record<string, string> {
 }
 
 describe('footnote export', () => {
+  it('numbers by first use but only references the last run across blocks', async () => {
+    const paragraph = (insert: string, id: string, note?: string): Block => ({
+      type: 'paragraph', attrs: {}, delta: [{ insert, attributes: { footnote: { id, note } } }],
+    })
+    const blocks = [
+      paragraph('First use', 'a', 'First definition'),
+      paragraph('Second note', 'b'),
+      paragraph('Last use', 'a', 'Ignored definition'),
+      paragraph('No note', '', 'Invalid id'),
+    ]
+    expect(blocksToMarkdown(blocks)).toBe(
+      'First use\n\nSecond note[^2]\n\nLast use[^1]\n\nNo note\n\n[^1]: First definition\n[^2]: \n',
+    )
+    const html = blocksToHtml(blocks, 'Doc')
+    expect(html).toContain(
+      '<p>First use</p>\n<p>Second note<sup><a href="#fn-2" id="fnref-2">2</a></sup></p>\n' +
+      '<p>Last use<sup><a href="#fn-1" id="fnref-1">1</a></sup></p>\n<p>No note</p>',
+    )
+    expect(html).toContain('<li id="fn-2"> <a href="#fnref-2">↩</a></li>')
+    const files = unzip(await blocksToDocx(blocks, 'Doc'))
+    const body = files['word/document.xml']!
+    const refs = /<w:footnoteReference w:id="\d+"\/>/g
+    expect(body.match(refs)).toEqual(['<w:footnoteReference w:id="2"/>', '<w:footnoteReference w:id="1"/>'])
+    expect(body.indexOf('<w:footnoteReference w:id="1"/>')).toBeGreaterThan(body.indexOf('Last use'))
+    expect(files['word/footnotes.xml']).toContain('First definition')
+    expect(files['word/footnotes.xml']).not.toContain('Ignored definition')
+  })
+
   it('markdown: numbers in reading order, reference after the phrase, definitions at the end', () => {
     const { blocks } = twoFootnotes()
     const md = blocksToMarkdown(blocks as never)

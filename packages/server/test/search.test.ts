@@ -223,4 +223,22 @@ describe('search', () => {
     for (let i = 0; i < 32; i++) await store.createDoc(a.id, `Bulk ${i}`, stateWith('x'))
     expect(await search('bulk', a.token)).toHaveLength(30)
   })
+
+  it('returns snippets for the highest-ranked hits when more than 30 match', async () => {
+    const titleOnly = await store.createDoc(me.id, 'Ranked outline', stateWith('Other text'))
+    const titleAndBody = await store.createDoc(me.id, 'Ranked draft', stateWith('A ranked draft'))
+    const bodyHits = []
+    for (let i = 0; i < 32; i++) {
+      const title = `Note ${i}`
+      const snippet = `Ranked paragraph ${i}`
+      const { id } = await store.createDoc(me.id, title, stateWith(snippet))
+      bodyHits.push({ id, title, snippet, titleMatch: false })
+    }
+
+    expect(await search('ranked', me.token)).toMatchObject([
+      { id: titleAndBody.id, title: titleAndBody.title, snippet: 'A ranked draft', titleMatch: true },
+      { id: titleOnly.id, title: titleOnly.title, snippet: '', titleMatch: true },
+      ...bodyHits.slice(-28).reverse(),
+    ])
+  })
 })

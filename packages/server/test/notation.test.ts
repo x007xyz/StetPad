@@ -551,6 +551,13 @@ describe('import', () => {
     ])
   })
 
+  it('accepts an indented display math closer after a blank line', async () => {
+    const blocks = await fileToBlocks('a.md', enc('$$\nx\n\n    $$\n'))
+    expect(blocks).toEqual([
+      { type: 'codeBlock', attrs: { language: 'math' }, delta: [{ insert: 'x' }] },
+    ])
+  })
+
   it('display math is found in a file with CRLF line endings', async () => {
     const blocks = await fileToBlocks('a.md', enc('Before\r\n\r\n$$a+b$$\r\n'))
     expect(blocks.filter((b) => b.type === 'codeBlock').map((b) => [b.attrs.language, b.delta.map((d) => d.insert).join('')])).toEqual([['math', 'a+b']])

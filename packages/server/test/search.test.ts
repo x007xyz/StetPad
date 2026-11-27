@@ -160,12 +160,67 @@ describe('search', () => {
     await store.deleteDoc(doc.id)
   })
 
+  it('maps match ranges onto compacted snippets and original title characters', async () => {
+    const doc = await store.createDoc(me.id, '📍 İ  i', stateWith('x'.repeat(80) + '📍  İ  i  !'))
+    try {
+      expect((await search('i', me.token)).find((hit) => hit.id === doc.id)).toMatchObject({
+        titleMatches: [[3, 4], [6, 7]],
+        snippet: '…' + 'x'.repeat(36) + '📍 İ i !',
+        snippetMatches: [[40, 41], [42, 43]],
+      })
+      expect((await search('i\u0307  i', me.token)).find((hit) => hit.id === doc.id)).toMatchObject({
+        titleMatches: [[3, 7]],
+        snippetMatches: [[40, 43]],
+      })
+    } finally {
+      await store.deleteDoc(doc.id)
+    }
+  })
+
+  it('merges original character ranges that overlap after lowercase expansion', async () => {
+    const doc = await store.createDoc(me.id, 'İİİ', stateWith('Unrelated'))
+    try {
+      expect(await search('\u0307i', me.token)).toMatchObject([{ id: doc.id, titleMatches: [[0, 3]] }])
+    } finally {
+      await store.deleteDoc(doc.id)
+    }
+  })
+
   it('returns nothing for a blank query', async () => {
     const a = me
     await call('/api/docs', { method: 'POST', body: json({ title: 'Something' }) }, a.token)
     expect((await call('/api/search?q=', {}, a.token)).body).toEqual({ results: [] })
     expect((await call('/api/search?q=%20%20', {}, a.token)).body).toEqual({ results: [] })
     expect((await call('/api/search', {}, a.token)).body).toEqual({ results: [] })
+  })
+
+  it('uses the complete trimmed query in titles and bodies', async () => {
+    const prefix = 'A'.repeat(100)
+    const exact = await store.createDoc(me.id, prefix + 'B', stateWith('Unrelated'))
+    const inBody = await store.createDoc(me.id, 'Long phrase in body', stateWith(prefix + 'b'))
+    const near = await store.createDoc(me.id, prefix + 'C', stateWith(prefix + 'c'))
+    try {
+      expect(await search(`  ${prefix}B  `, me.token)).toMatchObject([
+        { id: exact.id, titleMatch: true },
+        { id: inBody.id, titleMatch: false, snippet: prefix + 'b' },
+      ])
+    } finally {
+      for (const doc of [exact, inBody, near]) await store.deleteDoc(doc.id)
+    }
+  })
+
+  it.each(['σ', 'ς', 'Σ', 'οσ'])('matches final sigma in titles and bodies for %s', async (query) => {
+    const byTitle = await store.createDoc(me.id, 'ΟΣ', stateWith('Unrelated'))
+    const byBody = await store.createDoc(me.id, 'Greek notes', stateWith('Ends in ΟΣ'))
+    try {
+      expect(await search(query, me.token)).toMatchObject([
+        { id: byTitle.id, titleMatch: true },
+        { id: byBody.id, titleMatch: false, snippet: 'Ends in ΟΣ' },
+      ])
+    } finally {
+      await store.deleteDoc(byTitle.id)
+      await store.deleteDoc(byBody.id)
+    }
   })
 
   it('treats % and _ as plain characters', async () => {

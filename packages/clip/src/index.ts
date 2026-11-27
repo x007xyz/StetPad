@@ -627,10 +627,10 @@ const mdEscapeText = (s: string): string => s.replace(/([\\`*_\[\]~<]|&(?=[\w#]+
 const mdEscapeDestination = (s: string): string => s.replace(/[\\()]/g, '\\$&')
 const mdNeedsHtmlDestination = (s: string): boolean => /[^!-~]|["<>\\]|&(?:#\w+|\w+);/.test(s)
 
-function mdInlineText(text: string, atStart: boolean, atEnd: boolean): string {
+function mdInlineText(text: string, atStart: boolean, atEnd: boolean, linked: boolean): string {
   // HTML imports store inline formulas as $…$ text. Keep their TeX verbatim.
-  return text.split(/((?<![\\$])\$(?=[^\s$])[^$\n]*?[^\s$\\]\$(?![\d$]))/g)
-    .map((part, i, parts) => i % 2 ? part : part.split(/(\s+)/u).map((piece, j, pieces) => {
+  const parts = linked ? [text] : text.split(/((?<![\\$])\$(?=[^\s$])[^$\n]*?[^\s$\\]\$(?![\d$]))/g)
+  return parts.map((part, i) => i % 2 ? part : part.split(/(\s+)/u).map((piece, j, pieces) => {
       if (!(j % 2)) return mdEscapeText(piece).replace(/\$/g, '\\$')
       if (/[\r\n]/.test(piece)) return piece
       const edge = (atStart && i === 0 && j === 1 && !pieces[0])
@@ -693,7 +693,7 @@ function inlineMd(delta: InlineDelta[]): string {
         const a = run.attributes
         if (a?.footnoteRef) out += `[^${Number(a.footnoteRef)}]`
         else if (a?.math) out += mdMath(run.insert, runs[i - 1], runs[i + 1])
-        else out += inCode ? mdEscapeText(run.insert).replace(/\$/g, '&#36;') : mdInlineText(run.insert, i === 0, i === runs.length - 1)
+        else out += inCode ? mdEscapeText(run.insert).replace(/\$/g, '&#36;') : mdInlineText(run.insert, i === 0, i === runs.length - 1, !!a?.link)
         i++
         continue
       }

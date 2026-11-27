@@ -55,6 +55,7 @@ const examples: [string, Block[]][] = [
   ['intra-word linked emphasis', [paragraph(text('a'), text('x', { ...bold, ...link(href) }), text('b'))]],
   ['literal image syntax inside a link label', [paragraph(text('![alt](https://example.invalid)', { ...bold, ...link(href) }))]],
   ['literal footnote syntax inside a link label', [paragraph(text('[^n]', link(href)))]],
+  ['literal math and brackets inside a link label', [paragraph(text('$x$ [', link(href)))]],
   ['adjacent differently marked text', [paragraph(text('a', bold), text('b', italic))]],
   ['marked punctuation mid-word', [paragraph(text('a'), text('*', italic), text('b'))]],
   ['touching inline code with distinct marks', [paragraph(text('a', code), text('b', { ...code, ...bold }))]],

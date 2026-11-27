@@ -599,6 +599,8 @@ const mdItalic = (s: string): string => '*' + mdOneLine(s).replace(/([*_\\`])/g,
 
 const mdEscapeText = (s: string): string => s.replace(/([\\`*_\[\]~<]|&(?=[\w#]+;))/g, '\\$1').replace(/\b(https?):(?=\/\/)/gi, '$1\\:')
 
+const mdEscapeDestination = (s: string): string => s.replace(/[\\()]/g, '\\$&')
+
 function mdInlineText(text: string): string {
   // HTML imports store inline formulas as $…$ text. Keep their TeX verbatim.
   return text.split(/((?<![\\$])\$(?=[^\s$])[^$\n]*?[^\s$\\]\$(?![\d$]))/g)
@@ -660,7 +662,7 @@ function inlineMd(delta: InlineDelta[]): string {
       } else {
         const text = render(i, stop, depth + 1, inCode || name === 'code')
         if (name === 'code') out += `<code>${text}</code>`
-        else if (name === 'link') out += `[${text}](${mark.href!.replace(/[\\()]/g, '\\$&')})`
+        else if (name === 'link') out += `[${text}](${mdEscapeDestination(mark.href!)})`
         else {
           const [delimiter, tag] = mdEmphasis[name]
           // Crossing spans need separate wrappers. HTML avoids ambiguous delimiter runs and preserves marked spaces.
@@ -772,8 +774,9 @@ export function blocksToMarkdown(input: Block[]): string {
         out.push('---')
         break
       case 'image': {
+        const src = mdEscapeDestination(String(b.attrs.src ?? ''))
         const caption = mdOneLine(String(b.attrs.caption ?? ''))
-        out.push(`![${mdAlt(String(b.attrs.alt ?? ''))}](${String(b.attrs.src ?? '')}${caption ? ` "${caption.replace(/"/g, "'")}"` : ''})`)
+        out.push(`![${mdAlt(String(b.attrs.alt ?? ''))}](${src}${caption ? ` "${caption.replace(/"/g, "'")}"` : ''})`)
         break
       }
       case 'video': {

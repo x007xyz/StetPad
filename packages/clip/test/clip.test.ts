@@ -158,6 +158,13 @@ describe('@stetpad/clip code Markdown', () => {
   })
 })
 
+describe('@stetpad/clip image Markdown', () => {
+  it('escapes parentheses in the image destination before the caption', () => {
+    const image = { type: 'image', attrs: { src: 'https://example.invalid/snapshot)final(2).png', alt: 'Snapshot', caption: 'Final' }, delta: [] }
+    expect(blocksToMarkdown([image])).toBe('![Snapshot](https://example.invalid/snapshot\\)final\\(2\\).png "Final")\n')
+  })
+})
+
 describe('@stetpad/clip paragraph Markdown', () => {
   it.each([
     ['# Heading', '\\# Heading'],

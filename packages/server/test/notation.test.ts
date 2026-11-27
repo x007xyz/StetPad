@@ -640,6 +640,14 @@ describe('export', () => {
   })
 
   it.each([
+    ['https://example.invalid/snapshot)final.png', ''],
+    ['https://example.invalid/snapshot(final.png', 'Final snapshot'],
+  ])('round-trips image destination %j through Markdown', async (src, caption) => {
+    const block: Block = { type: 'image', attrs: { src, alt: 'Snapshot', caption }, delta: [] }
+    expect(await fileToBlocks('image.md', enc(blocksToMarkdown([block])))).toEqual([block])
+  })
+
+  it.each([
     '1. a\n2. b\n\nend paragraph',
     '- a\n- b\n\n# Heading',
   ])('separates a list from the following block through Markdown round-trip: %s', async (md) => {

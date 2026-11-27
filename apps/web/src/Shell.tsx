@@ -1,6 +1,6 @@
 import { ChevronRight, ChevronsLeft, FilePlus2, FileText, Folder as FolderIcon, FolderInput, FolderPlus, PanelLeft, Pencil, Plus, Search, Settings as SettingsIcon, Trash, Trash2 } from 'lucide-react'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
-import { api, post, type DocMeta, type Folder } from './api'
+import { api, ApiError, post, type DocMeta, type Folder } from './api'
 import { go, type Session } from './App'
 import { ConfirmHost, confirmAction } from './components/confirm'
 import { Button } from './components/ui/button'
@@ -141,10 +141,16 @@ export function Shell({ session, activeId, activeFolderId, trashActive, children
   }, [toast])
 
   const createFolder = useCallback(async (): Promise<void> => {
-    const f = await post<Folder>('/folders', { name: '新建文件夹' })
+    let f: Folder
+    try {
+      f = await post<Folder>('/folders', { name: '新建文件夹' })
+    } catch (err) {
+      notify(err instanceof ApiError ? err.message : '新建文件夹失败，请重试。', { error: true })
+      return
+    }
     await reload()
     go({ page: 'folder', id: f.id })
-  }, [reload])
+  }, [reload, notify])
   const renameFolder = useCallback(async (f: Folder, name: string): Promise<void> => {
     if (!name.trim() || name.trim() === f.name) return
     try {
@@ -157,14 +163,24 @@ export function Shell({ session, activeId, activeFolderId, trashActive, children
   }, [reload, notify])
   const removeFolder = useCallback(async (f: Folder): Promise<void> => {
     if (!(await confirmAction({ title: `删除文件夹"${f.name}"？`, body: '其中的文档不会被删除，会移到文档列表。', confirmLabel: '删除', danger: true }))) return
-    await api(`/folders/${f.id}`, { method: 'DELETE' })
+    try {
+      await api(`/folders/${f.id}`, { method: 'DELETE' })
+    } catch (err) {
+      notify(err instanceof ApiError ? err.message : '删除文件夹失败，请重试。', { error: true })
+      return
+    }
     await reload()
     if (f.id === activeFolderId) go({ page: 'home' })
-  }, [reload, activeFolderId])
+  }, [reload, activeFolderId, notify])
   const moveDoc = useCallback(async (docId: string, folderId: string | null): Promise<void> => {
-    await api(`/docs/${docId}/folder`, { method: 'PUT', body: JSON.stringify({ folderId }) })
+    try {
+      await api(`/docs/${docId}/folder`, { method: 'PUT', body: JSON.stringify({ folderId }) })
+    } catch (err) {
+      notify(err instanceof ApiError ? err.message : '移动文档失败，请重试。', { error: true })
+      return
+    }
     await reload()
-  }, [reload])
+  }, [reload, notify])
 
   const sidebarOpen = isMobile ? mobileOpen : desktopOpen
   const toggleSidebar = useCallback(() => {

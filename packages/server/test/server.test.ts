@@ -1,5 +1,6 @@
 import { blockText, decide, findBlock, insertBlock, listChanges, projectBlocks, trackedReplace } from '@stetpad/crdt'
 import { HocuspocusProvider } from '@hocuspocus/provider'
+import { Document, ImageRun, Packer, Paragraph } from 'docx'
 import { strToU8, zipSync } from 'fflate'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -16,6 +17,15 @@ const until = async (check: () => boolean, what: string, ms = 8000) => {
     await new Promise((r) => setTimeout(r, 15))
   }
 }
+
+const smallGif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64')
+const largeGif = Buffer.concat([
+  smallGif.subarray(0, -1),
+  Buffer.from([0x21, 0xfe]),
+  ...Array.from({ length: 1600 }, () => Buffer.concat([Buffer.from([255]), Buffer.alloc(255, 65)])),
+  Buffer.from([0, 0x3b]),
+])
+const gifSrc = (data: Buffer) => `data:image/gif;base64,${data.toString('base64')}`
 
 describe('server', () => {
   let server: RunningServer
@@ -300,6 +310,39 @@ describe('server', () => {
     expect(r.body.title).toBe('Report Title')
     expect(r.body.blocks.map((b: { type: string }) => b.type)).toEqual(['heading', 'paragraph', 'paragraph'])
     expect(r.body.blocks[1].delta).toEqual([{ insert: 'Plain and ' }, { insert: 'bold', attributes: { bold: {} } }, { insert: ' text.' }])
+  })
+
+  it.each([['small', smallGif], ['large', largeGif]] as const)('imports a Word document with a %s embedded image', async (size, data) => {
+    const word = new Document({ sections: [{ children: [
+      new Paragraph('Before the image.'),
+      new Paragraph({ children: [new ImageRun({ type: 'gif', data, transformation: { width: 100, height: 100 } })] }),
+      new Paragraph('After the image.'),
+    ] }] })
+    const form = new FormData()
+    form.append('file', new File([await Packer.toArrayBuffer(word)], `${size}-image.docx`))
+    const preview = await call('/api/import/preview', { method: 'POST', body: form })
+    expect(preview.status).toBe(200)
+    expect(preview.body.blocks.map((b: { type: string }) => b.type)).toEqual(['paragraph', 'image', 'paragraph'])
+    const src = preview.body.blocks[1].attrs.src as string
+    if (size === 'large') expect(src).toMatch(/^\/files\/[\w-]+$/)
+    const image = await fetch(new URL(src, base))
+    expect(image.status).toBe(200)
+    expect(image.headers.get('content-type')).toBe('image/gif')
+    expect(Buffer.from(await image.arrayBuffer()).equals(data)).toBe(true)
+
+    const made = await call('/api/import/create', { method: 'POST', body: JSON.stringify(preview.body) })
+    expect(made.status).toBe(200)
+    const exported = await call(`/api/docs/${made.body.id}/export?format=md`)
+    expect(exported.body.trim()).toBe(`Before the image.\n\n![](${src})\n\nAfter the image.`)
+  })
+
+  it('keeps small inline images but drops oversized inline images from web clips', async () => {
+    const clipped = await call('/api/clipper/tokens', { method: 'POST', body: JSON.stringify({ name: 'Clip images' }) })
+    const blocks = [smallGif, largeGif].map((data) => ({ type: 'image', attrs: { src: gifSrc(data) }, delta: [] }))
+    const made = await call('/api/import/create', { method: 'POST', body: JSON.stringify({ blocks }) }, clipped.body.token)
+    expect(made.status).toBe(200)
+    const exported = await call(`/api/docs/${made.body.id}/export?format=md`)
+    expect(exported.body.trim()).toBe(`![](${gifSrc(smallGif)})`)
   })
 
   it('an external agent over MCP reads the document and proposes suggestions', async () => {

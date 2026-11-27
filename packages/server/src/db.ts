@@ -525,6 +525,9 @@ export class Store {
       [a.id, documentId, a.mime, new Uint8Array(0), this.now(), a.size, a.name, a.sha256 ?? null],
     )
   }
+  claimAsset(id: string, from: string, documentId: string): Promise<void> {
+    return this.sql.run('update assets set document_id = ? where id = ? and document_id = ?', [documentId, id, from])
+  }
   /** A filesystem asset of one user's documents with these bytes, if any. The caller checks the file still exists. */
   async findAssetByHash(userId: string, sha256: string): Promise<{ id: string } | null> {
     return this.one<{ id: string }>(

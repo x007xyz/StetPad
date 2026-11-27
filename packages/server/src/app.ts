@@ -109,6 +109,7 @@ const NO_IMAGE_EDIT_MODEL = '没有可用的图片编辑模型：请在设置里
 const NO_VISION_MODEL = '没有可识别图片的模型，请在设置里选择识图模型'
 /** Uploaded-file urls of this app. The id is unguessable. */
 const FILE_SRC = /^\/files\/[\w-]+$/
+const importAssetOwner = (userId: string): string => `import:${userId}`
 
 export interface RunningServer {
   port: number
@@ -1040,8 +1041,9 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     const file = form.get('file')
     if (!(file instanceof File)) return c.json({ error: '没有收到文件' }, 400)
     try {
-      const keys = await keysFor(c.get('user').id)
-      const visionId = await resolveRole(c.get('user').id, 'vision')
+      const userId = c.get('user').id
+      const keys = await keysFor(userId)
+      const visionId = await resolveRole(userId, 'vision')
       const ocr = visionId
         ? async (png: Uint8Array): Promise<string> =>
             (await generateText({ model: resolveModel(visionId, keys), messages: [{ role: 'user', content: [{ type: 'file', data: png, mediaType: 'image/png' }, { type: 'text', text: 'Transcribe all text on this page exactly. Output Markdown: use #/##/### for headings, - for bullets, blank lines between paragraphs. Output only the transcription.' }] }] })).text
@@ -1049,12 +1051,34 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
       let omittedPageCount = 0
       let skippedPages: number[] = []
       let skippedPageReason: SkippedPageReason | undefined
-      const blocks = await fileToBlocks(file.name, new Uint8Array(await file.arrayBuffer()), { ocr, onOmittedPages: (count) => { omittedPageCount = count }, onSkippedPages: (pages, reason) => { skippedPages = pages; skippedPageReason = reason } })
+      const docxImages = new Map<string, { id: string; data: Buffer; mime: string }>()
+      const blocks = await fileToBlocks(file.name, new Uint8Array(await file.arrayBuffer()), {
+        ocr,
+        onOmittedPages: (count) => { omittedPageCount = count },
+        onSkippedPages: (pages, reason) => { skippedPages = pages; skippedPageReason = reason },
+        docxImageSrc: (data, mime) => {
+          const id = newAssetId()
+          const src = `/files/${id}`
+          docxImages.set(src, { id, data, mime })
+          return src
+        },
+      })
       if (blocks.length === 0) return c.json({ error: '没有解析出任何内容' }, 422)
+      const preview = blocks.slice(0, MAX_IMPORT_BLOCKS)
+      for (const block of preview) {
+        if (block.type !== 'image' || typeof block.attrs.src !== 'string') continue
+        const asset = docxImages.get(block.attrs.src)
+        if (!asset) continue
+        const type = baseType(asset.mime)
+        const mime = type === 'image/jpg' ? 'image/jpeg' : type
+        const stored = await storeUpload(userId, importAssetOwner(userId), asset.id, mime, null, new Blob([asset.data as BlobPart]).stream(), asset.data.byteLength, true)
+        if (!stored.ok) return c.json({ error: stored.error }, stored.status)
+        block.attrs.src = `/files/${stored.id}`
+      }
       const heading = blocks.find((b) => b.type === 'heading')
       const title = (heading?.delta.map((d) => d.insert).join('') || file.name.replace(/\.[^.]+$/, '')).slice(0, 80)
       return c.json({
-        title, blocks: blocks.slice(0, MAX_IMPORT_BLOCKS),
+        title, blocks: preview,
         ...(blocks.length > MAX_IMPORT_BLOCKS ? { omittedBlockCount: blocks.length - MAX_IMPORT_BLOCKS } : {}),
         ...(omittedPageCount > 0 ? { omittedPageCount } : {}),
         ...(skippedPages.length > 0 ? { skippedPages, skippedPageReason } : {}),
@@ -1078,6 +1102,9 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     const user = c.get('user')
     const clean = sanitizeBlocks(blocks)
     const doc = await store.createDoc(user.id, title?.trim() || '导入的文档', Y.encodeStateAsUpdate(docFromBlocks(clean)))
+    const assetIds = new Set(clean.flatMap((b) => b.type === 'image' && typeof b.attrs.src === 'string' && FILE_SRC.test(b.attrs.src)
+      ? [b.attrs.src.slice('/files/'.length)] : []))
+    for (const id of assetIds) await store.claimAsset(id, importAssetOwner(user.id), doc.id)
     if (folder) await store.setDocFolder(doc.id, folder.folder.id)
     await collab.snapshot(doc.id, 'import', user.email)
     return c.json({

@@ -412,6 +412,13 @@ export const Table = Node.create({
       let current = node
       const dom = document.createElement('div')
       dom.className = 'blk table-wrap'
+      const table = document.createElement('table')
+      table.className = 'table'
+      dom.appendChild(table)
+      const updateBlockId = (): void => {
+        if (current.attrs.blockId) dom.setAttribute('data-block-id', String(current.attrs.blockId))
+        else dom.removeAttribute('data-block-id')
+      }
       const parse = (): string[][] => {
         try {
           const r = JSON.parse(String(current.attrs.rows)) as string[][]
@@ -426,69 +433,73 @@ export const Table = Node.create({
         const next = JSON.stringify(rows)
         if (next !== current.attrs.rows) editor.view.dispatch(editor.view.state.tr.setNodeAttribute(pos, 'rows', next))
       }
-      const render = (): void => {
+      const updateRows = (): void => {
         const rows = parse()
-        const focus = document.activeElement instanceof HTMLElement && dom.contains(document.activeElement) ? document.activeElement.dataset.cell : undefined
-        dom.replaceChildren()
-        if (current.attrs.blockId) dom.setAttribute('data-block-id', String(current.attrs.blockId))
-        const table = document.createElement('table')
-        table.className = 'table'
+        while (table.rows.length > rows.length) table.deleteRow(-1)
         rows.forEach((r, i) => {
-          const tr = table.insertRow()
+          const tr = table.rows[i] ?? table.insertRow()
+          while (tr.cells.length > r.length) tr.deleteCell(-1)
           r.forEach((cell, j) => {
-            const td = document.createElement(i === 0 ? 'th' : 'td')
-            td.textContent = cell
-            td.contentEditable = editor.isEditable ? 'plaintext-only' : 'false'
-            td.dataset.cell = `${i}:${j}`
-            td.addEventListener('blur', () => {
-              const now = parse()
-              if (now[i] && now[i]![j] !== td.textContent) {
-                now[i]![j] = td.textContent ?? ''
+            let td = tr.cells[j]
+            if (!td) {
+              const el = document.createElement(i === 0 ? 'th' : 'td')
+              el.contentEditable = editor.isEditable ? 'plaintext-only' : 'false'
+              el.dataset.cell = `${i}:${j}`
+              const saveCell = (): void => {
+                const now = parse()
+                now[i]![j] = el.textContent ?? ''
                 commit(now)
               }
-            })
-            tr.appendChild(td)
+              el.addEventListener('input', (event) => {
+                if (!(event as InputEvent).isComposing) saveCell()
+              })
+              el.addEventListener('compositionend', saveCell)
+              tr.appendChild(el)
+              td = el
+            }
+            if (td.textContent !== cell) td.textContent = cell
           })
         })
-        dom.appendChild(table)
-        if (editor.isEditable) {
-          const bar = document.createElement('div')
-          bar.className = 'table-bar'
-          bar.contentEditable = 'false'
-          const button = (label: string, fn: (rows: string[][]) => string[][]): void => {
-            const b = document.createElement('button')
-            b.type = 'button'
-            b.textContent = t(label)
-            b.addEventListener('mousedown', (e) => e.preventDefault())
-            b.addEventListener('click', () => commit(fn(parse())))
-            bar.appendChild(b)
-          }
-          button('+ 行', (r) => [...r, r[0]!.map(() => '')])
-          button('+ 列', (r) => r.map((row) => [...row, '']))
-          button('− 行', (r) => (r.length > 1 ? r.slice(0, -1) : r))
-          button('− 列', (r) => (r[0]!.length > 1 ? r.map((row) => row.slice(0, -1)) : r))
-          const chart = document.createElement('button')
-          chart.type = 'button'
-          chart.textContent = t('生成图表')
-          chart.addEventListener('mousedown', (e) => e.preventDefault())
-          chart.addEventListener('click', () => {
-            const detail: AiDiagramNewRequest = { kind: 'mermaid', prompt: TABLE_CHART_PROMPT, context: tableMarkdown(parse()) }
-            if (current.attrs.blockId) detail.afterBlockId = String(current.attrs.blockId)
-            window.dispatchEvent(new CustomEvent(AI_DIAGRAM_NEW_EVENT, { detail }))
-          })
-          bar.appendChild(chart)
-          dom.appendChild(bar)
-        }
-        if (focus) dom.querySelector<HTMLElement>(`[data-cell="${focus}"]`)?.focus()
       }
-      render()
+      updateBlockId()
+      updateRows()
+      if (editor.isEditable) {
+        const bar = document.createElement('div')
+        bar.className = 'table-bar'
+        bar.contentEditable = 'false'
+        const button = (label: string, fn: (rows: string[][]) => string[][]): void => {
+          const b = document.createElement('button')
+          b.type = 'button'
+          b.textContent = t(label)
+          b.addEventListener('mousedown', (e) => e.preventDefault())
+          b.addEventListener('click', () => commit(fn(parse())))
+          bar.appendChild(b)
+        }
+        button('+ 行', (r) => [...r, r[0]!.map(() => '')])
+        button('+ 列', (r) => r.map((row) => [...row, '']))
+        button('− 行', (r) => (r.length > 1 ? r.slice(0, -1) : r))
+        button('− 列', (r) => (r[0]!.length > 1 ? r.map((row) => row.slice(0, -1)) : r))
+        const chart = document.createElement('button')
+        chart.type = 'button'
+        chart.textContent = t('生成图表')
+        chart.addEventListener('mousedown', (e) => e.preventDefault())
+        chart.addEventListener('click', () => {
+          const detail: AiDiagramNewRequest = { kind: 'mermaid', prompt: TABLE_CHART_PROMPT, context: tableMarkdown(parse()) }
+          if (current.attrs.blockId) detail.afterBlockId = String(current.attrs.blockId)
+          window.dispatchEvent(new CustomEvent(AI_DIAGRAM_NEW_EVENT, { detail }))
+        })
+        bar.appendChild(chart)
+        dom.appendChild(bar)
+      }
       return {
         dom,
         update(next) {
           if (next.type !== current.type) return false
-          const changed = next.attrs.rows !== current.attrs.rows || next.attrs.blockId !== current.attrs.blockId
+          const rowsChanged = next.attrs.rows !== current.attrs.rows
+          const blockIdChanged = next.attrs.blockId !== current.attrs.blockId
           current = next
-          if (changed) render()
+          if (rowsChanged) updateRows()
+          if (blockIdChanged) updateBlockId()
           return true
         },
         // Typing in a cell is the table's business, not the editor's.

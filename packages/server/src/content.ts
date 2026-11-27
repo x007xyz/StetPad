@@ -18,8 +18,9 @@ import {
 import { Readability } from '@mozilla/readability'
 import { parseHTML } from 'linkedom'
 import mammoth from 'mammoth'
-import { Lexer, marked, type Token } from 'marked'
+import { Lexer, marked, type MarkedToken, type Token } from 'marked'
 import { AlignmentType, Document as DocxDocument, ExternalHyperlink, FootnoteReferenceRun, HeadingLevel, ImageRun, LevelFormat, Packer, Paragraph as DocxParagraph, Table as DocxTable, TableCell, TableRow, TextRun, WidthType } from 'docx'
+import { randomUUID } from 'node:crypto'
 import * as Y from 'yjs'
 import { mathToSvg, svgToPng } from './render'
 
@@ -62,18 +63,41 @@ function fencedCodeLines(lines: string[]): boolean[] {
 
 const MATH_DELIM = /^[ \t]*\$\$[ \t]*\r?$/
 const MATH_LINE = /^[ \t]*\$\$(.+?)\$\$[ \t]*\r?$/
+const INDENTED_MATH = /^(?: {4}| {0,3}\t)[ \t]*\$\$/
+
+/** Align tokens with their container source, including newlines omitted from token boundaries. */
+function markCodeTokenLines(tokens: MarkedToken[], source: string, fenced: boolean[], indented: boolean[], line = 0): void {
+  let offset = 0
+  for (const token of tokens) {
+    const start = source.indexOf(token.raw, offset)
+    if (start === -1) continue
+    line += source.slice(offset, start).match(/\n/g)?.length ?? 0
+    const next = line + (token.raw.match(/\n/g)?.length ?? 0)
+    if (token.type === 'code') {
+      const code = token.codeBlockStyle === 'indented' ? indented : fenced
+      code.fill(true, line, next + (token.raw.endsWith('\n') ? 0 : 1))
+    } else if (token.type === 'list') markCodeTokenLines(token.items, token.raw, fenced, indented, line)
+    else if (token.type === 'list_item' || token.type === 'blockquote') markCodeTokenLines(token.tokens as MarkedToken[], token.text, fenced, indented, line)
+    offset = start + token.raw.length
+    line = next
+  }
+}
 
 /**
  * `$$` display formulas on their own lines become ```math fences, so marked
- * emits them as `<pre><code class="language-math">`. Fenced code is left alone.
+ * emits them as `<pre><code class="language-math">`. Fenced and indented code is left alone.
  */
 export function mathToFence(md: string): string {
   const lines = md.split('\n')
-  const code = fencedCodeLines(lines)
+  const fenced = fencedCodeLines(lines)
+  const indented = new Array<boolean>(lines.length).fill(false)
+  if (lines.some((line, i) => !fenced[i] && INDENTED_MATH.test(line))) {
+    markCodeTokenLines(marked.lexer(md, { gfm: true }) as MarkedToken[], md.replace(/\r\n?/g, '\n'), fenced, indented)
+  }
   const out: string[] = []
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!
-    if (code[i]) {
+    if (fenced[i] || indented[i]) {
       out.push(line)
       continue
     }
@@ -82,7 +106,8 @@ export function mathToFence(md: string): string {
       out.push('```math', one[1]!.trim(), '```')
       continue
     }
-    const end = MATH_DELIM.test(line) ? lines.findIndex((l, j) => j > i && !code[j] && MATH_DELIM.test(l)) : -1
+    // Inside a display formula, indentation belongs to the formula, not to Markdown code.
+    const end = MATH_DELIM.test(line) ? lines.findIndex((l, j) => j > i && !fenced[j] && MATH_DELIM.test(l)) : -1
     if (end === -1) {
       out.push(line)
       continue
@@ -254,7 +279,7 @@ export async function fileToBlocks(name: string, data: Uint8Array, opts: { ocr?:
   if (ext === 'md' || ext === 'markdown') {
     const { body, defs } = splitMdFootnotes(str)
     const { body: safe, tex } = protectInlineMath(mathToFence(body))
-    return restoreInlineMath(applyMdFootnotes(htmlToBlocks(await marked.parse(safe, { gfm: true })), defs), tex)
+    return restoreInlineMath(await parseMdFootnotes(safe, defs), tex)
   }
   if (ext === 'html' || ext === 'htm') {
     const { document } = parseHTML(str)
@@ -279,6 +304,27 @@ const FN_DEF = /^\[\^([^\]\s]+)\]:[ \t]*(.*)$/
 /** Punctuation that ends the word a footnote marker attaches to. */
 const FN_STOP = /[\s，。！？；：、,.;:!?()（）「」“”"'《》]/
 
+async function parseMdFootnotes(body: string, defs: Map<string, string>): Promise<Block[]> {
+  if (!body.includes('\\')) return applyMdFootnotes(htmlToBlocks(await marked.parse(body, { gfm: true })), defs)
+  // Keep escaped brackets distinct until after the footnote pass, even after HTML parsing.
+  const escape = `\ue002${randomUUID()}`
+  const html = await marked.parse(body, {
+    gfm: true,
+    walkTokens(token) {
+      if (token.type === 'escape' && (token.text === '[' || token.text === ']')) {
+        token.text = escape + (token.text === '[' ? 'L' : 'R')
+      }
+    },
+  })
+  const list = applyMdFootnotes(htmlToBlocks(html), defs, escape)
+  const restore = (value: string): string => value.replaceAll(escape + 'L', '[').replaceAll(escape + 'R', ']')
+  for (const b of list) {
+    for (const d of b.delta) d.insert = restore(d.insert)
+    for (const [k, v] of Object.entries(b.attrs)) if (typeof v === 'string') b.attrs[k] = restore(v)
+  }
+  return list
+}
+
 /** Take `[^label]: text` definitions out of Markdown, outside fenced code. They are applied after parsing. */
 export function splitMdFootnotes(src: string): { body: string; defs: Map<string, string> } {
   const defs = new Map<string, string>()
@@ -294,20 +340,24 @@ export function splitMdFootnotes(src: string): { body: string; defs: Map<string,
 }
 
 /**
- * Turn each `[^label]` marker outside code blocks into a footnote mark over the word before it.
+ * Turn each unescaped `[^label]` marker outside code into a footnote mark over the word before it.
  * A marker with no definition, or with nothing before it, is dropped.
  */
-export function applyMdFootnotes(list: Block[], defs: Map<string, string>): Block[] {
+function applyMdFootnotes(list: Block[], defs: Map<string, string>, escape?: string): Block[] {
   for (const b of list) {
     if (b.type === 'codeBlock' || !b.delta.some((d) => d.insert.includes('[^'))) continue
     // One entry per UTF-16 code unit, so regex match offsets index `chars` directly.
     const chars: { ch: string; attributes?: Record<string, unknown> }[] = []
     for (const d of b.delta) for (const ch of d.insert.split('')) chars.push({ ch, attributes: d.attributes })
-    const re = /\[\^([^\]\s]+)\]/
+    const re = /\[\^([^\]\s]+)\]/g
     let s = chars.map((c) => c.ch).join('')
     let m: RegExpExecArray | null
     while ((m = re.exec(s))) {
       const at = m.index
+      if ((escape && m[1]!.includes(escape)) || chars.slice(at, re.lastIndex).some((c) => c.attributes?.code)) {
+        re.lastIndex = at + 1
+        continue
+      }
       let start = at
       while (start > 0 && !FN_STOP.test(chars[start - 1]!.ch)) start--
       const note = defs.get(m[1]!)
@@ -317,6 +367,7 @@ export function applyMdFootnotes(list: Block[], defs: Map<string, string>): Bloc
       }
       chars.splice(at, m[0].length)
       s = chars.map((c) => c.ch).join('')
+      re.lastIndex = at
     }
     const delta: Block['delta'] = []
     for (const c of chars) {
@@ -445,7 +496,11 @@ export function restoreInlineMath(list: Block[], tex: string[]): Block[] {
     }
     for (const d of b.delta) {
       d.insert.split(/(\d+)/).forEach((part, i) => {
-        if (i % 2) push(tex[Number(part)] ?? '', { math: true })
+        if (i % 2) {
+          const src = tex[Number(part)] ?? ''
+          if (b.type === 'codeBlock' || d.attributes?.code) push(`$${src}$`, d.attributes)
+          else push(src, { math: true })
+        }
         else push(part, d.attributes)
       })
     }

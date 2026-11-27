@@ -613,23 +613,77 @@ function mdCodeSpan(text: string): string {
   return fence + pad + text + pad + fence
 }
 
+const mdEmphasis = {
+  strike: ['~~', 'del'],
+  italic: ['*', 'em'],
+  bold: ['**', 'strong'],
+} as const
+const mdMarkOrder = ['link', 'strike', 'italic', 'bold', 'code'] as const
+type MdMark = { name: typeof mdMarkOrder[number]; href?: string; start: number; end: number }
+
 function inlineMd(delta: InlineDelta[]): string {
-  return delta
-    .map((d) => {
-      let s = d.insert
-      const a = d.attributes ?? {}
-      if (a.footnoteRef) return `[^${Number(a.footnoteRef)}]`
-      // Inline math is not combined with other marks: the source goes out as written.
-      if (a.math) return `$${s}$`
-      s = a.code ? mdCodeSpan(s) : mdInlineText(s)
-      if (a.bold) s = `**${s}**`
-      if (a.italic) s = `*${s}*`
-      if (a.strike) s = `~~${s}~~`
-      const href = (a.link as { href?: string } | undefined)?.href
-      if (href) s = `[${s}](${mdEscapeDestination(String(href))})`
-      return s
+  const runs = delta.filter((run) => run.insert || run.attributes?.footnoteRef)
+  const active = new Map<MdMark['name'], MdMark>()
+  const marks = runs.map(({ attributes: a }, i) => {
+    const href = (a?.link as { href?: string } | undefined)?.href
+    return mdMarkOrder.flatMap((name) => {
+      if (!a || a.math || a.footnoteRef || !(name === 'link' ? href : a[name])) {
+        active.delete(name)
+        return []
+      }
+      const previous = active.get(name)
+      const url = name === 'link' ? String(href) : undefined
+      const mark = previous?.href === url && previous ? previous : { name, href: url, start: i, end: i }
+      mark.end = i + 1
+      active.set(name, mark)
+      return [mark]
     })
-    .join('')
+  })
+  // Keep earlier spans outside later ones; when they start together, the longer one wraps the shorter.
+  for (const row of marks) row.sort((a, b) => a.start - b.start || b.end - a.end)
+
+  const render = (start: number, end: number, depth: number, inCode = false): string => {
+    let out = ''
+    for (let i = start; i < end;) {
+      const mark = marks[i]![depth]
+      const run = runs[i]!
+      if (!mark) {
+        const a = run.attributes
+        if (a?.footnoteRef) out += `[^${Number(a.footnoteRef)}]`
+        else if (a?.math) out += `$${run.insert}$`
+        else out += inCode ? mdEscapeText(run.insert).replace(/\$/g, '&#36;') : mdInlineText(run.insert)
+        i++
+        continue
+      }
+      const stop = Math.min(end, mark.end)
+      const { name } = mark
+      if (name === 'code' && marks.slice(i, stop).every((row) => row.length === depth + 1)) {
+        out += mdCodeSpan(runs.slice(i, stop).map((r) => r.insert).join(''))
+      } else {
+        const text = render(i, stop, depth + 1, inCode || name === 'code')
+        if (name === 'code') out += `<code>${text}</code>`
+        else if (name === 'link') out += `[${text}](${mdEscapeDestination(mark.href!)})`
+        else {
+          const [delimiter, tag] = mdEmphasis[name]
+          // Crossing spans need separate wrappers. HTML avoids ambiguous delimiter runs and preserves marked spaces.
+          const beforeWord = i > start && /[^\s\p{P}\p{S}]$/u.test(runs[i - 1]!.insert)
+          const afterWord = stop < end && /^[^\s\p{P}\p{S}]/u.test(runs[stop]!.insert)
+          const html = i !== mark.start || stop !== mark.end || /^\s|\s$/.test(text)
+            || (beforeWord && /^[\p{P}\p{S}]/u.test(text)) || (afterWord && /[\p{P}\p{S}]$/u.test(text))
+          out += html ? `<${tag}>${text}</${tag}>` : delimiter + text + delimiter
+        }
+      }
+      i = stop
+    }
+    return out
+  }
+  return render(0, runs.length, 0)
+}
+
+function mdParagraph(delta: InlineDelta[]): string {
+  return inlineMd(delta)
+    .replace(/^([ \t]*)(?=#{1,6}(?:\s|$)|>|[-+](?:\s|$)|-{2,}[ \t]*(?:\r?\n|$))/, '$1\\')
+    .replace(/^([ \t]*\d{1,9})(?=[.)](?:\s|$))/, '$1\\')
 }
 
 const tableRows = (b: Block): string[][] => {
@@ -753,12 +807,15 @@ export function blocksToMarkdown(input: Block[]): string {
         break
       }
       case 'table': {
-        const rows = tableRows(b).map((r) => r.map((c) => String(c ?? '').replace(/([\\|])/g, '\\$1')))
+        const rows = tableRows(b).map((r) => r.map((c) => mdEscapeText(String(c ?? '')).replace(/\|/g, '\\$&')))
         if (rows[0]) {
           out.push('| ' + rows[0].join(' | ') + ' |', '| ' + rows[0].map(() => '---').join(' | ') + ' |', ...rows.slice(1).map((r) => '| ' + r.join(' | ') + ' |'))
         }
         break
       }
+      case 'paragraph':
+        out.push(mdParagraph(b.delta))
+        break
       default:
         out.push(inlineMd(b.delta))
     }

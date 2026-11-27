@@ -499,6 +499,65 @@ describe('import', () => {
     ])
   })
 
+  it('keeps display math delimiters literal in indented code', async () => {
+    const md = '    $$NAME$$\n\n\t$$\n\tx\n\t$$\n\n   $$y$$\n'
+    const blocks = await fileToBlocks('a.md', enc(md))
+    expect(blocks).toEqual([
+      { type: 'codeBlock', attrs: { language: '' }, delta: [{ insert: '$$NAME$$\n\n$$\nx\n$$' }] },
+      { type: 'codeBlock', attrs: { language: 'math' }, delta: [{ insert: 'y' }] },
+    ])
+  })
+
+  it('keeps inline dollars literal alongside display math delimiters in indented code', async () => {
+    const blocks = await fileToBlocks('a.md', enc('    $$NAME$$\n    echo $name$\n'))
+    expect(blocks).toEqual([
+      { type: 'codeBlock', attrs: { language: '' }, delta: [{ insert: '$$NAME$$\necho $name$' }] },
+    ])
+  })
+
+  it.each([
+    ['- item\n\n    $$\n    x\n    $$\n', 'bulletItem', '    x'],
+    ['1. item\n\n    $$a+b$$\n', 'orderedItem', 'a+b'],
+  ])('imports display math on an indented list continuation: %j', async (md, type, tex) => {
+    const blocks = await fileToBlocks('a.md', enc(md))
+    expect(blocks).toEqual([
+      { type, attrs: { indent: 0 }, delta: [{ insert: 'item' }] },
+      { type: 'codeBlock', attrs: { language: 'math' }, delta: [{ insert: tex }] },
+    ])
+  })
+
+  it('keeps deeper list continuation code literal next to display math', async () => {
+    const md = '- item\n\n      $$code$$\n\n    $$a+b$$\n'
+    const blocks = await fileToBlocks('a.md', enc(md))
+    expect(blocks).toEqual([
+      { type: 'bulletItem', attrs: { indent: 0 }, delta: [{ insert: 'item ' }, { insert: '$$code$$\n', attributes: { code: {} } }] },
+      { type: 'codeBlock', attrs: { language: 'math' }, delta: [{ insert: 'a+b' }] },
+    ])
+  })
+
+  it('preserves dollar signs in indented list code', async () => {
+    const blocks = await fileToBlocks('a.md', enc('- item\n\n      $$PID$$\n      echo $name$\n'))
+    expect(blocks).toEqual([
+      { type: 'bulletItem', attrs: { indent: 0 }, delta: [{ insert: 'item ' }, { insert: '$$PID$$\necho $name$\n', attributes: { code: {} } }] },
+    ])
+  })
+
+  it('imports display math before indented code in a quoted list', async () => {
+    const blocks = await fileToBlocks('a.md', enc('> - item\n    $$a+b$$\n>     echo\n'))
+    expect(blocks).toEqual([
+      { type: 'quote', attrs: {}, delta: [{ insert: 'item' }] },
+      { type: 'codeBlock', attrs: { language: 'math' }, delta: [{ insert: 'a+b' }] },
+      { type: 'quote', attrs: {}, delta: [{ insert: 'echo\n', attributes: { code: {} } }] },
+    ])
+  })
+
+  it('accepts an indented display math closer after a blank line', async () => {
+    const blocks = await fileToBlocks('a.md', enc('$$\nx\n\n    $$\n'))
+    expect(blocks).toEqual([
+      { type: 'codeBlock', attrs: { language: 'math' }, delta: [{ insert: 'x' }] },
+    ])
+  })
+
   it('display math is found in a file with CRLF line endings', async () => {
     const blocks = await fileToBlocks('a.md', enc('Before\r\n\r\n$$a+b$$\r\n'))
     expect(blocks.filter((b) => b.type === 'codeBlock').map((b) => [b.attrs.language, b.delta.map((d) => d.insert).join('')])).toEqual([['math', 'a+b']])
@@ -555,6 +614,20 @@ describe('export', () => {
   ])('round-trips literal Markdown text %j without adding marks', async (text) => {
     const block = para(text)
     expect(await fileToBlocks('inline.md', enc(blocksToMarkdown([block])))).toEqual([block])
+  })
+
+  it.each([
+    '# Heading', '1. Item', '> Quote', '---', '- Bullet', '+ Bullet', '2) Item',
+    '* Bullet', '```ts', '~~~',
+  ])('round-trips paragraph %j without changing its block type', async (text) => {
+    const block = para(text)
+    expect(await fileToBlocks('paragraph.md', enc(blocksToMarkdown([block])))).toEqual([block])
+  })
+
+  it('round-trips a literal ordered list marker split across runs before bold text', async () => {
+    const block: Block = { ...para(''), delta: [{ insert: '1' }, { insert: '. ' }, { insert: 'Item', attributes: { bold: {} } }] }
+    expect(await fileToBlocks('paragraph.md', enc(blocksToMarkdown([block]))))
+      .toEqual([{ ...block, delta: [{ insert: '1. ' }, block.delta[2]] }])
   })
 
   it.each([
@@ -652,6 +725,13 @@ describe('export', () => {
     const table: Block = { type: 'table', attrs: { rows: JSON.stringify([[cell, 'tail'], [cell, 'tail']]) }, delta: [] }
     const back = await fileToBlocks('table.md', enc(blocksToMarkdown([table])))
     expect(back).toEqual([table])
+  })
+
+  it.each([
+    '**keep stars**', '&copy;', '&#169;', '[label](https://example.invalid)', '`code`', '$a_b*c$',
+  ])('round-trips literal inline Markdown %j in table cells', async (cell) => {
+    const table: Block = { type: 'table', attrs: { rows: JSON.stringify([[cell, 'tail'], [cell, 'tail']]) }, delta: [] }
+    expect(await fileToBlocks('table.md', enc(blocksToMarkdown([table])))).toEqual([table])
   })
 
   it('html writes figures, video, iframe and escapes attributes', () => {

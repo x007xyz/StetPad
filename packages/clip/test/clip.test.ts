@@ -165,6 +165,21 @@ describe('@stetpad/clip image Markdown', () => {
   })
 })
 
+describe('@stetpad/clip paragraph Markdown', () => {
+  it.each([
+    ['# Heading', '\\# Heading'],
+    ['1. Item', '1\\. Item'],
+    ['> Quote', '\\> Quote'],
+    ['---', '\\---'],
+    ['- Bullet', '\\- Bullet'],
+    ['+ Bullet', '\\+ Bullet'],
+    ['2) Item', '2\\) Item'],
+    ['v1.0 and C++', 'v1.0 and C++'],
+  ])('serializes paragraph %j without making it another block type', (insert, markdown) => {
+    expect(blocksToMarkdown([{ type: 'paragraph', attrs: {}, delta: [{ insert }] }])).toBe(markdown + '\n')
+  })
+})
+
 describe('@stetpad/clip table Markdown', () => {
   it('escapes pipes and backslashes in header and body cells', () => {
     const blocks = parse('<table><tr><th>A|B</th><th>tail</th></tr><tr><td>A\\|B</td><td>tail</td></tr></table>')
@@ -174,6 +189,12 @@ describe('@stetpad/clip table Markdown', () => {
   it('serializes non-string table cells', () => {
     const rows = JSON.stringify([[1, null], ['a|b', true]])
     expect(blocksToMarkdown([{ type: 'table', attrs: { rows }, delta: [] }])).toBe('| 1 |  |\n| --- | --- |\n| a\\|b | true |\n')
+  })
+
+  it('escapes inline formatting and entities in table cells', () => {
+    const rows = JSON.stringify([['**keep stars**', '&copy;']])
+    expect(blocksToMarkdown([{ type: 'table', attrs: { rows }, delta: [] }]))
+      .toBe('| \\*\\*keep stars\\*\\* | \\&copy; |\n| --- | --- |\n')
   })
 
   it.each(['[]', 'invalid JSON'])('omits empty or invalid table rows: %s', (rows) => {

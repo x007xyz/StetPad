@@ -291,12 +291,13 @@ const readDraft = (key: string): Draft => {
   drafts.set(key, draft)
   return draft
 }
-const persistDraft = (key: string, v: string): void => {
+const persistDraft = (key: string, v: string): boolean => {
   try {
     if (v) localStorage.setItem('aiw.draft.' + key, v)
     else localStorage.removeItem('aiw.draft.' + key)
+    return true
   } catch {
-    /* storage unavailable */
+    return false
   }
 }
 const writeDraft = (draft: Draft, text: string): void => {
@@ -309,8 +310,7 @@ const moveDraft = (from: string, to: string): void => {
   drafts.delete(from)
   draft.key = to
   drafts.set(to, draft)
-  persistDraft(to, draft.text)
-  persistDraft(from, '')
+  if (persistDraft(to, draft.text)) persistDraft(from, '')
 }
 
 export const ago = (t: number): string => {

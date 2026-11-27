@@ -106,7 +106,7 @@ it.each(['no model', '400', 'network', 'success', 'empty'] as const)('preserves 
   expect(posts).toHaveLength(outcome === 'no model' || outcome === 'empty' ? 0 : 1)
 })
 
-it.each(['draft', 'empty', 'retry', 'send error', 'send success'] as const)('shares the first chat creation and handles the draft: %s', async (outcome) => {
+it.each(['draft', 'empty', 'retry', 'send error', 'send success', 'storage full'] as const)('shares the first chat creation and handles the draft: %s', async (outcome) => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
   const docId = 'first-chat-' + outcome
   const initialDraft = outcome === 'empty' ? '' : 'Keep my first draft'
@@ -142,6 +142,17 @@ it.each(['draft', 'empty', 'retry', 'send error', 'send success'] as const)('sha
 
   const source = 'aiw.draft.' + docId
   const target = 'aiw.draft.chat.' + chat.id
+  if (outcome === 'storage full') {
+    const storage = localStorage
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.getItem(key),
+      setItem: (key: string, value: string) => {
+        if (key === target) throw new DOMException('Storage full', 'QuotaExceededError')
+        storage.setItem(key, value)
+      },
+      removeItem: (key: string) => storage.removeItem(key),
+    })
+  }
   if (outcome === 'retry') {
     await act(async () => first.resolve(Response.json({ error: 'Cannot create' }, { status: 500 })))
     expect.soft(area.value).toBe(initialDraft)
@@ -155,8 +166,8 @@ it.each(['draft', 'empty', 'retry', 'send error', 'send success'] as const)('sha
   if (outcome.startsWith('send')) expect.soft(start).toHaveBeenCalledWith(expect.objectContaining({ chatId: chat.id, instruction: initialDraft }))
   const expected = outcome === 'send success' ? '' : initialDraft
   expect.soft(area.value).toBe(expected)
-  expect.soft(localStorage.getItem(target)).toBe(expected || null)
-  expect.soft(localStorage.getItem(source)).toBeNull()
+  expect.soft(localStorage.getItem(target)).toBe(outcome === 'storage full' ? null : expected || null)
+  expect.soft(localStorage.getItem(source)).toBe(outcome === 'storage full' ? expected : null)
 })
 
 it.each(['data', 'empty', 'error'] as const)('ignores stale chat history with %s', async (outcome) => {

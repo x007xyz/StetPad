@@ -1063,23 +1063,30 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
           return src
         },
       })
-      if (blocks.length === 0) return c.json({ error: '没有解析出任何内容' }, 422)
-      const preview = blocks.slice(0, MAX_IMPORT_BLOCKS)
-      for (const block of preview) {
-        if (block.type !== 'image' || typeof block.attrs.src !== 'string') continue
-        const asset = docxImages.get(block.attrs.src)
-        if (!asset) continue
-        const type = baseType(asset.mime)
-        const mime = type === 'image/jpg' ? 'image/jpeg' : type
-        const stored = await storeUpload(userId, importAssetOwner(userId), asset.id, mime, null, new Blob([asset.data as BlobPart]).stream(), asset.data.byteLength, true)
-        if (!stored.ok) return c.json({ error: stored.error }, stored.status)
-        block.attrs.src = `/files/${stored.id}`
+      const preview: Block[] = []
+      let droppedImages = 0
+      for (const block of blocks) {
+        if (preview.length === MAX_IMPORT_BLOCKS) break
+        const asset = block.type === 'image' && typeof block.attrs.src === 'string' ? docxImages.get(block.attrs.src) : undefined
+        if (asset) {
+          const type = baseType(asset.mime)
+          const mime = type === 'image/jpg' ? 'image/jpeg' : type
+          const stored = await storeUpload(userId, importAssetOwner(userId), asset.id, mime, null, new Blob([asset.data as BlobPart]).stream(), asset.data.byteLength, true)
+          if (!stored.ok) {
+            droppedImages++
+            continue
+          }
+          block.attrs.src = `/files/${stored.id}`
+        }
+        preview.push(block)
       }
+      if (preview.length === 0) return c.json({ error: '没有解析出任何内容' }, 422)
+      const omittedBlockCount = blocks.length - droppedImages - preview.length
       const heading = blocks.find((b) => b.type === 'heading')
       const title = (heading?.delta.map((d) => d.insert).join('') || file.name.replace(/\.[^.]+$/, '')).slice(0, 80)
       return c.json({
         title, blocks: preview,
-        ...(blocks.length > MAX_IMPORT_BLOCKS ? { omittedBlockCount: blocks.length - MAX_IMPORT_BLOCKS } : {}),
+        ...(omittedBlockCount > 0 ? { omittedBlockCount } : {}),
         ...(omittedPageCount > 0 ? { omittedPageCount } : {}),
         ...(skippedPages.length > 0 ? { skippedPages, skippedPageReason } : {}),
       })

@@ -254,9 +254,9 @@ button { cursor: pointer; }
 .link-prompt button { flex: none; border: 0; border-radius: 999px; padding: 3px 10px; background: var(--accent); color: var(--foreground); font-size: 12px; cursor: pointer; }
 .link-prompt button:last-child { background: none; color: var(--muted-foreground); }
 .link-prompt button:disabled { opacity: 0.5; cursor: default; }
-.prose table.table, .prose .table-wrap table { border-collapse: collapse; width: 100%; font-size: 14px; }
-.prose table.table th, .prose table.table td, .prose .table-wrap th, .prose .table-wrap td { border: 1px solid var(--border); padding: 5px 9px; text-align: left; }
-.prose table.table th, .prose .table-wrap th { background: var(--muted); font-weight: 500; }
+.prose table.table, .prose .table-wrap table, .diff-table { border-collapse: collapse; width: 100%; font-size: 14px; }
+.prose table.table th, .prose table.table td, .prose .table-wrap th, .prose .table-wrap td, .diff-table th, .diff-table td { border: 1px solid var(--border); padding: 5px 9px; text-align: left; }
+.prose table.table th, .prose .table-wrap th, .diff-table th { background: var(--muted); font-weight: 500; }
 .prose mark { background: #fdecc8; color: #37352f; border-radius: 2px; }
 .prose a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 3px; }
 .prose .ProseMirror-selectednode { outline: 2px solid var(--ring); }
@@ -381,6 +381,9 @@ del { color: var(--del); background: var(--del-bg); border-radius: 2px; } ins { 
 .diff-cell.absent { background: repeating-linear-gradient(135deg, transparent 0 6px, var(--accent) 6px 12px) !important; }
 .diff-cell.removed { background: var(--del-bg) !important; } .diff-cell.added { background: var(--ins-bg) !important; }
 .diff-cell .kind { font-size: 11px; color: var(--muted-foreground); margin-right: 6px; }
+.diff-table-wrap { margin-top: 4px; overflow-x: auto; }
+.diff-table .removed { background: var(--del-bg); }
+.diff-table .added { background: var(--ins-bg); }
 .diff-actions { display: flex; gap: 6px; margin-top: 6px; }
 .diff-actions button { padding: 2px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); font-size: 13px; }
 .diff-actions button:hover { background: var(--accent); }

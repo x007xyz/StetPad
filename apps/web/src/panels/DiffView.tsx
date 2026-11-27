@@ -170,6 +170,40 @@ function richText(block: NonNullable<DiffRow['left']>): ReactNode {
   }) ?? block.text
 }
 
+function tableRows(block: DiffRow['left']): string[][] | null {
+  if (block?.type !== 'table' || typeof block.attrs?.rows !== 'string') return null
+  try {
+    const rows: unknown = JSON.parse(block.attrs.rows)
+    if (!Array.isArray(rows) || !rows.every(Array.isArray)) return null
+    return rows.map((row) => row.map((cell: unknown) => String(cell ?? '')))
+  } catch {
+    return null
+  }
+}
+
+function DiffTable({ rows, other, side }: { rows: string[][]; other: string[][] | null; side: 'left' | 'right' }) {
+  return (
+    <div className="diff-table-wrap" translate="no">
+      <table className="diff-table">
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i}>
+              {row.map((cell, j) => {
+                const changed = other !== null && cell !== other[i]?.[j]
+                const kind = changed ? (side === 'left' ? 'removed' : 'added') : undefined
+                const value = kind === 'removed' ? <del>{cell}</del> : kind === 'added' ? <ins>{cell}</ins> : cell
+                return i === 0
+                  ? <th key={j} scope="col" className={kind}>{value}</th>
+                  : <td key={j} className={kind}>{value}</td>
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 /** Two versions of a document side by side, aligned block by block. */
 export function DiffView({ rows, leftTitle, rightTitle, onlyChanged, skipTitleTranslation }: { rows: DiffRow[]; leftTitle: string; rightTitle: string; onlyChanged?: boolean; skipTitleTranslation?: boolean }) {
   const changedRows = useMemo(() => new Set(rows.filter(rowChanged)), [rows])
@@ -183,17 +217,19 @@ export function DiffView({ rows, leftTitle, rightTitle, onlyChanged, skipTitleTr
       {changedRows.size === 0 && <p className="muted pad">两边内容相同。</p>}
       {shown.map((r) => {
         const changedRow = changedRows.has(r)
-        const formattingOnly = changedRow && r.left && r.right && r.left.text === r.right.text
-        const ops = changedRow && !formattingOnly && r.left && r.right ? diffWords(r.left.text, r.right.text) : null
+        const leftTable = tableRows(r.left)
+        const rightTable = tableRows(r.right)
+        const formattingOnly = changedRow && r.left && r.right && r.left.text === r.right.text && sameValue(leftTable, rightTable)
+        const ops = r.left && r.right && r.left.text !== r.right.text ? diffWords(r.left.text, r.right.text) : null
         return (
           <div key={r.id} className={'diff-row' + (changedRow ? ' changed' : '')} data-diff-changed={changedRow || undefined}>
             <div className={'diff-cell' + (!r.left ? ' absent' : !r.right ? ' removed' : '')}>
               {r.left && <span className="kind">{label(r.left)}</span>}
-              {r.left && <span className="doc-text">{formattingOnly ? richText(r.left) : ops ? ops.filter((o) => o.type !== 'insert').map((o, k) => (o.type === 'delete' ? <del key={k}>{o.text}</del> : <span key={k}>{o.text}</span>)) : r.left.text}</span>}
+              {leftTable ? <DiffTable rows={leftTable} other={rightTable} side="left" /> : r.left && <span className="doc-text">{formattingOnly ? richText(r.left) : ops ? ops.filter((o) => o.type !== 'insert').map((o, k) => (o.type === 'delete' ? <del key={k}>{o.text}</del> : <span key={k}>{o.text}</span>)) : r.left.text}</span>}
             </div>
             <div className={'diff-cell' + (!r.right ? ' absent' : !r.left ? ' added' : '')}>
               {r.right && <span className="kind">{label(r.right)}</span>}
-              {r.right && <span className="doc-text">{formattingOnly ? richText(r.right) : ops ? ops.filter((o) => o.type !== 'delete').map((o, k) => (o.type === 'insert' ? <ins key={k}>{o.text}</ins> : <span key={k}>{o.text}</span>)) : r.right.text}</span>}
+              {rightTable ? <DiffTable rows={rightTable} other={leftTable} side="right" /> : r.right && <span className="doc-text">{formattingOnly ? richText(r.right) : ops ? ops.filter((o) => o.type !== 'delete').map((o, k) => (o.type === 'insert' ? <ins key={k}>{o.text}</ins> : <span key={k}>{o.text}</span>)) : r.right.text}</span>}
               {formattingOnly && <div className="muted small">仅格式变化</div>}
               {r.actions && <div className="diff-actions">{r.actions}</div>}
             </div>

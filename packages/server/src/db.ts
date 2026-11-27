@@ -234,20 +234,20 @@ export class Store {
       `select ${Store.DOC}, text_content from documents where deleted_at is null and ${Store.SCOPE} and (unicode_lower(title) like ? escape '\\' or unicode_lower(text_content) like ? escape '\\')`,
       [userId, like, like],
     )
-    const hits: SearchHit[] = []
+    const matches: { row: DocRow; body: string; at: number; titleMatch: boolean }[] = []
     for (const r of rows) {
       const titleMatch = r.title.toLowerCase().includes(ql)
       const body = r.text_content ?? ''
       const at = body.toLowerCase().indexOf(ql)
       if (!titleMatch && at < 0) continue
-      hits.push({
-        id: r.id, title: r.title, space_id: r.space_id, folder_id: r.folder_id, updated_at: r.updated_at,
-        snippet: at >= 0 ? snippetForLowercaseMatch(body, at, ql.length) : '',
-        titleMatch,
-      })
+      matches.push({ row: r, body, at, titleMatch })
     }
-    hits.sort((a, b) => Number(b.titleMatch) - Number(a.titleMatch) || b.updated_at - a.updated_at)
-    return hits.slice(0, 30)
+    matches.sort((a, b) => Number(b.titleMatch) - Number(a.titleMatch) || b.row.updated_at - a.row.updated_at)
+    return matches.slice(0, 30).map(({ row, body, at, titleMatch }) => ({
+      id: row.id, title: row.title, space_id: row.space_id, folder_id: row.folder_id, updated_at: row.updated_at,
+      snippet: at >= 0 ? snippetForLowercaseMatch(body, at, ql.length) : '',
+      titleMatch,
+    }))
   }
 
   async createDoc(userId: string, title: string, state: Bytes): Promise<DocRow> {

@@ -10,13 +10,14 @@ import { alignBlocks, DiffView } from './DiffView'
 import { t } from '../i18n'
 
 interface Loaded { meta: VersionMeta; content: { revised: RichBlock[]; original: RichBlock[] } }
+type VersionList = { status: 'loading' } | { status: 'error' } | { status: 'ready'; docId: string; versions: VersionMeta[] }
 
 const MAX_VERSION_LABEL_LENGTH = 200
 
 export const versionName = (v: VersionMeta): string => v.label || `${t(TRIGGERS[v.trigger] ?? v.trigger)} · ${fmtTime(v.created_at)}`
 
 export function VersionsMenu({ docId, current, refreshKey }: { docId: string; current: () => RichBlock[]; refreshKey: number }) {
-  const [list, setList] = useState<VersionMeta[]>([])
+  const [list, setList] = useState<VersionList>({ status: 'loading' })
   const [picked, setPicked] = useState<string[]>([])
   const [compare, setCompare] = useState<{ left: string; right: string; a: RichBlock[]; b: RichBlock[] } | null>(null)
   const [onlyChanged, setOnlyChanged] = useState(true)
@@ -30,14 +31,16 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
     if (latestLoad.current?.docId !== docId) return
     const request = { docId }
     latestLoad.current = request
+    setList((previous) => previous.status === 'ready' && previous.docId === docId ? previous : { status: 'loading' })
     try {
       const versions = await api<VersionMeta[]>(`/docs/${docId}/versions`)
-      if (latestLoad.current === request) setList(versions)
-    } catch (e) {
-      if (latestLoad.current === request) throw e
+      if (latestLoad.current === request) setList({ status: 'ready', docId, versions })
+    } catch {
+      if (latestLoad.current === request) setList({ status: 'error' })
     }
   }, [docId])
   useEffect(() => {
+    if (!open) return
     latestLoad.current = { docId }
     void load()
     return () => { latestLoad.current = null }
@@ -125,15 +128,22 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
     <div className="versions" style={{ maxHeight: '70vh' }}>
       <div className="row between pad">
         <button onClick={save}>保存当前版本</button>
-        <button disabled={picked.length === 0} onClick={doCompare}>
+        <button disabled={list.status !== 'ready' || picked.length === 0} onClick={doCompare}>
           {picked.length === 2 ? '对比所选两个版本' : picked.length === 1 ? '与当前文档对比' : '勾选版本以对比'}
         </button>
       </div>
       {error && <p className="error pad" role="alert">{error}</p>}
       {notice && <p className="muted pad" role="status">{notice}</p>}
-      {list.length === 0 && <p className="muted pad">还没有版本。AI 操作前后、导入后会自动保存，也可以手动保存。</p>}
+      {list.status === 'loading' && <p className="muted pad" role="status">加载中…</p>}
+      {list.status === 'error' && (
+        <div className="row between pad">
+          <p className="error" role="alert">版本历史加载失败。</p>
+          <button onClick={load}>重试</button>
+        </div>
+      )}
+      {list.status === 'ready' && list.versions.length === 0 && <p className="muted pad">还没有版本。AI 操作前后、导入后会自动保存，也可以手动保存。</p>}
       <ul>
-        {list.map((v) => (
+        {list.status === 'ready' && list.versions.map((v) => (
           <li key={v.id}>
             <label className="version">
               <input type="checkbox" checked={picked.includes(v.id)} onChange={() => toggle(v.id)} />

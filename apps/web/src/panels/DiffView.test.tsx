@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it } from 'vitest'
 import type { RichBlock } from '../api'
-import { alignBlocks, DiffView, rowChanged } from './DiffView'
+import { alignBlocks, DiffView, rowChanged, type DiffRow } from './DiffView'
 
 const block: RichBlock = { blockId: 'one', type: 'paragraph', text: 'A whole line', attrs: {}, delta: [{ insert: 'A whole line' }] }
 
@@ -132,5 +132,80 @@ it('keeps identical content unchanged and handles empty documents', () => {
 it('detects added, removed, text and type changes', () => {
   for (const rows of [alignBlocks([], [block]), alignBlocks([block], []), alignBlocks([block], [{ ...block, text: 'Edited' }]), alignBlocks([block], [{ ...block, type: 'heading' }])]) {
     expect(rowChanged(rows[0]!)).toBe(true)
+  }
+})
+
+function referenceAlignment(a: RichBlock[], b: RichBlock[]): DiffRow[] {
+  const n = a.length
+  const m = b.length
+  const lcs: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0))
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      lcs[i]![j] = a[i]!.blockId === b[j]!.blockId ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!)
+    }
+  }
+  const rows: DiffRow[] = []
+  let i = 0
+  let j = 0
+  while (i < n || j < m) {
+    if (i < n && j < m && a[i]!.blockId === b[j]!.blockId) {
+      rows.push({ id: a[i]!.blockId, left: a[i], right: b[j] })
+      i++
+      j++
+    } else if (j < m && (i === n || lcs[i]![j + 1]! >= lcs[i + 1]![j]!)) {
+      rows.push({ id: 'r' + b[j]!.blockId, right: b[j] })
+      j++
+    } else {
+      rows.push({ id: 'l' + a[i]!.blockId, left: a[i] })
+      i++
+    }
+  }
+  return rows
+}
+
+const blocks = (ids: string[], side: string): RichBlock[] =>
+  ids.map((blockId, i) => ({ ...block, blockId, text: `${side} ${i}` }))
+
+it('pairs equal IDs immediately and otherwise emits right-side rows first on LCS ties', () => {
+  const left = blocks(['prefix', 'a', 'b', 'left'], 'left')
+  const right = blocks(['prefix', 'b', 'a', 'right'], 'right')
+  expect(alignBlocks(left, right)).toEqual([
+    { id: 'prefix', left: left[0], right: right[0] },
+    { id: 'rb', right: right[1] },
+    { id: 'a', left: left[1], right: right[2] },
+    { id: 'rright', right: right[3] },
+    { id: 'lb', left: left[2] },
+    { id: 'lleft', left: left[3] },
+  ])
+})
+
+it('does not force a common suffix to align when an earlier duplicate matches', () => {
+  const left = blocks(['left', 'a'], 'left')
+  const right = blocks(['right', 'left', 'a', 'a'], 'right')
+  expect(alignBlocks(left, right)).toEqual([
+    { id: 'rright', right: right[0] },
+    { id: 'left', left: left[0], right: right[1] },
+    { id: 'a', left: left[1], right: right[2] },
+    { id: 'ra', right: right[3] },
+  ])
+})
+
+it.each([false, true])('matches the reference for seeded random inputs (repeated IDs: %s)', (repeated) => {
+  let seed = 0xe5091
+  function random(max: number): number {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+    return Math.floor((seed / 2 ** 32) * max)
+  }
+  function sample(): string[] {
+    const pool = Array.from({ length: repeated ? 5 : 32 }, (_, i) => String(i))
+    return Array.from({ length: random(33) }, () => {
+      const index = random(pool.length)
+      return repeated ? pool[index]! : pool.splice(index, 1)[0]!
+    })
+  }
+  for (let run = 0; run < 1000; run++) {
+    const a = blocks(sample(), 'left')
+    const b = blocks(sample(), 'right')
+    expect(alignBlocks(a, b)).toEqual(referenceAlignment(a, b))
   }
 })

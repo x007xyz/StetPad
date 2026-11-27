@@ -28,7 +28,8 @@ afterEach(() => {
 })
 
 function Composer({ blocks = [], docId = 'composer' }: { blocks?: { blockId: string; text: string }[]; docId?: string }) {
-  const state = useRuns('composer', finished)
+  const state = useRuns(docId, finished)
+  runs = state
   const [refs, setRefs] = useState<ContextItem[]>([{ id: 'ref', kind: 'text', label: 'Reference', text: 'Reference text', blockIds: [] }])
   return <TooltipProvider><AiPanel docId={docId} runs={state} changes={[]} decided={[]} blockText={() => ''}
     onDecide={() => {}} onFocus={() => {}} refs={refs} setRefs={setRefs} comments={[]} listBlocks={() => blocks} focusSignal={0} /></TooltipProvider>
@@ -105,6 +106,93 @@ it.each(['no model', '400', 'network', 'success', 'empty'] as const)('preserves 
   const posts = fetchMock.mock.calls.filter(([url, init]) => url.endsWith('/runs') && init?.method === 'POST')
   expect(posts).toHaveLength(outcome === 'no model' || outcome === 'empty' ? 0 : 1)
 })
+
+it.each(['draft', 'empty', 'retry', 'send error', 'send success', 'storage full'] as const)('shares the first chat creation and handles the draft: %s', async (outcome) => {
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+  const docId = 'first-chat-' + outcome
+  const initialDraft = outcome === 'empty' ? '' : 'Keep my first draft'
+  const first = deferred<Response>()
+  const chat = { id: docId + '-chat', title: '', runs: 0 }
+  let hasChat = false
+  const created = () => {
+    hasChat = true
+    return Response.json({ chat })
+  }
+  const create = vi.fn()
+    .mockImplementationOnce(() => first.promise)
+    .mockImplementation(async () => created())
+  const start = vi.fn(async (_body: unknown) => outcome === 'send error'
+    ? Response.json({ error: 'Cannot start' }, { status: 400 }) : Response.json({ runId: 'run' }))
+  vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+    if (url.endsWith('/models')) return Promise.resolve(Response.json({ models: [{ id: 'test', label: 'Test', verified: true }], default: 'test' }))
+    if (url.endsWith('/chats')) return init?.method === 'POST' ? create() : Promise.resolve(Response.json({ chats: hasChat ? [chat] : [] }))
+    if (url.endsWith('/chats/' + chat.id) && init?.method === 'DELETE') {
+      hasChat = false
+      return Promise.resolve(Response.json({}))
+    }
+    if (url.endsWith('/runs') && init?.method === 'POST') return start(JSON.parse(String(init.body)))
+    if (url.endsWith('/events')) return new Promise<Response>(() => {})
+    return Promise.resolve(Response.json({ runs: [], knownRunIds: [], active: null }))
+  }))
+  await act(async () => root.render(<Composer docId={docId} />))
+  const area = document.querySelector('textarea')!
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(area, initialDraft)
+    area.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  const newChat = document.querySelector<HTMLButtonElement>('button.chat-new')!
+  act(() => {
+    if (outcome === 'send error' || outcome === 'send success') {
+      document.querySelector<HTMLButtonElement>('button[aria-label="发送"]')!.click()
+    } else newChat.click()
+  })
+  act(() => newChat.click())
+  expect.soft(create).toHaveBeenCalledTimes(1)
+
+  const source = 'aiw.draft.' + docId
+  const target = 'aiw.draft.chat.' + chat.id
+  if (outcome === 'storage full') {
+    const storage = localStorage
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.getItem(key),
+      setItem: (key: string, value: string) => {
+        if (key === target) throw new DOMException('Storage full', 'QuotaExceededError')
+        storage.setItem(key, value)
+      },
+      removeItem: (key: string) => storage.removeItem(key),
+    })
+  }
+  if (outcome === 'retry') {
+    await act(async () => first.resolve(Response.json({ error: 'Cannot create' }, { status: 500 })))
+    expect.soft(area.value).toBe(initialDraft)
+    expect.soft(localStorage.getItem(source)).toBe(initialDraft)
+    expect.soft(document.querySelector('.ai > .error')?.textContent).toBe('Cannot create')
+    await act(async () => newChat.click())
+    expect.soft(create).toHaveBeenCalledTimes(2)
+  } else {
+    await act(async () => first.resolve(created()))
+  }
+  if (outcome.startsWith('send')) expect.soft(start).toHaveBeenCalledWith(expect.objectContaining({ chatId: chat.id, instruction: initialDraft }))
+  const expected = outcome === 'send success' ? '' : initialDraft
+  expect.soft(area.value).toBe(expected)
+  expect.soft(localStorage.getItem(target)).toBe(outcome === 'storage full' ? null : expected || null)
+  expect.soft(localStorage.getItem(source)).toBe(outcome === 'storage full' ? expected : null)
+  if (outcome === 'storage full') {
+    const edited = 'Edited before sending'
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(area, edited)
+      area.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect.soft(localStorage.getItem(source)).toBe(edited)
+    await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="发送"]')!.click())
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ chatId: chat.id, instruction: edited }))
+    await act(async () => runs.deleteChat(chat.id))
+    expect(runs.chatId).toBeNull()
+    expect.soft(area.value).toBe('')
+    expect.soft(localStorage.getItem(source)).toBeNull()
+  }
+})
+
 it.each(['data', 'empty', 'error'] as const)('ignores stale chat history with %s', async (outcome) => {
   const a = deferred<Response>()
   const b = deferred<Response>()

@@ -108,6 +108,36 @@ test('searches titles, opens a result, and clears results', async ({ page }) => 
   await expect(page.getByRole('textbox', { name: '文档标题', exact: true })).toHaveValue('Searchable nebula')
 })
 
+test('search matches and highlights the entire long query', async ({ page }) => {
+  const prefix = 'A'.repeat(100)
+  const title = prefix + 'B'
+  await createDoc(page, title)
+  await createDoc(page, prefix + 'C')
+  await page.getByRole('button', { name: '搜索文档', exact: false }).click()
+  await page.getByRole('combobox', { name: '搜索文档' }).fill(title)
+  await expect(page.getByRole('option')).toHaveCount(1)
+  await expect(page.getByRole('option').locator('mark')).toHaveText(title)
+})
+
+test('search matches and highlights both forms of Greek sigma', async ({ page }) => {
+  await createDoc(page, 'Greek ΟΣ')
+  await page.getByRole('button', { name: '搜索文档', exact: false }).click()
+  const search = page.getByRole('combobox', { name: '搜索文档' })
+  for (const query of ['σ', 'ς']) {
+    await search.fill(query)
+    const result = page.getByRole('option').filter({ hasText: 'Greek ΟΣ' })
+    await expect(result.locator('mark')).toHaveText('Σ')
+  }
+})
+
+test('search highlights both dotted capital and plain lowercase i', async ({ page }) => {
+  await createDoc(page, 'İzmir')
+  await page.getByRole('button', { name: '搜索文档', exact: false }).click()
+  await page.getByRole('combobox', { name: '搜索文档' }).fill('i')
+  const result = page.getByRole('option').filter({ hasText: 'İzmir' })
+  await expect(result.locator('mark')).toHaveText(['İ', 'i'])
+})
+
 test('shows empty and failed search states', async ({ page }) => {
   await page.getByRole('button', { name: '搜索文档', exact: false }).click()
   const search = page.getByRole('combobox', { name: '搜索文档' })

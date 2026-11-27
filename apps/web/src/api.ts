@@ -161,6 +161,8 @@ export const fmtTime = (t: number): string => {
   return `${fmtDate(t)}${getLang() === 'en' ? ',' : ''} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
+/** Half-open UTF-16 offsets into the returned title or snippet. */
+export type SearchMatchRange = [start: number, end: number]
 /** GET /search: one hit across every document the caller can open. */
 export interface SearchResult {
   id: string
@@ -169,6 +171,8 @@ export interface SearchResult {
   updated_at: number
   snippet: string
   titleMatch: boolean
+  titleMatches: SearchMatchRange[]
+  snippetMatches: SearchMatchRange[]
 }
 /** GET /trash: a trashed document, with the time it was moved there. */
 export type TrashDoc = DocMeta & { deleted_at: number }

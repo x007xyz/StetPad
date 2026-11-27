@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, type ReactNode } from 'react'
+import { act, createContext, useContext, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { deferred } from '../lib/deferred.test-utils'
@@ -8,15 +8,111 @@ import { ConfirmHost } from '../components/confirm'
 import { alignBlocks } from './DiffView'
 import type { RichBlock } from '../api'
 
-vi.mock('../components/ui/popover', () => ({
-  Popover: ({ children }: { children: ReactNode }) => children,
-  PopoverContent: ({ children }: { children: ReactNode }) => children,
-  PopoverTrigger: ({ children }: { children: ReactNode }) => children,
-}))
+vi.mock('../components/ui/popover', () => {
+  const State = createContext({ open: false, onOpenChange: (_open: boolean) => {} })
+  return {
+    Popover: ({ open, onOpenChange, children }: { open: boolean; onOpenChange: (open: boolean) => void; children: ReactNode }) => (
+      <State.Provider value={{ open, onOpenChange }}>{children}</State.Provider>
+    ),
+    PopoverContent: ({ children }: { children: ReactNode }) => useContext(State).open ? children : null,
+    PopoverTrigger: ({ children }: { children: ReactNode }) => {
+      const { open, onOpenChange } = useContext(State)
+      return <span onClick={() => onOpenChange(!open)}>{children}</span>
+    },
+  }
+})
 vi.mock('../components/ui/tooltip', () => ({ Tip: ({ children }: { children: ReactNode }) => children }))
 vi.mock('./DiffView', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./DiffView')>()
   return { ...actual, alignBlocks: vi.fn(actual.alignBlocks) }
+})
+
+const toggleMenu = (container: ParentNode) => act(async () =>
+  container.querySelector<HTMLButtonElement>('[aria-label="版本历史"]')!.click())
+
+it('loads on open and distinguishes pending, failed, and empty version lists', async () => {
+  const first = deferred<Response>()
+  const retry = deferred<Response>()
+  const fetchMock = vi.fn()
+    .mockReturnValueOnce(first.promise)
+    .mockReturnValueOnce(retry.promise)
+    .mockResolvedValueOnce(Response.json([]))
+  vi.stubGlobal('fetch', fetchMock)
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<VersionsMenu docId="doc" refreshKey={0} current={() => []} />))
+    expect(fetchMock).not.toHaveBeenCalled()
+    await toggleMenu(container)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('加载中…')
+    expect(container.textContent).not.toContain('还没有版本')
+
+    await act(async () => first.resolve(Response.json({ error: 'Unavailable' }, { status: 503 })))
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('版本历史加载失败。')
+    expect(container.textContent).not.toContain('还没有版本')
+    const retryButton = [...container.querySelectorAll('button')].find((button) => button.textContent === '重试')!
+    await act(async () => retryButton.click())
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('加载中…')
+    await act(async () => retry.resolve(Response.json([])))
+    expect(container.textContent).toContain('还没有版本')
+    expect(container.querySelector('[role="status"]')).toBeNull()
+
+    await toggleMenu(container)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await act(async () => root.render(<VersionsMenu docId="doc" refreshKey={1} current={() => []} />))
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await toggleMenu(container)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(container.textContent).toContain('还没有版本')
+  } finally {
+    act(() => root.unmount())
+    container.remove()
+    vi.unstubAllGlobals()
+  }
+})
+
+it.each(['refresh-key change', 'save'] as const)('keeps the current version list visible during a refresh after a %s', async (trigger) => {
+  const draft = { id: 'v1', label: 'First draft', trigger: 'manual', created_at: 0, word_count: 1 }
+  const saved = { ...draft, id: 'v2', label: 'Second draft' }
+  const refresh = deferred<Response>()
+  const listFetch = vi.fn().mockResolvedValueOnce(Response.json([draft])).mockReturnValueOnce(refresh.promise)
+  vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => init?.method === 'POST'
+    ? Promise.resolve(Response.json({ id: saved.id }))
+    : listFetch()))
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  const render = (refreshKey: number) => act(async () =>
+    root.render(<><ConfirmHost /><VersionsMenu docId="doc" refreshKey={refreshKey} current={() => []} /></>))
+  const names = () => [...container.querySelectorAll('.v-name')].map((row) => row.textContent)
+  try {
+    await render(0)
+    await toggleMenu(container)
+    expect(names()).toEqual(['First draft'])
+
+    if (trigger === 'refresh-key change') {
+      await render(1)
+    } else {
+      await act(async () => [...container.querySelectorAll('button')].find((b) => b.textContent === '保存当前版本')!.click())
+      await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((b) => b.textContent === '保存')!.click())
+    }
+    expect(listFetch).toHaveBeenCalledTimes(2)
+    expect(names()).toEqual(['First draft'])
+    expect(container.textContent).not.toContain('加载中…')
+
+    await act(async () => refresh.resolve(Response.json([saved, draft])))
+    expect(names()).toEqual(['Second draft', 'First draft'])
+  } finally {
+    act(() => root.unmount())
+    container.remove()
+    vi.unstubAllGlobals()
+  }
 })
 
 it('shows snapshot errors and lets comparison be retried without losing selection', async () => {
@@ -36,6 +132,7 @@ it('shows snapshot errors and lets comparison be retried without losing selectio
   const root = createRoot(container)
   try {
     await act(async () => root.render(<VersionsMenu docId="doc" refreshKey={0} current={() => []} />))
+    await toggleMenu(container)
     await act(async () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click())
     const compare = [...container.querySelectorAll('button')].find((b) => b.textContent === '与当前文档对比')!
     await act(async () => compare.click())
@@ -71,6 +168,7 @@ it('restores a version only after accepting the in-app dialog', async () => {
   })
   try {
     await act(async () => root.render(<><ConfirmHost /><VersionsMenu docId="doc" refreshKey={0} current={() => []} /></>))
+    await toggleMenu(container)
     await click(container, '恢复')
     expect(nativeConfirm).not.toHaveBeenCalled()
     const dialog = () => document.querySelector('[role="dialog"]')!
@@ -101,6 +199,7 @@ it.each([
   const root = createRoot(container)
   try {
     await act(async () => root.render(<><ConfirmHost /><VersionsMenu docId="doc" refreshKey={0} current={() => []} /></>))
+    await toggleMenu(container)
     const button = [...container.querySelectorAll('button')].find((b) => b.textContent === (action === 'save' ? '保存当前版本' : '命名'))!
     await act(async () => button.click())
     const input = document.querySelector<HTMLInputElement>('[role="dialog"] input')
@@ -140,6 +239,7 @@ it.each([
   const names = () => [...container.querySelectorAll('.v-name')].map((row) => row.textContent)
   try {
     await act(async () => root.render(<VersionsMenu docId="doc" refreshKey={0} current={current} />))
+    await toggleMenu(container)
     await act(async () => root.render(<VersionsMenu docId={docId} refreshKey={refreshKey} current={current} />))
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(['/api/docs/doc/versions', `/api/docs/${docId}/versions`])
     const version = (id: string) => ({ id, label: id, trigger: 'manual', created_at: 0, word_count: 1 })
@@ -170,6 +270,7 @@ it('aligns a compared version pair once and only refilters when toggling changed
   const rows = () => document.querySelectorAll('[role="dialog"] .diff-row').length
   try {
     await act(async () => root.render(<VersionsMenu docId="doc" refreshKey={0} current={current} />))
+    await toggleMenu(container)
     await act(async () => container.querySelector<HTMLInputElement>('.version input')!.click())
     await act(async () => [...container.querySelectorAll('button')].find((b) => b.textContent === '与当前文档对比')!.click())
     expect(rows()).toBe(1)
@@ -197,6 +298,7 @@ it('tells the user when saving creates no new version because nothing changed', 
   const root = createRoot(container)
   try {
     await act(async () => root.render(<><ConfirmHost /><VersionsMenu docId="doc" refreshKey={0} current={() => []} /></>))
+    await toggleMenu(container)
     await act(async () => [...container.querySelectorAll('button')].find((b) => b.textContent === '保存当前版本')!.click())
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((b) => b.textContent === '保存')!.click())
     expect(fetchMock).toHaveBeenCalledWith('/api/docs/doc/versions', expect.objectContaining({ method: 'POST' }))

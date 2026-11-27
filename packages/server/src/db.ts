@@ -20,8 +20,13 @@ export interface RunRow {
 export interface ChatRow { id: string; document_id: string; title: string; created_at: number; updated_at: number; n?: number }
 /** A document in the trash, with when it was deleted (ms). */
 export type TrashedDocRow = DocRow & { deleted_at: number }
-/** One search hit. `snippet` is '' when only the title matched. */
-export interface SearchHit { id: string; title: string; space_id: string | null; folder_id: string | null; updated_at: number; snippet: string; titleMatch: boolean }
+/** Half-open UTF-16 offsets into the original display string. */
+type MatchRange = [start: number, end: number]
+/** One search hit. The snippet is empty when only the title matched. */
+export interface SearchHit {
+  id: string; title: string; space_id: string | null; folder_id: string | null; updated_at: number
+  snippet: string; titleMatch: boolean; titleMatches: MatchRange[]; snippetMatches: MatchRange[]
+}
 type Bytes = Uint8Array
 const SEARCH_TEXT_VERSION = 2
 
@@ -49,7 +54,7 @@ export async function sqliteSql(dataDir: string): Promise<Sql> {
   }
   const db = new Database(newDb)
   db.pragma('journal_mode = WAL')
-  db.function('unicode_lower', { deterministic: true }, (value: string) => value.toLowerCase())
+  db.function('search_fold', { deterministic: true }, (value: string | null) => value === null ? null : foldSearchText(value))
   const bind = (p: unknown[] = []): unknown[] => p.map((v) => (v instanceof Uint8Array && !Buffer.isBuffer(v) ? Buffer.from(v) : v))
   return {
     types: { blob: 'blob', serial: 'integer primary key autoincrement', int: 'integer' },
@@ -66,24 +71,64 @@ export function chatTitle(instruction: string): string {
   return t.length > 30 ? t.slice(0, 30) + '…' : t
 }
 
-/** About 100 characters of `text` around a match at `at` (length `len`), with ellipses where cut. */
-export function snippetAround(text: string, at: number, len: number): string {
-  const start = Math.max(0, at - 40)
-  const end = Math.min(text.length, at + len + 60)
-  return (start > 0 ? '…' : '') + text.slice(start, end).replace(/\s+/g, ' ').trim() + (end < text.length ? '…' : '')
+function foldSearchText(text: string): string {
+  return text.toLowerCase().replace(/ς/g, 'σ')
 }
 
-function snippetForLowercaseMatch(text: string, at: number, len: number): string {
-  let start = 0
-  let end = 0
-  let lowered = 0
-  for (const ch of text) {
-    if (lowered <= at) start = end
-    end += ch.length
-    lowered += ch.toLowerCase().length
-    if (lowered >= at + len) break
+function* matchRanges(text: string, query: string): Generator<MatchRange> {
+  const folded = foldSearchText(text)
+  // Lowercasing can expand one character (e.g. İ to i + ◌̇); map back to whole source characters.
+  let sourceStart = 0
+  let sourceEnd = 0
+  let foldedEnd = 0
+  const advance = (): void => {
+    sourceStart = sourceEnd
+    const ch = String.fromCodePoint(text.codePointAt(sourceEnd)!)
+    sourceEnd += ch.length
+    foldedEnd += foldSearchText(ch).length
   }
-  return snippetAround(text, start, end - start)
+  for (let at = folded.indexOf(query); at >= 0; at = folded.indexOf(query, at + query.length)) {
+    const end = at + query.length
+    if (folded.length === text.length) {
+      yield [at, end]
+    } else {
+      while (foldedEnd <= at) advance()
+      const start = sourceStart
+      while (foldedEnd < end) advance()
+      yield [start, sourceEnd]
+    }
+  }
+}
+
+function displayMatches(text: string, query: string): MatchRange[] {
+  const ranges: MatchRange[] = []
+  for (const range of matchRanges(text, query)) {
+    const previous = ranges.at(-1)
+    if (previous && range[0] < previous[1]) previous[1] = range[1]
+    else ranges.push(range)
+  }
+  return ranges
+}
+
+function searchSnippet(text: string, query: string): Pick<SearchHit, 'snippet' | 'snippetMatches'> {
+  const { value: first, done } = matchRanges(text, query).next()
+  if (done) return { snippet: '', snippetMatches: [] }
+  const start = Math.max(0, first[0] - 40)
+  const end = Math.min(text.length, first[1] + 60)
+  const excerpt = text.slice(start, end).trim()
+  const compact = (part: string): string => part.replace(/\s+/g, ' ')
+  const snippetMatches: MatchRange[] = []
+  let snippet = start > 0 ? '…' : ''
+  let copied = 0
+  for (const [from, to] of displayMatches(excerpt, query)) {
+    snippet += compact(excerpt.slice(copied, from))
+    const displayStart = snippet.length
+    snippet += compact(excerpt.slice(from, to))
+    snippetMatches.push([displayStart, snippet.length])
+    copied = to
+  }
+  snippet += compact(excerpt.slice(copied)) + (end < text.length ? '…' : '')
+  return { snippet, snippetMatches }
 }
 
 /**
@@ -228,25 +273,21 @@ export class Store {
    * Title matches first, then most recently updated. At most 30.
    */
   async searchDocs(userId: string, q: string): Promise<SearchHit[]> {
-    const ql = q.toLowerCase()
-    const like = `%${ql.replace(/[\\%_]/g, (ch) => '\\' + ch)}%`
-    const rows = await this.sql.all<DocRow & { text_content: string | null }>(
-      `select ${Store.DOC}, text_content from documents where deleted_at is null and ${Store.SCOPE} and (unicode_lower(title) like ? escape '\\' or unicode_lower(text_content) like ? escape '\\')`,
-      [userId, like, like],
+    const query = foldSearchText(q)
+    if (!query) return []
+    const rows = await this.sql.all<DocRow & { text_content: string | null; title_match: number }>(
+      `select * from (
+        select ${Store.DOC}, text_content, instr(search_fold(title), ?) > 0 as title_match
+        from documents where deleted_at is null and ${Store.SCOPE}
+      ) where title_match or instr(search_fold(text_content), ?) > 0
+      order by title_match desc, updated_at desc limit 30`,
+      [query, userId, query],
     )
-    const matches: { row: DocRow; body: string; at: number; titleMatch: boolean }[] = []
-    for (const r of rows) {
-      const titleMatch = r.title.toLowerCase().includes(ql)
-      const body = r.text_content ?? ''
-      const at = body.toLowerCase().indexOf(ql)
-      if (!titleMatch && at < 0) continue
-      matches.push({ row: r, body, at, titleMatch })
-    }
-    matches.sort((a, b) => Number(b.titleMatch) - Number(a.titleMatch) || b.row.updated_at - a.row.updated_at)
-    return matches.slice(0, 30).map(({ row, body, at, titleMatch }) => ({
+    return rows.map((row) => ({
       id: row.id, title: row.title, space_id: row.space_id, folder_id: row.folder_id, updated_at: row.updated_at,
-      snippet: at >= 0 ? snippetForLowercaseMatch(body, at, ql.length) : '',
-      titleMatch,
+      titleMatch: Boolean(row.title_match),
+      titleMatches: row.title_match ? displayMatches(row.title, query) : [],
+      ...searchSnippet(row.text_content ?? '', query),
     }))
   }
 

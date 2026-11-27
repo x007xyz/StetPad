@@ -1,18 +1,21 @@
 import { FileText, Search } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { api, fmtTime, type SearchResult } from './api'
+import { api, fmtTime, type SearchMatchRange, type SearchResult } from './api'
 import { go } from './App'
 import { Dialog, DialogContent } from './components/ui/dialog'
 import { cn } from './lib/utils'
 
 const DEBOUNCE_MS = 200
 
-/** Splits text around case-insensitive matches of the query, so matches can be highlighted as React nodes. */
-function highlight(text: string, query: string): ReactNode[] {
-  const q = query.trim()
-  if (!q) return [text]
-  const parts = text.split(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'))
-  return parts.map((p, i) => (i % 2 === 1 ? <mark key={i}>{p}</mark> : p))
+function highlight(text: string, matches: SearchMatchRange[]): ReactNode[] {
+  const parts: ReactNode[] = []
+  let cursor = 0
+  for (const [start, end] of matches) {
+    parts.push(text.slice(cursor, start), <mark key={start}>{text.slice(start, end)}</mark>)
+    cursor = end
+  }
+  parts.push(text.slice(cursor))
+  return parts
 }
 
 export function SearchDialog({ onClose }: { onClose: () => void }) {
@@ -123,9 +126,9 @@ export function SearchDialog({ onClose }: { onClose: () => void }) {
                 <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline gap-2">
-                    <span translate="no" className="truncate text-sm font-medium">{highlight(r.title, query)}</span>
+                    <span translate="no" className="truncate text-sm font-medium">{highlight(r.title, r.titleMatches)}</span>
                   </span>
-                  {r.snippet && <span translate="no" className="line-clamp-2 block text-xs text-muted-foreground">{highlight(r.snippet, query)}</span>}
+                  {r.snippet && <span translate="no" className="line-clamp-2 block text-xs text-muted-foreground">{highlight(r.snippet, r.snippetMatches)}</span>}
                 </span>
                 <span className="shrink-0 pt-0.5 text-[11px] text-muted-foreground">{fmtTime(r.updated_at)}</span>
               </li>

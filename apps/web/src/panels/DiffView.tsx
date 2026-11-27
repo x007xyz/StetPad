@@ -18,29 +18,122 @@ const label = (b?: { type: string; attrs?: Record<string, unknown> }): string =>
 export function alignBlocks(a: RichBlock[], b: RichBlock[]): DiffRow[] {
   const n = a.length
   const m = b.length
-  const lcs: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0))
-  for (let i = n - 1; i >= 0; i--) {
-    for (let j = m - 1; j >= 0; j--) {
-      lcs[i]![j] = a[i]!.blockId === b[j]!.blockId ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!)
-    }
-  }
   const rows: DiffRow[] = []
   let i = 0
   let j = 0
+  while (i < n && j < m && a[i]!.blockId === b[j]!.blockId) {
+    rows.push({ id: a[i]!.blockId, left: a[i++], right: b[j++] })
+  }
+  if (i === n || j === m) {
+    while (j < m) rows.push({ id: 'r' + b[j]!.blockId, right: b[j++] })
+    while (i < n) rows.push({ id: 'l' + a[i]!.blockId, left: a[i++] })
+    return rows
+  }
+
+  const rightIndex = new Map<string, number>()
+  for (let k = j; k < m; k++) {
+    const id = b[k]!.blockId
+    rightIndex.set(id, rightIndex.has(id) ? -1 : k)
+  }
+  const leftAtRight = new Int32Array(m - j)
+  const suffixLength = new Int32Array(n - i)
+  const counts = new Int32Array(Math.min(n - i, m - j) + 1)
+  const tails: number[] = []
+  // With unique matches, the LCS is an increasing subsequence of right indices.
+  // Reverse both axes to get the length starting at each match.
+  for (let k = n - 1; k >= i; k--) {
+    const right = rightIndex.get(a[k]!.blockId)
+    if (right === undefined) continue
+    if (right < 0 || leftAtRight[right - j]) {
+      appendRepeatedIdAlignment(a, b, i, j, rows)
+      return rows
+    }
+    leftAtRight[right - j] = k + 1
+    const reverseRight = m - right
+    let lo = 0
+    let hi = tails.length
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (tails[mid]! < reverseRight) lo = mid + 1
+      else hi = mid
+    }
+    tails[lo] = reverseRight
+    suffixLength[k - i] = lo + 1
+    counts[lo + 1]!++
+  }
+
+  const leftStart = i
+  const rightStart = j
+  let best = tails.length
   while (i < n || j < m) {
+    const matchLeft = (leftAtRight[j - rightStart] ?? 0) - 1
+    const rank = matchLeft >= i ? suffixLength[matchLeft - leftStart]! : 0
     if (i < n && j < m && a[i]!.blockId === b[j]!.blockId) {
-      rows.push({ id: a[i]!.blockId, left: a[i], right: b[j] })
-      i++
-      j++
-    } else if (j < m && (i === n || lcs[i]![j + 1]! >= lcs[i + 1]![j]!)) {
-      rows.push({ id: 'r' + b[j]!.blockId, right: b[j] })
-      j++
+      counts[best]!--
+      best--
+      rows.push({ id: a[i]!.blockId, left: a[i++], right: b[j++] })
+    } else if (j < m && (rank === 0 || rank !== best || counts[best]! > 1)) {
+      // Skip right on ties, unless it removes the only remaining optimal start.
+      if (rank) counts[rank]!--
+      rows.push({ id: 'r' + b[j]!.blockId, right: b[j++] })
     } else {
-      rows.push({ id: 'l' + a[i]!.blockId, left: a[i] })
-      i++
+      const right = rightIndex.get(a[i]!.blockId)
+      if (right !== undefined && right >= j) counts[suffixLength[i - leftStart]!]!--
+      rows.push({ id: 'l' + a[i]!.blockId, left: a[i++] })
     }
   }
   return rows
+}
+
+function appendRepeatedIdAlignment(a: RichBlock[], b: RichBlock[], i: number, j: number, rows: DiffRow[]): void {
+  const lengths = new Uint32Array(b.length - j + 1)
+  const crossings = new Uint32Array(lengths.length)
+  const rightOffset = j
+
+  function append(left: number, leftEnd: number, right: number, rightEnd: number): void {
+    if (leftEnd - left <= 1 || right === rightEnd) {
+      if (leftEnd - left === 1) {
+        while (right < rightEnd && a[left]!.blockId !== b[right]!.blockId) {
+          rows.push({ id: 'r' + b[right]!.blockId, right: b[right++] })
+        }
+        if (right < rightEnd) rows.push({ id: a[left]!.blockId, left: a[left++], right: b[right++] })
+      }
+      while (right < rightEnd) rows.push({ id: 'r' + b[right]!.blockId, right: b[right++] })
+      while (left < leftEnd) rows.push({ id: 'l' + a[left]!.blockId, left: a[left++] })
+      return
+    }
+
+    // Track where the original match/right/left traceback reaches the middle
+    // row, then trace each half separately using the same two scratch rows.
+    const mid = left + ((leftEnd - left) >>> 1)
+    const end = rightEnd - rightOffset
+    const start = right - rightOffset
+    lengths.fill(0, start, end + 1)
+    crossings[end] = rightEnd
+    for (let k = leftEnd - 1; k >= left; k--) {
+      let diagonalLength = 0
+      let diagonalCrossing = rightEnd
+      for (let col = end - 1; col >= start; col--) {
+        const belowLength = lengths[col]!
+        const belowCrossing = crossings[col]!
+        if (a[k]!.blockId === b[col + rightOffset]!.blockId) {
+          lengths[col] = diagonalLength + 1
+          if (k < mid) crossings[col] = diagonalCrossing
+        } else if (lengths[col + 1]! >= belowLength) {
+          lengths[col] = lengths[col + 1]!
+          if (k < mid) crossings[col] = crossings[col + 1]!
+        }
+        if (k === mid) crossings[col] = col + rightOffset
+        diagonalLength = belowLength
+        diagonalCrossing = belowCrossing
+      }
+    }
+    const split = crossings[start]!
+    append(left, mid, right, split)
+    append(mid, leftEnd, split, rightEnd)
+  }
+
+  append(i, a.length, j, b.length)
 }
 
 function sameValue(a: unknown, b: unknown): boolean {

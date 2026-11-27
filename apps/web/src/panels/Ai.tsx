@@ -281,7 +281,7 @@ export function useRuns(docId: string, onFinished: () => void, enabled = true, o
 }
 
 /** The text typed but not yet sent, kept per chat so switching chats, panels or documents does not lose it. */
-type Draft = { key: string; text: string }
+type Draft = { key: string; text: string; fallbackKey?: string }
 const drafts = new Map<string, Draft>()
 export const draftKey = (docId: string, chatId: string | null): string => (chatId ? 'chat.' + chatId : docId)
 const readDraft = (key: string): Draft => {
@@ -307,15 +307,20 @@ const persistDraft = (key: string, v: string): boolean => {
 }
 const writeDraft = (draft: Draft, text: string): void => {
   draft.text = text
-  persistDraft(draft.key, text)
+  const saved = persistDraft(draft.key, text)
+  if (draft.fallbackKey) {
+    const fallbackSaved = persistDraft(draft.fallbackKey, saved ? '' : text)
+    if (saved && fallbackSaved) delete draft.fallbackKey
+  }
 }
 const moveDraft = (from: string, to: string): void => {
   const draft = readDraft(from)
   if (!draft.text || readDraft(to).text) return
   drafts.delete(from)
   draft.key = to
+  draft.fallbackKey = from
   drafts.set(to, draft)
-  if (persistDraft(to, draft.text)) persistDraft(from, '')
+  writeDraft(draft, draft.text)
 }
 
 export const ago = (t: number): string => {

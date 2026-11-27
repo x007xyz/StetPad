@@ -29,6 +29,7 @@ afterEach(() => {
 
 function Composer({ blocks = [], docId = 'composer' }: { blocks?: { blockId: string; text: string }[]; docId?: string }) {
   const state = useRuns(docId, finished)
+  runs = state
   const [refs, setRefs] = useState<ContextItem[]>([{ id: 'ref', kind: 'text', label: 'Reference', text: 'Reference text', blockIds: [] }])
   return <TooltipProvider><AiPanel docId={docId} runs={state} changes={[]} decided={[]} blockText={() => ''}
     onDecide={() => {}} onFocus={() => {}} refs={refs} setRefs={setRefs} comments={[]} listBlocks={() => blocks} focusSignal={0} /></TooltipProvider>
@@ -112,7 +113,11 @@ it.each(['draft', 'empty', 'retry', 'send error', 'send success', 'storage full'
   const initialDraft = outcome === 'empty' ? '' : 'Keep my first draft'
   const first = deferred<Response>()
   const chat = { id: docId + '-chat', title: '', runs: 0 }
-  const created = () => Response.json({ chat })
+  let hasChat = false
+  const created = () => {
+    hasChat = true
+    return Response.json({ chat })
+  }
   const create = vi.fn()
     .mockImplementationOnce(() => first.promise)
     .mockImplementation(async () => created())
@@ -120,7 +125,11 @@ it.each(['draft', 'empty', 'retry', 'send error', 'send success', 'storage full'
     ? Response.json({ error: 'Cannot start' }, { status: 400 }) : Response.json({ runId: 'run' }))
   vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
     if (url.endsWith('/models')) return Promise.resolve(Response.json({ models: [{ id: 'test', label: 'Test', verified: true }], default: 'test' }))
-    if (url.endsWith('/chats')) return init?.method === 'POST' ? create() : Promise.resolve(Response.json({ chats: [] }))
+    if (url.endsWith('/chats')) return init?.method === 'POST' ? create() : Promise.resolve(Response.json({ chats: hasChat ? [chat] : [] }))
+    if (url.endsWith('/chats/' + chat.id) && init?.method === 'DELETE') {
+      hasChat = false
+      return Promise.resolve(Response.json({}))
+    }
     if (url.endsWith('/runs') && init?.method === 'POST') return start(JSON.parse(String(init.body)))
     if (url.endsWith('/events')) return new Promise<Response>(() => {})
     return Promise.resolve(Response.json({ runs: [], knownRunIds: [], active: null }))
@@ -168,6 +177,20 @@ it.each(['draft', 'empty', 'retry', 'send error', 'send success', 'storage full'
   expect.soft(area.value).toBe(expected)
   expect.soft(localStorage.getItem(target)).toBe(outcome === 'storage full' ? null : expected || null)
   expect.soft(localStorage.getItem(source)).toBe(outcome === 'storage full' ? expected : null)
+  if (outcome === 'storage full') {
+    const edited = 'Edited before sending'
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(area, edited)
+      area.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect.soft(localStorage.getItem(source)).toBe(edited)
+    await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="发送"]')!.click())
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ chatId: chat.id, instruction: edited }))
+    await act(async () => runs.deleteChat(chat.id))
+    expect(runs.chatId).toBeNull()
+    expect.soft(area.value).toBe('')
+    expect.soft(localStorage.getItem(source)).toBeNull()
+  }
 })
 
 it.each(['data', 'empty', 'error'] as const)('ignores stale chat history with %s', async (outcome) => {

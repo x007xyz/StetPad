@@ -151,9 +151,14 @@ const isValid = (doc: Block[]) => doc.every((b, i) =>
 describe('Markdown round-trip regressions', () => {
   it.each(examples)('%s', async (_, doc) => check(doc))
 
-  it('imports the editor’s inline math span with its source as text', async () => {
-    const expected = [paragraph(text('before '), text('x^2', math), text(' after'))]
-    expect(await readMarkdown('before <span data-math="">x^2</span> after')).toEqual(expected)
+  it.each([
+    ['x^2', 'x^2'],
+    [String.raw`50\%`, String.raw`50\%`],
+    [String.raw`\left\{\frac{a\_b}{c}\right\}`, String.raw`\left\{\frac{a\_b}{c}\right\}`],
+    [String.raw`a\$b\% &lt; &amp; "x"`, String.raw`a\$b\% < & "x"`],
+  ])('imports editor math span source %j before Markdown can handle escapes', async (source, tex) => {
+    const expected = [paragraph(text('before '), text(tex, math), text(' after'))]
+    expect(await readMarkdown(`before <span class="math-mark" data-math="">${source}</span> after`)).toEqual(expected)
     await check(expected)
   })
 

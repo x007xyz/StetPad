@@ -396,8 +396,9 @@ export function domToBlocks(root: any, opts: { baseUrl?: string; markdown?: bool
         const tag = String(child.tagName).toUpperCase()
         if (isHiddenElement(child)) continue
         if (opts.markdown && tag === 'SPAN') {
-          if (child.hasAttribute('data-math')) {
-            pushDelta(delta, String(child.getAttribute('data-math') || child.textContent || ''), { math: true }, true)
+          const tex = child.getAttribute('data-math')
+          if (tex) {
+            pushDelta(delta, String(tex), { math: true }, true)
             continue
           }
           if (child.getAttribute('style') === 'white-space: pre-wrap') {

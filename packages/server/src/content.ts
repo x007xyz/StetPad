@@ -18,7 +18,7 @@ import {
 import { Readability } from '@mozilla/readability'
 import { parseHTML } from 'linkedom'
 import mammoth from 'mammoth'
-import { Lexer, Renderer, marked, type MarkedToken, type Token, type Tokens } from 'marked'
+import { Lexer, Marked, Renderer, marked, type MarkedToken, type Token, type Tokens } from 'marked'
 import { AlignmentType, Document as DocxDocument, ExternalHyperlink, FootnoteReferenceRun, HeadingLevel, ImageRun, LevelFormat, Packer, Paragraph as DocxParagraph, Table as DocxTable, TableCell, TableRow, TextRun, WidthType } from 'docx'
 import { randomUUID } from 'node:crypto'
 import * as Y from 'yjs'
@@ -309,6 +309,25 @@ const FN_DEF = /^\[\^([^\]\s]+)\]:[ \t]*(.*)$/
 /** Punctuation that ends the word a footnote marker attaches to. */
 const FN_STOP = /[\s，。！？；：、,.;:!?()（）「」“”"'《》]/
 
+const markdown = new Marked({ extensions: [{
+  name: 'editorMathSpan',
+  level: 'inline',
+  tokenizer(src) {
+    if (this.lexer.state.inRawBlock) return
+    const raw = /^<span(?=[\s>])(?:"[^"]*"|'[^']*'|[^"'<>])*?>([^<]+)<\/span\s*>/i.exec(src)?.[0]
+    if (!raw || !raw.includes('data-math')) return
+    const span = parseHTML(raw).document.querySelector('span')
+    if (span?.getAttribute('data-math') !== '' || !span.textContent) return
+    // Tokenize the whole span before Markdown can interpret escapes inside its TeX.
+    span.setAttribute('data-math', span.textContent)
+    span.textContent = ''
+    return { type: 'editorMathSpan', raw, html: span.outerHTML }
+  },
+  renderer(token) {
+    return token.html
+  },
+}] })
+
 class MarkdownRenderer extends Renderer {
   override code(token: Tokens.Code): string {
     if (token.codeBlockStyle === 'indented') return super.code(token)
@@ -322,10 +341,10 @@ class MarkdownRenderer extends Renderer {
 async function parseMdFootnotes(body: string, defs: Map<string, string>): Promise<Block[]> {
   const renderer = new MarkdownRenderer()
   const parse = (html: string) => parsedHtmlToBlocks(html, { markdown: true })
-  if (!body.includes('\\')) return applyMdFootnotes(parse(await marked.parse(body, { gfm: true, renderer })), defs)
+  if (!body.includes('\\')) return applyMdFootnotes(parse(await markdown.parse(body, { gfm: true, renderer })), defs)
   // Keep escaped brackets distinct until after the footnote pass, even after HTML parsing.
   const escape = `\ue002${randomUUID()}`
-  const html = await marked.parse(body, {
+  const html = await markdown.parse(body, {
     gfm: true,
     renderer,
     walkTokens(token) {
@@ -415,7 +434,7 @@ type Verbatim = { start: number; end: number; opaque: boolean }
 function verbatimSpans(tokens: Token[], at: number, out: Verbatim[] = []): Verbatim[] {
   for (const t of tokens) {
     const end = at + t.raw.length
-    if (t.type === 'codespan') out.push({ start: at, end, opaque: true })
+    if (t.type === 'codespan' || t.type === 'editorMathSpan') out.push({ start: at, end, opaque: true })
     else if (t.type === 'html') out.push({ start: at, end, opaque: false })
     else if (t.type === 'link' || t.type === 'image') {
       out.push({ start: at, end, opaque: false })
@@ -472,8 +491,9 @@ export function protectInlineMath(md: string, prefix = MATH_PREFIX): { body: str
   if (!md.includes('$')) return { body: md, tex }
   // marked reads `\r\n` and `\r` as `\n`; matching it keeps its token text findable in `md`.
   md = md.replace(/\r\n?/g, '\n')
-  const doc = marked.lexer(md, { gfm: true })
-  const lexer = new Lexer({ ...marked.defaults, gfm: true })
+  const options = { ...markdown.defaults, gfm: true }
+  const doc = markdown.lexer(md, options)
+  const lexer = new Lexer(options)
   Object.assign(lexer.tokens.links, doc.links)
   const lines = md.split('\n')
   const code = fencedCodeLines(lines)

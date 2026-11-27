@@ -300,9 +300,9 @@ export async function fileToBlocks(name: string, data: Uint8Array, opts: { ocr?:
     return blocks
   }
   if (ext === 'txt') {
-    const wrappedLineBreak = /((?=[\u3000-\u303f\uff01-\uff60])\p{P})?\s*\n\s*/gu
+    const cjkLineEnd = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}ーｰ]|(?=[\u3000-\u303f\uff01-\uff60])\p{P}/u
     return str.split(/\n\s*\n/)
-      .map((s) => para(s.replace(wrappedLineBreak, (_, punctuation: string | undefined) => punctuation ?? ' ').trim()))
+      .map((s) => para(s.replace(/(\S)?\s*\n\s*/gu, (_, last: string | undefined) => (last ?? '') + (last && cjkLineEnd.test(last) ? '' : ' ')).trim()))
       .filter((b) => b.delta.length)
   }
   throw new Error(`不支持的文件类型：.${ext}`)

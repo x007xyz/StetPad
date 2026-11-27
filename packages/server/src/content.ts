@@ -18,7 +18,7 @@ import {
 import { Readability } from '@mozilla/readability'
 import { parseHTML } from 'linkedom'
 import mammoth from 'mammoth'
-import { Lexer, marked, type MarkedToken, type Token } from 'marked'
+import { Lexer, Renderer, marked, type MarkedToken, type Token, type Tokens } from 'marked'
 import { AlignmentType, Document as DocxDocument, ExternalHyperlink, FootnoteReferenceRun, HeadingLevel, ImageRun, LevelFormat, Packer, Paragraph as DocxParagraph, Table as DocxTable, TableCell, TableRow, TextRun, WidthType } from 'docx'
 import { randomUUID } from 'node:crypto'
 import * as Y from 'yjs'
@@ -37,8 +37,12 @@ const para = (s: string): Block => ({ type: 'paragraph', attrs: {}, delta: s ? [
  * passed through as HTML: only text, a fixed set of marks, and checked URLs.
  */
 export function htmlToBlocks(html: string, baseUrl?: string): Block[] {
+  return parsedHtmlToBlocks(html, { baseUrl })
+}
+
+function parsedHtmlToBlocks(html: string, options: Parameters<typeof domToBlocks>[1]): Block[] {
   const { document } = parseHTML(`<!doctype html><html><body>${html}</body></html>`)
-  return domToBlocks(document.body, { baseUrl })
+  return domToBlocks(document.body, options)
 }
 
 // ---------- files -> blocks ----------
@@ -278,8 +282,9 @@ export async function fileToBlocks(name: string, data: Uint8Array, opts: { ocr?:
   const str = new TextDecoder().decode(data)
   if (ext === 'md' || ext === 'markdown') {
     const { body, defs } = splitMdFootnotes(str)
-    const { body: safe, tex } = protectInlineMath(mathToFence(body))
-    return restoreInlineMath(await parseMdFootnotes(safe, defs), tex)
+    const prefix = `\ue000${randomUUID()}:`
+    const { body: safe, tex } = protectInlineMath(mathToFence(body), prefix)
+    return restoreInlineMath(await parseMdFootnotes(safe, defs), tex, prefix)
   }
   if (ext === 'html' || ext === 'htm') {
     const { document } = parseHTML(str)
@@ -304,19 +309,31 @@ const FN_DEF = /^\[\^([^\]\s]+)\]:[ \t]*(.*)$/
 /** Punctuation that ends the word a footnote marker attaches to. */
 const FN_STOP = /[\s，。！？；：、,.;:!?()（）「」“”"'《》]/
 
+class MarkdownRenderer extends Renderer {
+  override code(token: Tokens.Code): string {
+    if (token.codeBlockStyle === 'indented') return super.code(token)
+    const language = token.lang?.match(/^[\w+#.-]+/)?.[0]
+    const source = token.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    return `<pre data-stetpad-fenced><code${language ? ` class="language-${language}"` : ''}>${source}</code></pre>\n`
+  }
+}
+
 async function parseMdFootnotes(body: string, defs: Map<string, string>): Promise<Block[]> {
-  if (!body.includes('\\')) return applyMdFootnotes(htmlToBlocks(await marked.parse(body, { gfm: true })), defs)
+  const renderer = new MarkdownRenderer()
+  const parse = (html: string) => parsedHtmlToBlocks(html, { markdown: true })
+  if (!body.includes('\\')) return applyMdFootnotes(parse(await marked.parse(body, { gfm: true, renderer })), defs)
   // Keep escaped brackets distinct until after the footnote pass, even after HTML parsing.
   const escape = `\ue002${randomUUID()}`
   const html = await marked.parse(body, {
     gfm: true,
+    renderer,
     walkTokens(token) {
       if (token.type === 'escape' && (token.text === '[' || token.text === ']')) {
         token.text = escape + (token.text === '[' ? 'L' : 'R')
       }
     },
   })
-  const list = applyMdFootnotes(htmlToBlocks(html), defs, escape)
+  const list = applyMdFootnotes(parse(html), defs, escape)
   const restore = (value: string): string => value.replaceAll(escape + 'L', '[').replaceAll(escape + 'R', ']')
   for (const b of list) {
     for (const d of b.delta) d.insert = restore(d.insert)
@@ -354,7 +371,7 @@ function applyMdFootnotes(list: Block[], defs: Map<string, string>, escape?: str
     let m: RegExpExecArray | null
     while ((m = re.exec(s))) {
       const at = m.index
-      if ((escape && m[1]!.includes(escape)) || chars.slice(at, re.lastIndex).some((c) => c.attributes?.code)) {
+      if ((escape && m[1]!.includes(escape)) || chars.slice(at, re.lastIndex).some((c) => c.attributes?.code || c.attributes?.math)) {
         re.lastIndex = at + 1
         continue
       }
@@ -385,7 +402,7 @@ function applyMdFootnotes(list: Block[], defs: Map<string, string>, escape?: str
 
 /** `$…$` on one line, with the editor's input rule: no space inside the ends, no `$` inside, not before a digit. */
 const INLINE_TEX = /(?<![\\$])\$(?=[^\s$])([^$\n]*?[^\s$\\])\$(?![\d$])/g
-const TOKEN = /(\d+)/g
+const MATH_PREFIX = '\ue000'
 
 /** A link reference definition: `[label]: destination`. */
 const LINK_DEF = /^ {0,3}\[[^\]]+\]:/
@@ -418,7 +435,7 @@ function verbatimSpans(tokens: Token[], at: number, out: Verbatim[] = []): Verba
  * definitions), so they match the later parse. A formula may hold whole HTML tags (`$<u>_i$`) and
  * links, but no code, and may not end inside any of them.
  */
-function protectLine(line: string, lexer: Lexer, tex: string[]): string {
+function protectLine(line: string, lexer: Lexer, tex: string[], prefix: string): string {
   const spans = verbatimSpans(lexer.inlineTokens(line), 0)
   const formula = new RegExp(INLINE_TEX.source, 'g')
   let out = ''
@@ -438,7 +455,7 @@ function protectLine(line: string, lexer: Lexer, tex: string[]): string {
       continue
     }
     tex.push(f[1]!)
-    out += line.slice(at, f.index) + `\ue000${tex.length - 1}\ue001`
+    out += line.slice(at, f.index) + `${prefix}${tex.length - 1}\ue001`
     at = end
   }
   return out + line.slice(at)
@@ -449,7 +466,7 @@ function protectLine(line: string, lexer: Lexer, tex: string[]): string {
  * formula are not read as emphasis. Code (fenced blocks, code spans), HTML, tables, links, images and
  * link reference definitions are left alone. `restoreInlineMath` puts the formulas back as math-marked text.
  */
-export function protectInlineMath(md: string): { body: string; tex: string[] } {
+export function protectInlineMath(md: string, prefix = MATH_PREFIX): { body: string; tex: string[] } {
   const tex: string[] = []
   if (!md.includes('$')) return { body: md, tex }
   // marked reads `\r\n` and `\r` as `\n`; matching it keeps its token text findable in `md`.
@@ -474,7 +491,7 @@ export function protectInlineMath(md: string): { body: string; tex: string[] } {
   const body = lines
     .map((line, i) => {
       if (code[i] || LINK_DEF.test(line)) return line
-      if (line.includes('$') && !/^\s*\|/.test(line)) return protectLine(line, lexer, tex)
+      if (line.includes('$') && !/^\s*\|/.test(line)) return protectLine(line, lexer, tex, prefix)
       // Lex skipped lines with tags too, so an `<a>` left open or closed there is tracked as marked does.
       if (line.includes('<')) lexer.inlineTokens(line)
       return line
@@ -484,8 +501,9 @@ export function protectInlineMath(md: string): { body: string; tex: string[] } {
 }
 
 /** Puts back the formulas of `protectInlineMath` as runs with the `math` mark. Stray placeholders become plain `$…$`. */
-export function restoreInlineMath(list: Block[], tex: string[]): Block[] {
+export function restoreInlineMath(list: Block[], tex: string[], prefix = MATH_PREFIX): Block[] {
   if (!tex.length) return list
+  const token = new RegExp(`${prefix}(\\d+)\ue001`, 'g')
   for (const b of list) {
     const delta: Block['delta'] = []
     const push = (insert: string, attributes?: Record<string, unknown>): void => {
@@ -495,7 +513,7 @@ export function restoreInlineMath(list: Block[], tex: string[]): Block[] {
       else delta.push(attributes ? { insert, attributes } : { insert })
     }
     for (const d of b.delta) {
-      d.insert.split(/(\d+)/).forEach((part, i) => {
+      d.insert.split(token).forEach((part, i) => {
         if (i % 2) {
           const src = tex[Number(part)] ?? ''
           if (b.type === 'codeBlock' || d.attributes?.code) push(`$${src}$`, d.attributes)
@@ -506,7 +524,7 @@ export function restoreInlineMath(list: Block[], tex: string[]): Block[] {
     }
     b.delta = delta
     for (const [k, v] of Object.entries(b.attrs)) {
-      if (typeof v === 'string' && v.includes('')) b.attrs[k] = v.replace(TOKEN, (_m, n: string) => `$${tex[Number(n)] ?? ''}$`)
+      if (typeof v === 'string' && v.includes(prefix)) b.attrs[k] = v.replace(token, (_m, n: string) => `$${tex[Number(n)] ?? ''}$`)
     }
   }
   return list

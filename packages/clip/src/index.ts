@@ -363,35 +363,48 @@ function stripLeadingPrefix(delta: InlineDelta[], pattern: RegExp): InlineDelta[
  * set of inline marks, and validated URLs.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function domToBlocks(root: any, opts: { baseUrl?: string } = {}): Block[] {
+export function domToBlocks(root: any, opts: { baseUrl?: string; markdown?: boolean } = {}): Block[] {
   if (!root) return []
   const baseUrl = opts.baseUrl
   const out: Block[] = []
 
-  const pushDelta = (delta: InlineDelta[], insert: string, marks: Record<string, unknown>): void => {
+  const verbatim = new WeakSet<InlineDelta>()
+  const pushDelta = (delta: InlineDelta[], insert: string, marks: Record<string, unknown>, preserve = false): void => {
     const attrKey = Object.keys(marks).length ? JSON.stringify(marks) : ''
     const prev = delta[delta.length - 1]
     const prevKey = prev?.attributes ? JSON.stringify(prev.attributes) : ''
-    if (prev && prevKey === attrKey) {
-      if (!marks.code && prev.insert.endsWith(' ') && insert.startsWith(' ')) insert = insert.slice(1)
+    if (prev && prevKey === attrKey && verbatim.has(prev) === preserve) {
+      if (!preserve && !marks.code && prev.insert.endsWith(' ') && insert.startsWith(' ')) insert = insert.slice(1)
       prev.insert += insert
       return
     }
     const attributes = attrKey ? { ...marks } : undefined
-    delta.push(attributes ? { insert, attributes } : { insert })
+    const run = attributes ? { insert, attributes } : { insert }
+    if (preserve) verbatim.add(run)
+    delta.push(run)
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const inline = (node: any, marks: Record<string, unknown>, delta: InlineDelta[]): void => {
+  const inline = (node: any, marks: Record<string, unknown>, delta: InlineDelta[], preserve = false): void => {
     for (const child of node.childNodes ?? []) {
       if (child.nodeType === 3) {
         const text = String(child.textContent)
-        const s = marks.code ? text : text.replace(/\s+/g, ' ')
+        const s = preserve || marks.code ? text : text.replace(/\s+/g, ' ')
         if (!s) continue
-        pushDelta(delta, s, marks)
+        pushDelta(delta, s, marks, preserve)
       } else if (child.nodeType === 1) {
         const tag = String(child.tagName).toUpperCase()
         if (isHiddenElement(child)) continue
+        if (opts.markdown && tag === 'SPAN') {
+          if (child.hasAttribute('data-math')) {
+            pushDelta(delta, String(child.getAttribute('data-math')), { math: true }, true)
+            continue
+          }
+          if (child.getAttribute('style') === 'white-space: pre-wrap') {
+            inline(child, marks, delta, true)
+            continue
+          }
+        }
         if (tag === 'BR') {
           pushDelta(delta, ' ', marks)
           continue
@@ -404,21 +417,29 @@ export function domToBlocks(root: any, opts: { baseUrl?: string } = {}): Block[]
         if (tag === 'SCRIPT' || tag === 'STYLE') continue
         if (tag === 'A') {
           const href = safeHref(child.getAttribute('href'), baseUrl)
-          inline(child, href ? { ...marks, link: { href } } : marks, delta)
+          inline(child, href ? { ...marks, link: { href } } : marks, delta, preserve)
         } else if (MARKS[tag]) {
-          inline(child, { ...marks, [MARKS[tag]!]: {} }, delta)
+          inline(child, { ...marks, [MARKS[tag]!]: {} }, delta, preserve)
         } else {
-          inline(child, marks, delta)
+          inline(child, marks, delta, preserve)
         }
       }
     }
   }
 
   const trimmed = (delta: InlineDelta[]): InlineDelta[] => {
-    if (delta[0] && !delta[0].attributes?.code) delta[0].insert = delta[0].insert.replace(/^\s+/, '')
+    if (delta[0] && !delta[0].attributes?.code && !verbatim.has(delta[0])) delta[0].insert = delta[0].insert.replace(/^\s+/, '')
     const last = delta[delta.length - 1]
-    if (last && !last.attributes?.code) last.insert = last.insert.replace(/\s+$/, '')
-    return delta.filter((d) => d.insert.length > 0)
+    if (last && !last.attributes?.code && !verbatim.has(last)) last.insert = last.insert.replace(/\s+$/, '')
+    if (!opts.markdown) return delta.filter((d) => d.insert.length > 0)
+    const merged: InlineDelta[] = []
+    for (const d of delta) {
+      if (!d.insert) continue
+      const prev = merged.at(-1)
+      if (prev && JSON.stringify(prev.attributes) === JSON.stringify(d.attributes)) prev.insert += d.insert
+      else merged.push(d)
+    }
+    return merged
   }
 
   const push = (type: string, attrs: Record<string, unknown>, node: unknown, stripPrefix?: RegExp): void => {
@@ -447,7 +468,7 @@ export function domToBlocks(root: any, opts: { baseUrl?: string } = {}): Block[]
       else push(ordered ? 'orderedItem' : 'bulletItem', { indent }, clone)
       for (const nested of li.children ?? []) {
         const t = String(nested.tagName).toUpperCase()
-        if (t === 'UL' || t === 'OL') list(nested, t === 'OL', Math.min(indent + 1, 4))
+        if (t === 'UL' || t === 'OL') list(nested, t === 'OL', Math.min(indent + 1, opts.markdown ? 6 : 4))
       }
     }
   }
@@ -503,7 +524,8 @@ export function domToBlocks(root: any, opts: { baseUrl?: string } = {}): Block[]
       } else if (tag === 'PRE') {
         const code = node.querySelector('code')
         const lang = codeLangOf(node, code)
-        const s = preText(code ?? node).replace(/\n+$/, '')
+        const source = preText(code ?? node)
+        const s = opts.markdown && node.hasAttribute('data-stetpad-fenced') ? source : source.replace(/\n+$/, '')
         if (s && lang === 'drawio') out.push({ type: 'drawio', attrs: { xml: s.trim() }, delta: [] })
         else if (s) out.push({ type: 'codeBlock', attrs: { language: lang }, delta: [{ insert: s }] })
       } else if (tag === 'HR') {
@@ -597,14 +619,26 @@ const mdOneLine = (s: string): string => s.replace(/[\r\n]+/g, ' ')
 const mdAlt = (s: string): string => mdOneLine(s).replace(/[[\]]/g, '')
 const mdItalic = (s: string): string => '*' + mdOneLine(s).replace(/([*_\\`])/g, '\\$1') + '*'
 
-const mdEscapeText = (s: string): string => s.replace(/([\\`*_\[\]~<]|&(?=[\w#]+;))/g, '\\$1').replace(/\b(https?):(?=\/\/)/gi, '$1\\:')
+const mdEscapeText = (s: string): string => s.replace(/([\\`*_\[\]~<]|&(?=[\w#]+;))/g, '\\$1')
+  .replace(/\b(https?):(?=\/\/)/gi, '$1\\:')
+  .replace(/\b(www)\.(?=[\w-])/gi, '$1\\.')
+  .replace(/@(?=[\w-]+\.[\w-])/g, '\\@')
 
 const mdEscapeDestination = (s: string): string => s.replace(/[\\()]/g, '\\$&')
+const mdNeedsHtmlDestination = (s: string): boolean => /[^!-~]|["<>\\]|&(?:#\w+|\w+);/.test(s)
 
-function mdInlineText(text: string): string {
+function mdInlineText(text: string, atStart: boolean, atEnd: boolean): string {
   // HTML imports store inline formulas as $…$ text. Keep their TeX verbatim.
   return text.split(/((?<![\\$])\$(?=[^\s$])[^$\n]*?[^\s$\\]\$(?![\d$]))/g)
-    .map((part, i) => i % 2 ? part : mdEscapeText(part)).join('')
+    .map((part, i, parts) => i % 2 ? part : part.split(/(\s+)/u).map((piece, j, pieces) => {
+      if (!(j % 2)) return mdEscapeText(piece).replace(/\$/g, '\\$')
+      if (/[\r\n]/.test(piece)) return piece
+      const edge = (atStart && i === 0 && j === 1 && !pieces[0])
+        || (atEnd && i === parts.length - 1 && j === pieces.length - 2 && !pieces.at(-1))
+      return piece !== ' ' || edge
+        ? `<span style="white-space: pre-wrap">${Array.from(piece, (ch) => `&#${ch.codePointAt(0)};`).join('')}</span>`
+        : piece
+    }).join('')).join('')
 }
 
 function mdCodeSpan(text: string): string {
@@ -613,12 +647,20 @@ function mdCodeSpan(text: string): string {
   return fence + pad + text + pad + fence
 }
 
+function mdMath(text: string, before?: InlineDelta, after?: InlineDelta): string {
+  if (/^(?=[^\s$])[^$\n]*?[^\s$\\]$/.test(text) && !before?.attributes?.math && !after?.attributes?.math
+    && !before?.insert.endsWith('\\') && !/^[\d$]/.test(after?.insert ?? '')) return `$${text}$`
+  const literal = esc(text).replace(/[$\r\n]/g, (ch) => `&#${ch.charCodeAt(0)};`)
+  return `<span data-math="${literal}">${literal}</span>`
+}
+
 const mdEmphasis = {
   strike: ['~~', 'del'],
   italic: ['*', 'em'],
   bold: ['**', 'strong'],
 } as const
-const mdMarkOrder = ['link', 'strike', 'italic', 'bold', 'code'] as const
+const mdHtmlMarks = { underline: 'u', highlight: 'mark' } as const
+const mdMarkOrder = ['link', 'strike', 'italic', 'bold', 'underline', 'highlight', 'code'] as const
 type MdMark = { name: typeof mdMarkOrder[number]; href?: string; start: number; end: number }
 
 function inlineMd(delta: InlineDelta[]): string {
@@ -650,8 +692,8 @@ function inlineMd(delta: InlineDelta[]): string {
       if (!mark) {
         const a = run.attributes
         if (a?.footnoteRef) out += `[^${Number(a.footnoteRef)}]`
-        else if (a?.math) out += `$${run.insert}$`
-        else out += inCode ? mdEscapeText(run.insert).replace(/\$/g, '&#36;') : mdInlineText(run.insert)
+        else if (a?.math) out += mdMath(run.insert, runs[i - 1], runs[i + 1])
+        else out += inCode ? mdEscapeText(run.insert).replace(/\$/g, '&#36;') : mdInlineText(run.insert, i === 0, i === runs.length - 1)
         i++
         continue
       }
@@ -662,8 +704,16 @@ function inlineMd(delta: InlineDelta[]): string {
       } else {
         const text = render(i, stop, depth + 1, inCode || name === 'code')
         if (name === 'code') out += `<code>${text}</code>`
-        else if (name === 'link') out += `[${text}](${mdEscapeDestination(mark.href!)})`
-        else {
+        else if (name === 'link') {
+          const href = mark.href!
+          // Marked can reinterpret escaped brackets in a Markdown link label as a nested image.
+          out += (/\\[[\]]/.test(text) || mdNeedsHtmlDestination(href)) && safeHref(href)
+            ? `<a href="${esc(href)}">${text}</a>`
+            : `[${text}](${mdEscapeDestination(href)})`
+        } else if (name === 'underline' || name === 'highlight') {
+          const tag = mdHtmlMarks[name]
+          out += `<${tag}>${text}</${tag}>`
+        } else {
           const [delimiter, tag] = mdEmphasis[name]
           // Crossing spans need separate wrappers. HTML avoids ambiguous delimiter runs and preserves marked spaces.
           const beforeWord = i > start && /[^\s\p{P}\p{S}]$/u.test(runs[i - 1]!.insert)
@@ -685,6 +735,14 @@ function mdParagraph(delta: InlineDelta[]): string {
     .replace(/^([ \t]*)(?=#{1,6}(?:\s|$)|>|[-+](?:\s|$)|-{2,}[ \t]*(?:\r?\n|$))/, '$1\\')
     .replace(/^([ \t]*\d{1,9})(?=[.)](?:\s|$))/, '$1\\')
 }
+
+function mdFence(text: string, language: string): string {
+  const fence = '`'.repeat((text.match(/`+/g) ?? []).reduce((length, run) => Math.max(length, run.length + 1), 3))
+  return fence + language + '\n' + text + '\n' + fence
+}
+
+const mdImageAlt = (alt: string): string => mdOneLine(alt).replace(/[&<>"\\`*_\[\]~]/g, (ch) => `&#${ch.charCodeAt(0)};`)
+const mdImageTitle = (caption: string): string => mdOneLine(caption).replace(/&/g, '&amp;').replace(/[\\"]/g, '\\$&')
 
 const tableRows = (b: Block): string[][] => {
   try {
@@ -746,19 +804,19 @@ export function blocksToMarkdown(input: Block[]): string {
     if (listItem) markers[level] = { type: b.type, n, width: b.type === 'orderedItem' ? String(n).length + 2 : 2 }
     switch (b.type) {
       case 'heading':
-        out.push('#'.repeat(Number(b.attrs.level ?? 1)) + ' ' + inlineMd(b.delta))
+        out.push('#'.repeat(Number(b.attrs.level ?? 1)) + ' ' + inlineMd(b.delta).replace(/(^|[ \t])(#+)$/, '$1\\$2'))
         break
       case 'bulletItem':
-        out.push(`${pad}- ${inlineMd(b.delta)}`)
+        out.push(`${pad}- ${mdParagraph(b.delta)}`)
         break
       case 'orderedItem':
-        out.push(`${pad}${n}. ${inlineMd(b.delta)}`)
+        out.push(`${pad}${n}. ${mdParagraph(b.delta)}`)
         break
       case 'taskItem':
-        out.push(`${pad}- [${b.attrs.checked ? 'x' : ' '}] ${inlineMd(b.delta)}`)
+        out.push(`${pad}- [${b.attrs.checked ? 'x' : ' '}] ${mdParagraph(b.delta)}`)
         break
       case 'quote':
-        out.push('> ' + inlineMd(b.delta))
+        out.push('> ' + mdParagraph(b.delta))
         break
       case 'callout':
         out.push('> [!NOTE] ' + inlineMd(b.delta))
@@ -766,17 +824,23 @@ export function blocksToMarkdown(input: Block[]): string {
       case 'codeBlock': {
         const lang = String(b.attrs.language ?? '')
         const text = blockTextContent(b)
-        const fence = '`'.repeat((text.match(/`+/g) ?? []).reduce((length, run) => Math.max(length, run.length + 1), 3))
-        out.push(lang === 'math' ? `$$\n${text}\n$$` : { code: fence + lang + '\n' + text + '\n' + fence })
+        out.push(lang === 'math' && !/(?:^|\n)[ \t]*(?:`{3,}|~{3,}|\$\$(?:[ \t]*\n|[ \t]*$))/.test(text) && !text.endsWith('\n')
+          ? `$$\n${text}\n$$`
+          : { code: mdFence(text, lang) })
         break
       }
       case 'divider':
         out.push('---')
         break
       case 'image': {
-        const src = mdEscapeDestination(String(b.attrs.src ?? ''))
-        const caption = mdOneLine(String(b.attrs.caption ?? ''))
-        out.push(`![${mdAlt(String(b.attrs.alt ?? ''))}](${src}${caption ? ` "${caption.replace(/"/g, "'")}"` : ''})`)
+        const src = String(b.attrs.src ?? '')
+        const alt = String(b.attrs.alt ?? '')
+        const caption = String(b.attrs.caption ?? '')
+        if (mdNeedsHtmlDestination(src) && safeImageSrc(src)) {
+          out.push(`<img src="${esc(src)}" alt="${esc(mdOneLine(alt))}" title="${esc(mdOneLine(caption))}">`)
+        } else {
+          out.push(`![${mdImageAlt(alt)}](${mdEscapeDestination(src)}${caption ? ` "${mdImageTitle(caption)}"` : ''})`)
+        }
         break
       }
       case 'video': {

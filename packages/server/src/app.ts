@@ -733,7 +733,7 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     }
   }
   api.get('/search', async (c) => {
-    const q = (c.req.query('q') ?? '').trim().slice(0, 100)
+    const q = (c.req.query('q') ?? '').trim()
     if (!q) return c.json({ results: [] })
     await backfillSearchText(c.get('user').id)
     return c.json({ results: await store.searchDocs(c.get('user').id, q) })

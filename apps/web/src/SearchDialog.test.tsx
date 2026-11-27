@@ -2,6 +2,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import type { SearchResult } from './api'
 import { go } from './App'
 import { SearchDialog } from './SearchDialog'
 import { deferred } from './lib/deferred.test-utils'
@@ -31,13 +32,17 @@ function typeQuery(input: HTMLInputElement, value: string) {
   act(() => input.dispatchEvent(new Event('input', { bubbles: true })))
 }
 
+const hit = (id: string, title: string): SearchResult => ({
+  id, title, updated_at: 0, folder_id: null, snippet: '', titleMatch: true, titleMatches: [], snippetMatches: [],
+})
+
 it.each([
   ['composition', { isComposing: true }],
   ['legacy composition', { keyCode: 229 }],
 ])('ignores result keys during %s but opens with plain Enter', async (_, composition) => {
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ results: [
-    { id: 'orchid-0', title: 'Orchid First', updated_at: 0 },
-    { id: 'orchid-1', title: 'Orchid Second', updated_at: 0 },
+    hit('orchid-0', 'Orchid First'),
+    hit('orchid-1', 'Orchid Second'),
   ] })))
   const onClose = vi.fn()
   await act(async () => root.render(<SearchDialog onClose={onClose} />))
@@ -62,7 +67,7 @@ it.each([
 it.each(['Catalpa', ''])('does not select previous results while the query is %j', async (query) => {
   const next = deferred<Response>()
   vi.stubGlobal('fetch', vi.fn()
-    .mockResolvedValueOnce(Response.json({ results: [{ id: 'chestnut', title: 'Chestnut', updated_at: 0 }] }))
+    .mockResolvedValueOnce(Response.json({ results: [hit('chestnut', 'Chestnut')] }))
     .mockReturnValueOnce(next.promise))
   const onClose = vi.fn()
   await act(async () => root.render(<SearchDialog onClose={onClose} />))
@@ -83,7 +88,7 @@ it.each(['Catalpa', ''])('does not select previous results while the query is %j
   await act(() => vi.advanceTimersByTimeAsync(200))
   act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
   expect(go).not.toHaveBeenCalled()
-  await act(async () => next.resolve(Response.json({ results: [{ id: 'catalpa', title: 'Catalpa', updated_at: 0 }] })))
+  await act(async () => next.resolve(Response.json({ results: [hit('catalpa', 'Catalpa')] })))
   act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
   expect(go).toHaveBeenCalledExactlyOnceWith({ page: 'doc', id: 'catalpa' })
 })
@@ -91,7 +96,7 @@ it.each(['Catalpa', ''])('does not select previous results while the query is %j
 it.each(['empty', 'error'])('does not restore previous results after an %s response', async (outcome) => {
   const next = deferred<Response>()
   vi.stubGlobal('fetch', vi.fn()
-    .mockResolvedValueOnce(Response.json({ results: [{ id: 'chestnut', title: 'Chestnut', updated_at: 0 }] }))
+    .mockResolvedValueOnce(Response.json({ results: [hit('chestnut', 'Chestnut')] }))
     .mockReturnValueOnce(next.promise))
   const onClose = vi.fn()
   await act(async () => root.render(<SearchDialog onClose={onClose} />))
@@ -111,9 +116,9 @@ it.each(['empty', 'error'])('does not restore previous results after an %s respo
 
 it('scrolls the selected result into view when arrow keys wrap or advance', async () => {
   const scrollIntoView = vi.fn()
-  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ results: Array.from({ length: 30 }, (_, i) => ({
-    id: `orchid-${i}`, title: `Orchid ${i}`, updated_at: 0, folder_id: null, snippet: '', titleMatch: true,
-  })) })))
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+    results: Array.from({ length: 30 }, (_, i) => hit(`orchid-${i}`, `Orchid ${i}`)),
+  })))
   const scroll = vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(scrollIntoView)
   try {
     await act(async () => root.render(<SearchDialog onClose={vi.fn()} />))
@@ -147,9 +152,7 @@ it('keeps cleared search results empty when an earlier request finishes', async 
   expect(fetchSearch).toHaveBeenCalledExactlyOnceWith('/api/search?q=Orchid', expect.anything())
 
   typeQuery(input, '')
-  await act(async () => resolve(Response.json({ results: [{
-    id: 'orchid', title: 'Orchid Field Notes', updated_at: 0, folder_id: null, snippet: '', titleMatch: true,
-  }] })))
+  await act(async () => resolve(Response.json({ results: [hit('orchid', 'Orchid Field Notes')] })))
 
   expect(document.querySelector('[role="option"]')).toBeNull()
   expect(input.getAttribute('aria-expanded')).toBe('false')

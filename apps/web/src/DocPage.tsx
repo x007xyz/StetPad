@@ -205,11 +205,24 @@ export function DocPage({ id }: { id: string }) {
   const author = '我'
   const ydoc = useMemo(() => new Y.Doc(), [id])
 
-  const runs = useRuns(id, () => setVersionsKey((k) => k + 1))
+  const unassignedRefsDraft = useRef({ key: draftKey(id, null) })
+  const moveRefs = useCallback((from: string, to: string): void => {
+    unassignedRefsDraft.current.key = to
+    unassignedRefsDraft.current = { key: from }
+    setRefsByDraft((cur) => {
+      const { [from]: moved, ...rest } = cur
+      if (!moved?.length) return cur
+      const existing = rest[to] ?? []
+      return { ...rest, [to]: [...existing, ...moved.filter((ref) => !existing.some((item) => item.id === ref.id))] }
+    })
+  }, [])
+  const runs = useRuns(id, () => setVersionsKey((k) => k + 1), true, moveRefs)
   const refsKey = draftKey(id, runs.chatId)
   const refs = refsByDraft[refsKey] ?? []
+  const refsDraft = runs.chatId === null ? unassignedRefsDraft.current : { key: refsKey }
   const setRefs = (update: (cur: ContextItem[]) => ContextItem[]): void => {
-    setRefsByDraft((cur) => ({ ...cur, [refsKey]: update(cur[refsKey] ?? []) }))
+    const { key } = refsDraft
+    setRefsByDraft((cur) => ({ ...cur, [key]: update(cur[key] ?? []) }))
   }
   const runsRef = useRef(runs)
   runsRef.current = runs

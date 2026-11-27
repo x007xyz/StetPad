@@ -52,7 +52,7 @@ const writeLastChat = (docId: string, id: string | null): void => {
 }
 
 /** Runs for one document: its chats, the history and live run of each, and how to start or cancel one. */
-export function useRuns(docId: string, onFinished: () => void, enabled = true) {
+export function useRuns(docId: string, onFinished: () => void, enabled = true, onDraftMoved?: (from: string, to: string) => void) {
   const [models, setModels] = useState<ModelsResponse | null>(null)
   const [model, setModel] = useState('')
   const [chats, setChats] = useState<ChatMeta[]>([])
@@ -185,9 +185,14 @@ export function useRuns(docId: string, onFinished: () => void, enabled = true) {
   const newChat = useCallback(async () => {
     const id = await ensureChat()
     if (!id || current.current === id) return
-    if (current.current === null) moveDraft(draftKey(docId, null), draftKey(docId, id))
+    if (current.current === null) {
+      const from = draftKey(docId, null)
+      const to = draftKey(docId, id)
+      moveDraft(from, to)
+      onDraftMoved?.(from, to)
+    }
     selectChat(id)
-  }, [docId, ensureChat, selectChat])
+  }, [docId, ensureChat, selectChat, onDraftMoved])
 
   const renameChat = useCallback(async (id: string, title: string) => {
     try {

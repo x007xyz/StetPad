@@ -397,7 +397,7 @@ export function domToBlocks(root: any, opts: { baseUrl?: string; markdown?: bool
         if (isHiddenElement(child)) continue
         if (opts.markdown && tag === 'SPAN') {
           if (child.hasAttribute('data-math')) {
-            pushDelta(delta, String(child.getAttribute('data-math')), { math: true }, true)
+            pushDelta(delta, String(child.getAttribute('data-math') || child.textContent || ''), { math: true }, true)
             continue
           }
           if (child.getAttribute('style') === 'white-space: pre-wrap') {

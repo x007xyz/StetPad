@@ -149,6 +149,12 @@ const isValid = (doc: Block[]) => doc.every((b, i) =>
 
 describe('Markdown round-trip regressions', () => {
   it.each(examples)('%s', async (_, doc) => check(doc))
+
+  it('imports the editor’s inline math span with its source as text', async () => {
+    const expected = [paragraph(text('before '), text('x^2', math), text(' after'))]
+    expect(await readMarkdown('before <span data-math="">x^2</span> after')).toEqual(expected)
+    await check(expected)
+  })
 })
 
 const seeds = [1, 0xabcdef, 0xc0ffee, 0x93_97_98, 0x101_103, 0x104_106, 0x12345678, 0xdeadbeef]

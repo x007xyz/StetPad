@@ -611,23 +611,71 @@ function mdCodeSpan(text: string): string {
   return fence + pad + text + pad + fence
 }
 
+const mdEmphasis = {
+  strike: ['~~', 'del'],
+  italic: ['*', 'em'],
+  bold: ['**', 'strong'],
+} as const
+const mdMarkOrder = ['link', 'strike', 'italic', 'bold', 'code'] as const
+type MdMark = { name: typeof mdMarkOrder[number]; href?: string; start: number; end: number }
+
 function inlineMd(delta: InlineDelta[]): string {
-  return delta
-    .map((d) => {
-      let s = d.insert
-      const a = d.attributes ?? {}
-      if (a.footnoteRef) return `[^${Number(a.footnoteRef)}]`
-      // Inline math is not combined with other marks: the source goes out as written.
-      if (a.math) return `$${s}$`
-      s = a.code ? mdCodeSpan(s) : mdInlineText(s)
-      if (a.bold) s = `**${s}**`
-      if (a.italic) s = `*${s}*`
-      if (a.strike) s = `~~${s}~~`
-      const href = (a.link as { href?: string } | undefined)?.href
-      if (href) s = `[${s}](${String(href).replace(/[\\()]/g, '\\$&')})`
-      return s
+  const runs = delta.filter((run) => run.insert || run.attributes?.footnoteRef)
+  const active = new Map<MdMark['name'], MdMark>()
+  const marks = runs.map(({ attributes: a }, i) => {
+    const href = (a?.link as { href?: string } | undefined)?.href
+    return mdMarkOrder.flatMap((name) => {
+      if (!a || a.math || a.footnoteRef || !(name === 'link' ? href : a[name])) {
+        active.delete(name)
+        return []
+      }
+      const previous = active.get(name)
+      const url = name === 'link' ? String(href) : undefined
+      const mark = previous?.href === url && previous ? previous : { name, href: url, start: i, end: i }
+      mark.end = i + 1
+      active.set(name, mark)
+      return [mark]
     })
-    .join('')
+  })
+  // Keep earlier spans outside later ones; when they start together, the longer one wraps the shorter.
+  for (const row of marks) row.sort((a, b) => a.start - b.start || b.end - a.end)
+
+  const render = (start: number, end: number, depth: number, inCode = false): string => {
+    let out = ''
+    for (let i = start; i < end;) {
+      const mark = marks[i]![depth]
+      const run = runs[i]!
+      if (!mark) {
+        const a = run.attributes
+        if (a?.footnoteRef) out += `[^${Number(a.footnoteRef)}]`
+        else if (a?.math) out += `$${run.insert}$`
+        else out += inCode ? mdEscapeText(run.insert).replace(/\$/g, '&#36;') : mdInlineText(run.insert)
+        i++
+        continue
+      }
+      const stop = Math.min(end, mark.end)
+      const { name } = mark
+      if (name === 'code' && marks.slice(i, stop).every((row) => row.length === depth + 1)) {
+        out += mdCodeSpan(runs.slice(i, stop).map((r) => r.insert).join(''))
+      } else {
+        const text = render(i, stop, depth + 1, inCode || name === 'code')
+        if (name === 'code') out += `<code>${text}</code>`
+        else if (name === 'link') out += `[${text}](${mark.href!.replace(/[\\()]/g, '\\$&')})`
+        else {
+          const [delimiter, tag] = mdEmphasis[name]
+          // Crossing spans need separate wrappers. HTML avoids ambiguous delimiter runs and preserves marked spaces.
+          const beforeWord = i > start && /[^\s\p{P}\p{S}]$/u.test(runs[i - 1]!.insert)
+          const afterWord = stop < end && /^[^\s\p{P}\p{S}]/u.test(runs[stop]!.insert)
+          const html = i !== mark.start || stop !== mark.end || /^\s|\s$/.test(text)
+            || (beforeWord && /^[\p{P}\p{S}]/u.test(text)) || (afterWord && /[\p{P}\p{S}]$/u.test(text))
+          out += html ? `<${tag}>${text}</${tag}>` : delimiter + text + delimiter
+        }
+      }
+      i = stop
+    }
+    return out
+  }
+  return render(0, runs.length, 0)
 }
 
 function mdParagraph(delta: InlineDelta[]): string {

@@ -335,8 +335,8 @@ function SidebarBody({ ctx, activeId, activeFolderId, trashActive, onNavigate }:
                   )}
                   {renaming !== f.id && (
                     <>
-                      <button className="hidden rounded p-1 text-muted-foreground hover:text-foreground focus-visible:block group-focus-within:block group-hover:block" aria-label={`重命名 ${f.name}`} onClick={() => setRenaming(f.id)}><Pencil className="size-3.5" /></button>
-                      <button className="mr-1 hidden rounded p-1 text-muted-foreground hover:text-destructive focus-visible:block group-focus-within:block group-hover:block" aria-label={`删除文件夹 ${f.name}`} onClick={() => void removeFolder(f)}><Trash2 className="size-3.5" /></button>
+                      <button className="hidden rounded p-1 text-muted-foreground hover:text-foreground focus-visible:block group-focus-within:block group-hover:block [@media(hover:none)]:block" aria-label={`重命名 ${f.name}`} onClick={() => setRenaming(f.id)}><Pencil className="size-3.5" /></button>
+                      <button className="mr-1 hidden rounded p-1 text-muted-foreground hover:text-destructive focus-visible:block group-focus-within:block group-hover:block [@media(hover:none)]:block" aria-label={`删除文件夹 ${f.name}`} onClick={() => void removeFolder(f)}><Trash2 className="size-3.5" /></button>
                     </>
                   )}
                 </div>

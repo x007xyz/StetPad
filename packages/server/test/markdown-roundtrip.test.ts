@@ -56,6 +56,8 @@ const examples: [string, Block[]][] = [
   ['literal image syntax inside a link label', [paragraph(text('![alt](https://example.invalid)', { ...bold, ...link(href) }))]],
   ['literal footnote syntax inside a link label', [paragraph(text('[^n]', link(href)))]],
   ['literal math and brackets inside a link label', [paragraph(text('$x$ [', link(href)))]],
+  ['literal math and an escaped bracket inside a link label', [paragraph(text(String.raw`$x$ \[`, link(href)))]],
+  ['literal math inside a link with a non-ASCII URL', [paragraph(text('$x$', link('https://example.invalid/字')))]],
   ['adjacent differently marked text', [paragraph(text('a', bold), text('b', italic))]],
   ['marked punctuation mid-word', [paragraph(text('a'), text('*', italic), text('b'))]],
   ['touching inline code with distinct marks', [paragraph(text('a', code), text('b', { ...code, ...bold }))]],

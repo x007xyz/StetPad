@@ -73,6 +73,32 @@ it('detects block attribute changes', () => {
   expect(rowChanged(alignBlocks([block], [{ ...block, attrs: { textAlign: 'center' } }])[0]!)).toBe(true)
 })
 
+const table = (rows: string[][]): RichBlock => ({
+  ...block, type: 'table', attrs: { rows: JSON.stringify(rows) }, text: '', delta: [],
+})
+
+it('shows both versions of a table and marks only the edited cell', () => {
+  const left = table([['Quarter', 'Revenue'], ['Q1', '100']])
+  const right = table([['Quarter', 'Revenue'], ['Q1', '250']])
+  const html = renderToStaticMarkup(<DiffView rows={alignBlocks([left], [right])} leftTitle="Before" rightTitle="After" onlyChanged />)
+  expect(html).toContain('data-diff-changed="true"')
+  expect(html.match(/<table\b/g)).toHaveLength(2)
+  expect(html.match(/<th scope="col">Revenue<\/th>/g)).toHaveLength(2)
+  expect(html.match(/<td>Q1<\/td>/g)).toHaveLength(2)
+  expect(html.match(/<del>.*?<\/del>/g)).toEqual(['<del>100</del>'])
+  expect(html.match(/<ins>.*?<\/ins>/g)).toEqual(['<ins>250</ins>'])
+  expect(html).not.toContain('仅格式变化')
+})
+
+it('marks blank cells in changed table rows as well as new cells', () => {
+  const left = table([['Quarter', 'Revenue'], ['Q1', '100']])
+  const right = table([['Quarter', 'Revenue'], ['Q1', ''], ['Q2', '250']])
+  const html = renderToStaticMarkup(<DiffView rows={alignBlocks([left], [right])} leftTitle="Before" rightTitle="After" />)
+  expect(html).toContain('<td class="added"><ins></ins></td>')
+  expect(html).toContain('<ins>Q2</ins>')
+  expect(html).toContain('<ins>250</ins>')
+})
+
 it('ignores object key order in marks, nested link attributes and block attributes', () => {
   const left = { ...block, attrs: { level: 1, options: { align: 'left', indent: 0 } }, delta: [{ insert: block.text, attributes: { bold: true, italic: true, link: { href: 'https://example.com', target: '_blank' } } }] }
   const right = { ...block, attrs: { options: { indent: 0, align: 'left' }, level: 1 }, delta: [{ attributes: { link: { target: '_blank', href: 'https://example.com' }, italic: true, bold: true }, insert: block.text }] }

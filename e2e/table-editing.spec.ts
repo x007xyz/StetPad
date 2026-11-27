@@ -29,6 +29,30 @@ test('saves a focused table cell to the server and survives reload', async ({ pa
   await expect(cell).toHaveText('Pens')
 })
 
+test('saves only the confirmed IME text from a table cell', async ({ page, request }) => {
+  const frames: string[] = []
+  page.on('websocket', (socket) => socket.on('framesent', ({ payload }) => frames.push(payload.toString())))
+  await page.reload()
+  const cell = page.locator('[data-cell="1:0"]')
+  await expect(cell).toHaveText('Pencils')
+  const cdp = await page.context().newCDPSession(page)
+  await cell.evaluate((el) => {
+    el.focus()
+    document.getSelection()?.selectAllChildren(el)
+  })
+  await cdp.send('Input.imeSetComposition', { text: 'bi', selectionStart: 2, selectionEnd: 2 })
+  await expect(cell).toHaveText('bi')
+  await cdp.send('Input.insertText', { text: '笔' })
+
+  const id = new URL(page.url()).hash.split('/').pop()
+  await expect.poll(async () => {
+    const exported = await request.get(`/api/docs/${id}/export?format=md`, { headers })
+    return exported.text()
+  }).toContain('| 笔 | 12 |')
+  expect(frames.some((frame) => frame.includes('"笔"'))).toBe(true)
+  expect(frames.some((frame) => frame.includes('"bi"'))).toBe(false)
+})
+
 test('Tab after an edit focuses the next table cell', async ({ page }) => {
   await page.locator('[data-cell="1:0"]').fill('Pens')
   await page.keyboard.press('Tab')

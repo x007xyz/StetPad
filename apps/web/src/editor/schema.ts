@@ -445,11 +445,15 @@ export const Table = Node.create({
               const el = document.createElement(i === 0 ? 'th' : 'td')
               el.contentEditable = editor.isEditable ? 'plaintext-only' : 'false'
               el.dataset.cell = `${i}:${j}`
-              el.addEventListener('input', () => {
+              const saveCell = (): void => {
                 const now = parse()
                 now[i]![j] = el.textContent ?? ''
                 commit(now)
+              }
+              el.addEventListener('input', (event) => {
+                if (!(event as InputEvent).isComposing) saveCell()
               })
+              el.addEventListener('compositionend', saveCell)
               tr.appendChild(el)
               td = el
             }

@@ -65,6 +65,7 @@ export function useRuns(docId: string, onFinished: () => void, enabled = true) {
   /** `builtin`, or the id of an external agent on this machine. */
   const [engine, setEngine] = useState('builtin')
   const aborts = useRef(new Map<string, AbortController>())
+  const creatingChat = useRef<Promise<string | null> | null>(null)
   const finished = useRef(onFinished)
   finished.current = onFinished
   const current = useRef<string | null>(null)
@@ -163,23 +164,30 @@ export function useRuns(docId: string, onFinished: () => void, enabled = true) {
     void loadHistory(id).catch(() => {})
   }, [docId, loadHistory])
 
-  const newChat = useCallback(async (select = true): Promise<string | null> => {
+  const ensureChat = useCallback((): Promise<string | null> => {
+    if (creatingChat.current) return creatingChat.current
     // An empty chat is reused instead of piling up blank ones.
     const blank = chats.find((c) => c.runs === 0 && !lives[c.id])
-    if (blank) {
-      if (select) selectChat(blank.id)
-      return blank.id
-    }
-    try {
-      const { chat } = await post<{ chat: ChatMeta }>(`/docs/${docId}/chats`, {})
-      setChats((cur) => [chat, ...cur])
-      if (select) selectChat(chat.id)
-      return chat.id
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '创建对话失败')
-      return null
-    }
-  }, [docId, chats, lives, selectChat])
+    if (blank) return Promise.resolve(blank.id)
+    creatingChat.current = post<{ chat: ChatMeta }>(`/docs/${docId}/chats`, {})
+      .then(({ chat }) => {
+        setChats((cur) => [chat, ...cur])
+        return chat.id
+      })
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : '创建对话失败')
+        return null
+      })
+      .finally(() => { creatingChat.current = null })
+    return creatingChat.current
+  }, [docId, chats, lives])
+
+  const newChat = useCallback(async () => {
+    const id = await ensureChat()
+    if (!id || current.current === id) return
+    if (current.current === null) moveDraft(draftKey(docId, null), draftKey(docId, id))
+    selectChat(id)
+  }, [docId, ensureChat, selectChat])
 
   const renameChat = useCallback(async (id: string, title: string) => {
     try {
@@ -235,7 +243,7 @@ export function useRuns(docId: string, onFinished: () => void, enabled = true) {
     try {
       let cid = current.current
       if (!cid) {
-        cid = await newChat(false)
+        cid = await ensureChat()
         if (!cid) return
       }
       const started = (): void => {
@@ -250,7 +258,7 @@ export function useRuns(docId: string, onFinished: () => void, enabled = true) {
     } catch (e) {
       setError(e instanceof Error ? e.message : '启动失败')
     }
-  }, [docId, model, attach, engine, startExternal, newChat, loadChats, selectChat])
+  }, [docId, model, attach, engine, startExternal, ensureChat, loadChats, selectChat])
 
   const cancel = useCallback(() => {
     if (live?.status !== 'running') return
@@ -268,25 +276,41 @@ export function useRuns(docId: string, onFinished: () => void, enabled = true) {
 }
 
 /** The text typed but not yet sent, kept per chat so switching chats, panels or documents does not lose it. */
-const drafts = new Map<string, string>()
+type Draft = { key: string; text: string }
+const drafts = new Map<string, Draft>()
 export const draftKey = (docId: string, chatId: string | null): string => (chatId ? 'chat.' + chatId : docId)
-const readDraft = (key: string): string => {
+const readDraft = (key: string): Draft => {
   const mem = drafts.get(key)
-  if (mem !== undefined) return mem
+  if (mem) return mem
+  const draft = { key, text: '' }
   try {
-    return localStorage.getItem('aiw.draft.' + key) ?? ''
+    draft.text = localStorage.getItem('aiw.draft.' + key) ?? ''
   } catch {
-    return ''
+    /* storage unavailable */
   }
+  drafts.set(key, draft)
+  return draft
 }
-const writeDraft = (key: string, v: string): void => {
-  drafts.set(key, v)
+const persistDraft = (key: string, v: string): void => {
   try {
     if (v) localStorage.setItem('aiw.draft.' + key, v)
     else localStorage.removeItem('aiw.draft.' + key)
   } catch {
     /* storage unavailable */
   }
+}
+const writeDraft = (draft: Draft, text: string): void => {
+  draft.text = text
+  persistDraft(draft.key, text)
+}
+const moveDraft = (from: string, to: string): void => {
+  const draft = readDraft(from)
+  if (!draft.text || readDraft(to).text) return
+  drafts.delete(from)
+  draft.key = to
+  drafts.set(to, draft)
+  persistDraft(to, draft.text)
+  persistDraft(from, '')
 }
 
 export const ago = (t: number): string => {
@@ -388,18 +412,21 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
     <RunChanges decided={decided.filter((c) => c.runId === runId)} changes={changesOf(runId)} blockText={blockText} onDecide={onDecide} onFocus={onFocus} />
   )
   const dkey = draftKey(docId, runs.chatId)
-  const [input, setInputState] = useState(() => readDraft(dkey))
+  const draft = readDraft(dkey)
+  const visibleDraft = useRef(draft)
+  visibleDraft.current = draft
+  const [input, setInputState] = useState(() => draft.text)
   const [inputKey, setInputKey] = useState(dkey)
   // Each chat keeps its own unsent text.
   if (inputKey !== dkey) {
     setInputKey(dkey)
-    setInputState(readDraft(dkey))
+    setInputState(draft.text)
     setMenu(null)
   }
   const setInput = (v: string | ((cur: string) => string)): void => {
     setInputState((cur) => {
       const next = typeof v === 'function' ? v(cur) : v
-      writeDraft(dkey, next)
+      writeDraft(draft, next)
       return next
     })
   }
@@ -420,8 +447,11 @@ export function AiPanel({ docId, runs, changes, decided, blockText, onDecide, on
     const context = refs
     const title = context.length ? `${text}\n${context.map((r) => t(`「${KIND_NAME[r.kind]}：${r.label}」`)).join(' ')}` : text
     void start({ instruction: text, context: context.length ? context : undefined }, title, () => {
-      setInput('')
-      setMenu(null)
+      writeDraft(draft, '')
+      if (visibleDraft.current === draft) {
+        setInputState('')
+        setMenu(null)
+      }
       setRefs((cur) => cur.filter((r) => !context.includes(r)))
       setSending(false)
     }).finally(() => setSending(false))

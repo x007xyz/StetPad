@@ -81,7 +81,8 @@ function tableRows(block: DiffRow['left']): string[][] | null {
   if (block?.type !== 'table' || typeof block.attrs?.rows !== 'string') return null
   try {
     const rows: unknown = JSON.parse(block.attrs.rows)
-    return Array.isArray(rows) && rows.every((row) => Array.isArray(row) && row.every((cell) => typeof cell === 'string')) ? rows : null
+    if (!Array.isArray(rows) || !rows.every(Array.isArray)) return null
+    return rows.map((row) => row.map((cell: unknown) => String(cell ?? '')))
   } catch {
     return null
   }

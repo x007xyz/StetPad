@@ -99,6 +99,15 @@ it('marks blank cells in changed table rows as well as new cells', () => {
   expect(html).toContain('<ins>250</ins>')
 })
 
+it('displays and compares imported number, boolean and null cells as editor text', () => {
+  const left = { ...table([]), attrs: { rows: JSON.stringify([['Value', 'Active', 'Note'], [100, false, null]]) } }
+  const right = table([['Value', 'Active', 'Note'], ['250', 'false', '']])
+  const html = renderToStaticMarkup(<DiffView rows={alignBlocks([left], [right])} leftTitle="Before" rightTitle="After" onlyChanged />)
+  expect(html).toContain('<del>100</del></td><td>false</td><td></td>')
+  expect(html).toContain('<ins>250</ins></td><td>false</td><td></td>')
+  expect(html).not.toContain('仅格式变化')
+})
+
 it('ignores object key order in marks, nested link attributes and block attributes', () => {
   const left = { ...block, attrs: { level: 1, options: { align: 'left', indent: 0 } }, delta: [{ insert: block.text, attributes: { bold: true, italic: true, link: { href: 'https://example.com', target: '_blank' } } }] }
   const right = { ...block, attrs: { options: { indent: 0, align: 'left' }, level: 1 }, delta: [{ attributes: { link: { target: '_blank', href: 'https://example.com' }, italic: true, bold: true }, insert: block.text }] }

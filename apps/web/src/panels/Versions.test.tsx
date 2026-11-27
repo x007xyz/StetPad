@@ -76,6 +76,45 @@ it('loads on open and distinguishes pending, failed, and empty version lists', a
   }
 })
 
+it.each(['refresh-key change', 'save'] as const)('keeps the current version list visible during a refresh after a %s', async (trigger) => {
+  const draft = { id: 'v1', label: 'First draft', trigger: 'manual', created_at: 0, word_count: 1 }
+  const saved = { ...draft, id: 'v2', label: 'Second draft' }
+  const refresh = deferred<Response>()
+  const listFetch = vi.fn().mockResolvedValueOnce(Response.json([draft])).mockReturnValueOnce(refresh.promise)
+  vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => init?.method === 'POST'
+    ? Promise.resolve(Response.json({ id: saved.id }))
+    : listFetch()))
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  const render = (refreshKey: number) => act(async () =>
+    root.render(<><ConfirmHost /><VersionsMenu docId="doc" refreshKey={refreshKey} current={() => []} /></>))
+  const names = () => [...container.querySelectorAll('.v-name')].map((row) => row.textContent)
+  try {
+    await render(0)
+    await toggleMenu(container)
+    expect(names()).toEqual(['First draft'])
+
+    if (trigger === 'refresh-key change') {
+      await render(1)
+    } else {
+      await act(async () => [...container.querySelectorAll('button')].find((b) => b.textContent === '保存当前版本')!.click())
+      await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((b) => b.textContent === '保存')!.click())
+    }
+    expect(listFetch).toHaveBeenCalledTimes(2)
+    expect(names()).toEqual(['First draft'])
+    expect(container.textContent).not.toContain('加载中…')
+
+    await act(async () => refresh.resolve(Response.json([saved, draft])))
+    expect(names()).toEqual(['Second draft', 'First draft'])
+  } finally {
+    act(() => root.unmount())
+    container.remove()
+    vi.unstubAllGlobals()
+  }
+})
+
 it('shows snapshot errors and lets comparison be retried without losing selection', async () => {
   const version = { id: 'v1', label: 'First draft', trigger: 'manual', created_at: 0, word_count: 1 }
   const retry = deferred<Response>()

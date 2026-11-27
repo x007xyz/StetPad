@@ -10,7 +10,7 @@ import { alignBlocks, DiffView } from './DiffView'
 import { t } from '../i18n'
 
 interface Loaded { meta: VersionMeta; content: { revised: RichBlock[]; original: RichBlock[] } }
-type VersionList = { status: 'loading' } | { status: 'error' } | { status: 'ready'; versions: VersionMeta[] }
+type VersionList = { status: 'loading' } | { status: 'error' } | { status: 'ready'; docId: string; versions: VersionMeta[] }
 
 const MAX_VERSION_LABEL_LENGTH = 200
 
@@ -31,10 +31,10 @@ export function VersionsMenu({ docId, current, refreshKey }: { docId: string; cu
     if (latestLoad.current?.docId !== docId) return
     const request = { docId }
     latestLoad.current = request
-    setList({ status: 'loading' })
+    setList((previous) => previous.status === 'ready' && previous.docId === docId ? previous : { status: 'loading' })
     try {
       const versions = await api<VersionMeta[]>(`/docs/${docId}/versions`)
-      if (latestLoad.current === request) setList({ status: 'ready', versions })
+      if (latestLoad.current === request) setList({ status: 'ready', docId, versions })
     } catch {
       if (latestLoad.current === request) setList({ status: 'error' })
     }

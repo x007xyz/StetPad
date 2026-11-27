@@ -312,9 +312,10 @@ const FN_STOP = /[\s，。！？；：、,.;:!?()（）「」“”"'《》]/
 class MarkdownRenderer extends Renderer {
   override code(token: Tokens.Code): string {
     if (token.codeBlockStyle === 'indented') return super.code(token)
-    const language = token.lang?.match(/^[\w+#.-]+/)?.[0]
-    const source = token.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    return `<pre data-stetpad-fenced><code${language ? ` class="language-${language}"` : ''}>${source}</code></pre>\n`
+    const source = token.escaped ? token.text : token.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    return super.code({ ...token, text: '' })
+      .replace('<pre>', '<pre data-stetpad-fenced>')
+      .replace('</code>', () => `${source}</code>`)
   }
 }
 

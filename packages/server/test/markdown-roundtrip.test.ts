@@ -156,6 +156,12 @@ describe('Markdown round-trip regressions', () => {
     expect(await readMarkdown('before <span data-math="">x^2</span> after')).toEqual(expected)
     await check(expected)
   })
+
+  it('imports HTML character references in fenced code languages', async () => {
+    const expected = [block('codeBlock', { language: 'C++' }, text('int x;'))]
+    expect(await readMarkdown('```C&#43;&#43;\nint x;\n```')).toEqual(expected)
+    await check(expected)
+  })
 })
 
 const seeds = [1, 0xabcdef, 0xc0ffee, 0x93_97_98, 0x101_103, 0x104_106, 0x12345678, 0xdeadbeef]

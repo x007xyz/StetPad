@@ -352,6 +352,23 @@ describe('server', () => {
     expect(exported.body.trim()).toBe('Before the image.\n\nAfter the image.')
   })
 
+  it('reuses one asset for repeated large Word images', async () => {
+    const form = await wordWithImages('repeated-image.docx', largeGif, Buffer.from(largeGif))
+    const preview = await call('/api/import/preview', { method: 'POST', body: form })
+    expect(preview.status).toBe(200)
+    const firstSrc = preview.body.blocks[1].attrs.src as string
+    expect(firstSrc).toMatch(/^\/files\/[\w-]+$/)
+    expect(preview.body.blocks).toMatchObject([
+      { type: 'paragraph' },
+      { type: 'image', attrs: { src: firstSrc } },
+      { type: 'image', attrs: { src: firstSrc } },
+      { type: 'paragraph' },
+    ])
+    const image = await fetch(base + firstSrc)
+    expect(image.status).toBe(200)
+    expect(Buffer.from(await image.arrayBuffer()).equals(largeGif)).toBe(true)
+  })
+
   it('keeps small inline images but drops oversized inline images from web clips', async () => {
     const clipped = await call('/api/clipper/tokens', { method: 'POST', body: JSON.stringify({ name: 'Clip images' }) })
     const blocks = [smallGif, largeGif].map((data) => ({ type: 'image', attrs: { src: gifSrc(data) }, delta: [] }))

@@ -1051,15 +1051,22 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
       let omittedPageCount = 0
       let skippedPages: number[] = []
       let skippedPageReason: SkippedPageReason | undefined
-      const docxImages = new Map<string, { id: string; data: Buffer; mime: string }>()
+      const docxImages = new Map<string, { id: string; data: Buffer; mime: string; storedSrc?: string | null }>()
+      const docxImageSrcs = new Map<string, string>()
       const blocks = await fileToBlocks(file.name, new Uint8Array(await file.arrayBuffer()), {
         ocr,
         onOmittedPages: (count) => { omittedPageCount = count },
         onSkippedPages: (pages, reason) => { skippedPages = pages; skippedPageReason = reason },
         docxImageSrc: (data, mime) => {
+          const type = baseType(mime)
+          const assetMime = type === 'image/jpg' ? 'image/jpeg' : type
+          const key = `${assetMime}:${createHash('sha256').update(data).digest('hex')}`
+          const existing = docxImageSrcs.get(key)
+          if (existing) return existing
           const id = newAssetId()
           const src = `/files/${id}`
-          docxImages.set(src, { id, data, mime })
+          docxImageSrcs.set(key, src)
+          docxImages.set(src, { id, data, mime: assetMime })
           return src
         },
       })
@@ -1069,14 +1076,15 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
         if (preview.length === MAX_IMPORT_BLOCKS) break
         const asset = block.type === 'image' && typeof block.attrs.src === 'string' ? docxImages.get(block.attrs.src) : undefined
         if (asset) {
-          const type = baseType(asset.mime)
-          const mime = type === 'image/jpg' ? 'image/jpeg' : type
-          const stored = await storeUpload(userId, importAssetOwner(userId), asset.id, mime, null, new Blob([asset.data as BlobPart]).stream(), asset.data.byteLength, true)
-          if (!stored.ok) {
+          if (asset.storedSrc === undefined) {
+            const stored = await storeUpload(userId, importAssetOwner(userId), asset.id, asset.mime, null, new Blob([asset.data as BlobPart]).stream(), asset.data.byteLength, true)
+            asset.storedSrc = stored.ok ? `/files/${stored.id}` : null
+          }
+          if (asset.storedSrc === null) {
             droppedImages++
             continue
           }
-          block.attrs.src = `/files/${stored.id}`
+          block.attrs.src = asset.storedSrc
         }
         preview.push(block)
       }

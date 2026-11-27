@@ -630,6 +630,12 @@ function inlineMd(delta: InlineDelta[]): string {
     .join('')
 }
 
+function mdParagraph(delta: InlineDelta[]): string {
+  return inlineMd(delta)
+    .replace(/^([ \t]*)(?=#{1,6}(?:\s|$)|>|[-+](?:\s|$)|-{2,}[ \t]*(?:\r?\n|$))/, '$1\\')
+    .replace(/^([ \t]*\d{1,9})(?=[.)](?:\s|$))/, '$1\\')
+}
+
 const tableRows = (b: Block): string[][] => {
   try {
     return JSON.parse(String(b.attrs.rows ?? '[]')) as string[][]
@@ -750,12 +756,15 @@ export function blocksToMarkdown(input: Block[]): string {
         break
       }
       case 'table': {
-        const rows = tableRows(b).map((r) => r.map((c) => String(c ?? '').replace(/([\\|])/g, '\\$1')))
+        const rows = tableRows(b).map((r) => r.map((c) => mdEscapeText(String(c ?? '')).replace(/\|/g, '\\$&')))
         if (rows[0]) {
           out.push('| ' + rows[0].join(' | ') + ' |', '| ' + rows[0].map(() => '---').join(' | ') + ' |', ...rows.slice(1).map((r) => '| ' + r.join(' | ') + ' |'))
         }
         break
       }
+      case 'paragraph':
+        out.push(mdParagraph(b.delta))
+        break
       default:
         out.push(inlineMd(b.delta))
     }

@@ -2,15 +2,19 @@ import { readFile } from 'node:fs/promises'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { fileToBlocks } from '../src/content'
 
+async function importPdfFixture(name: string) {
+  const pdf = await readFile(new URL(`./fixtures/${name}`, import.meta.url))
+  return (await fileToBlocks(name, new Uint8Array(pdf))).map(({ type, attrs, delta }) => ({
+    type, attrs, text: delta.map((d) => d.insert).join(''),
+  }))
+}
+
 describe('text-layer PDF import', () => {
   let blocks: { type: string; attrs: Record<string, unknown>; text: string }[]
 
   beforeAll(async () => {
     // Chromium-printed HTML with embedded Arial-compatible and Noto CJK fonts.
-    const pdf = await readFile(new URL('./fixtures/pdf-import-wraps.pdf', import.meta.url))
-    blocks = (await fileToBlocks('pdf-import-wraps.pdf', new Uint8Array(pdf))).map(({ type, attrs, delta }) => ({
-      type, attrs, text: delta.map((d) => d.insert).join(''),
-    }))
+    blocks = await importPdfFixture('pdf-import-wraps.pdf')
   })
 
   it('joins wrapped heading lines without merging a separate heading of the same size', () => {
@@ -43,5 +47,25 @@ describe('text-layer PDF import', () => {
     expect(blocks.at(-1)).toEqual({
       type: 'paragraph', attrs: {}, text: '中文段落测试，这一行足够长以便在打印出来的PDF中换行到第二行，看看是否会插入多余的空格。',
     })
+  })
+})
+
+describe('tightly spaced lines in text-layer PDFs', () => {
+  let blocks: Awaited<ReturnType<typeof importPdfFixture>>
+
+  beforeAll(async () => {
+    blocks = await importPdfFixture('pdf-import-review.pdf')
+  })
+
+  it('preserves short list boundaries while joining a full-width same-margin list wrap', () => {
+    const start = blocks.findIndex((b) => b.text.startsWith('To install'))
+    const end = blocks.findIndex((b) => b.text.startsWith('A -'))
+    expect(blocks.slice(start, end)).toEqual([
+      { type: 'paragraph', attrs: {}, text: 'To install, follow these steps:' },
+      { type: 'orderedItem', attrs: { indent: 0 }, text: 'Run it.' },
+      { type: 'bulletItem', attrs: { indent: 0 }, text: 'Start here before running the setup' },
+      { type: 'paragraph', attrs: {}, text: 'Short prose.' },
+      { type: 'bulletItem', attrs: { indent: 0 }, text: 'This same-margin list item is long enough that it wraps naturally onto another line.' },
+    ])
   })
 })

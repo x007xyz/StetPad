@@ -258,6 +258,12 @@ async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count:
   if (!recognize && emptyPages.length) onSkippedPages?.(emptyPages, ocr ? 'ocr-limit' : 'no-ocr')
   const sizes = lines.map((l) => Math.round(l.size * 2) / 2).sort((a, b) => a - b)
   const body = sizes[Math.floor(sizes.length / 2)]!
+  const column = (l: Line): string => `${l.page}:${Math.round(l.size * 2)}:${Math.round(l.x / (l.size * 0.5))}`
+  const columnRights = new Map<string, number>()
+  for (const l of lines) {
+    const key = column(l)
+    columnRights.set(key, Math.max(columnRights.get(key) ?? -Infinity, l.right))
+  }
   const out: Block[] = []
   let pending: { type: Block['type']; attrs: Block['attrs']; text: string } | null = null
   let prev: Line | null = null
@@ -281,7 +287,7 @@ async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count:
     const aligned = prev !== null && Math.abs(prev.x - l.x) <= l.size * 0.25
     const close = prev !== null && gap > 0 && gap <= l.size * 1.65 && Math.abs(prev.size - l.size) <= l.size * 0.05
     const fillsLine = prev !== null && prev.right - prev.x >= l.size * 4 &&
-      prev.right >= l.right - l.size && !/[。.!?！？”"]$/.test(prev.text.trimEnd())
+      columnRights.get(column(prev))! - prev.right <= l.size * 3 && !/[。.!?！？”"]$/.test(prev.text.trimEnd())
     if (pending && prev && start && close) {
       const headingWrap = pending.type === 'heading' && (
         aligned || Math.abs(prev.right - l.right) <= l.size * 0.25 ||

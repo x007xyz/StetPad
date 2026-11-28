@@ -57,6 +57,13 @@ describe('tightly spaced lines in text-layer PDFs', () => {
     blocks = await importPdfFixture('pdf-import-review.pdf')
   })
 
+  it('keeps tightly stacked headings separate at left, center, and right alignment', () => {
+    const firstBody = blocks.findIndex((b) => b.type !== 'heading')
+    expect(blocks.slice(0, firstBody)).toEqual([
+      'Chapter 1', 'Introduction', 'Additional notes', 'More results from the final review', 'Chapter 2', 'Background', 'Chapter 3', 'Results',
+    ].map((text) => ({ type: 'heading', attrs: { level: 1 }, text })))
+  })
+
   it('preserves short list boundaries while joining a full-width same-margin list wrap', () => {
     const start = blocks.findIndex((b) => b.text.startsWith('To install'))
     const end = blocks.findIndex((b) => b.text.startsWith('A -'))

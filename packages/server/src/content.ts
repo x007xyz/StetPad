@@ -286,12 +286,14 @@ async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count:
     const gap = prev && prev.page === l.page ? prev.y - l.y : Infinity
     const aligned = prev !== null && Math.abs(prev.x - l.x) <= l.size * 0.25
     const close = prev !== null && gap > 0 && gap <= l.size * 1.65 && Math.abs(prev.size - l.size) <= l.size * 0.05
-    const fillsLine = prev !== null && prev.right - prev.x >= l.size * 4 &&
-      columnRights.get(column(prev))! - prev.right <= l.size * 3 && !/[。.!?！？”"]$/.test(prev.text.trimEnd())
     if (pending && prev && start && close) {
-      const headingWrap = pending.type === 'heading' && (
-        aligned || Math.abs(prev.right - l.right) <= l.size * 0.25 ||
-        Math.abs(prev.x + prev.right - l.x - l.right) <= l.size * 0.5
+      const prevWidth = prev.right - prev.x
+      const remainingWidth = columnRights.get(column(prev))! - prev.right
+      const fillsLine = prevWidth >= l.size * 4 && remainingWidth <= l.size * 3 && !/[。.!?！？”"]$/.test(prev.text.trimEnd())
+      const headingWrap = pending.type === 'heading' && prevWidth >= l.size * 6 && (
+        aligned
+          ? remainingWidth <= l.size * 1.5
+          : Math.abs(prev.right - l.right) <= l.size * 0.25 || Math.abs(prev.x + prev.right - l.x - l.right) <= l.size * 0.5
       )
       const list = pending.type === 'orderedItem' || pending.type === 'bulletItem'
       const listWrap = list && !isHeading && !marker && (

@@ -195,11 +195,32 @@ export async function pdfPageCount(data: Uint8Array): Promise<number> {
 const MAX_PDF_PAGES = 500
 export type SkippedPageReason = 'no-ocr' | 'ocr-limit'
 
+// Single unified-ideograph cross-references from the Unicode Names List.
+const cjkRadicalIdeographs: Record<string, string> = {
+  '⺂': '乛', '⺃': '乚', '⺄': '乙', '⺅': '亻', '⺆': '冂', '⺉': '刂', '⺊': '卜', '⺋': '㔾',
+  '⺌': '小', '⺏': '尣', '⺐': '尢', '⺒': '巳', '⺓': '幺', '⺔': '彑', '⺕': '彐', '⺖': '忄',
+  '⺘': '扌', '⺙': '攵', '⺛': '旡', '⺝': '月', '⺞': '歺', '⺠': '民', '⺡': '氵', '⺢': '氺',
+  '⺣': '灬', '⺤': '爫', '⺥': '爫', '⺦': '丬', '⺨': '犭', '⺬': '示', '⺭': '礻', '⺯': '糹',
+  '⺰': '纟', '⺱': '罓', '⺵': '𦉫', '⺶': '羊', '⺹': '耂', '⺺': '肀', '⺻': '聿', '⺼': '肉',
+  '⺾': '艹', '⺿': '艹', '⻀': '艹', '⻁': '虎', '⻂': '衤', '⻃': '覀', '⻄': '西', '⻅': '见',
+  '⻆': '角', '⻇': '𧢲', '⻈': '讠', '⻉': '贝', '⻋': '车', '⻌': '辶', '⻍': '辶', '⻎': '辶',
+  '⻏': '邑', '⻐': '钅', '⻑': '長', '⻒': '镸', '⻓': '长', '⻔': '门', '⻖': '阝', '⻗': '雨',
+  '⻘': '青', '⻙': '韦', '⻚': '页', '⻛': '风', '⻜': '飞', '⻝': '食', '⻞': '𩙿', '⻟': '飠',
+  '⻠': '饣', '⻡': '𩠐', '⻢': '马', '⻣': '骨', '⻤': '鬼', '⻥': '鱼', '⻦': '鸟', '⻧': '卤',
+  '⻨': '麦', '⻩': '黄', '⻪': '黾', '⻫': '斉', '⻬': '齐', '⻭': '歯', '⻮': '齿', '⻰': '龙',
+  '⻱': '龜', '⻲': '亀',
+}
+
+function joinPdfLines(left: string, right: string): string {
+  const cjk = /[　-鿿\p{Script=Han}]$/u.test(left) || /^[　-鿿\p{Script=Han}]/u.test(right)
+  return left + (left && !cjk && !left.endsWith('-') ? ' ' : '') + right
+}
+
 async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count: number) => void, onSkippedPages?: (pages: number[], reason: SkippedPageReason) => void): Promise<Block[]> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
   const pdf = await pdfjs.getDocument({ data, useSystemFonts: true }).promise
   if (pdf.numPages > MAX_PDF_PAGES) onOmittedPages?.(pdf.numPages - MAX_PDF_PAGES)
-  type Line = { y: number; x: number; size: number; text: string; page: number }
+  type Line = { y: number; x: number; right: number; size: number; text: string; page: number }
   const lines: Line[] = []
   const entries: (Line | { page: number })[] = []
   const emptyPages: number[] = []
@@ -208,17 +229,19 @@ async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count:
     const page = await pdf.getPage(p)
     const tc = await page.getTextContent()
     let cur: Line | null = null
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const item of tc.items as any[]) {
-      if (typeof item.str !== 'string') continue
+    for (const item of tc.items) {
+      if (!('str' in item) || !item.str) continue
+      const x = item.transform[4] as number
       const y = item.transform[5] as number
-      const size = Math.abs(item.transform[3] as number) || (item.height as number) || 10
+      const size = Math.abs(item.transform[3] as number) || item.height || 10
+      const right = x + item.width
       if (cur && Math.abs(cur.y - y) < size * 0.5) {
         cur.text += item.str
         cur.size = Math.max(cur.size, size)
+        cur.right = Math.max(cur.right, right)
       } else {
         if (cur && cur.text.trim()) lines.push(cur)
-        cur = { y, x: item.transform[4] as number, size, text: item.str, page: p }
+        cur = { y, x, right, size, text: item.str, page: p }
       }
     }
     if (cur && cur.text.trim()) lines.push(cur)
@@ -236,11 +259,12 @@ async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count:
   const sizes = lines.map((l) => Math.round(l.size * 2) / 2).sort((a, b) => a - b)
   const body = sizes[Math.floor(sizes.length / 2)]!
   const out: Block[] = []
-  let buf = ''
+  let pending: { type: Block['type']; attrs: Block['attrs']; text: string } | null = null
   let prev: Line | null = null
+  let start: Line | null = null
   const flush = (): void => {
-    if (buf.trim()) out.push(para(buf.trim()))
-    buf = ''
+    if (pending) out.push({ type: pending.type, attrs: pending.attrs, delta: [{ insert: pending.text }] })
+    pending = null
   }
   for (const l of entries) {
     if (!('text' in l)) {
@@ -249,21 +273,47 @@ async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count:
       prev = null
       continue
     }
-    const t = l.text.trim()
+    const t = l.text.trim().replace(/[\u2e80-\u2fdf]/g, (radical) => cjkRadicalIdeographs[radical] ?? radical.normalize('NFKC'))
     const isHeading = l.size >= body * 1.18 && t.length < 80
-    const bullet = t.match(/^([•·▪◦‣\-–]|\d+[.)、])\s+(.*)$/)
+    const marker = t.match(/^([•·▪◦‣\-–]|\d+[.)、])\s+(.*)$/)
+    const ordered = marker && /^\d/.test(marker[1]!)
+    const gap = prev && prev.page === l.page ? prev.y - l.y : Infinity
+    const aligned = prev !== null && Math.abs(prev.x - l.x) <= l.size * 0.25
+    const close = prev !== null && gap > 0 && gap <= l.size * 1.65 && Math.abs(prev.size - l.size) <= l.size * 0.05
+    const fillsLine = prev !== null && prev.right - prev.x >= l.size * 4 &&
+      prev.right >= l.right - l.size && !/[。.!?！？”"]$/.test(prev.text.trimEnd())
+    if (pending && prev && start && close) {
+      const headingWrap = pending.type === 'heading' && (
+        aligned || Math.abs(prev.right - l.right) <= l.size * 0.25 ||
+        Math.abs(prev.x + prev.right - l.x - l.right) <= l.size * 0.5
+      )
+      const list = pending.type === 'orderedItem' || pending.type === 'bulletItem'
+      const listWrap = list && !isHeading && !marker && (
+        prev === start
+          ? (l.x - start.x > l.size * 0.25 && l.x - start.x <= l.size * 3) || (aligned && fillsLine)
+          : aligned
+      )
+      const paragraphWrap = pending.type === 'paragraph' && !isHeading && ordered && aligned && fillsLine
+      if (headingWrap || listWrap || paragraphWrap) {
+        pending.text = joinPdfLines(pending.text, t)
+        prev = l
+        continue
+      }
+    }
     if (isHeading) {
       flush()
-      out.push({ type: 'heading', attrs: { level: l.size >= body * 1.6 ? 1 : l.size >= body * 1.35 ? 2 : 3 }, delta: [{ insert: t }] })
-    } else if (bullet) {
+      pending = { type: 'heading', attrs: { level: l.size >= body * 1.6 ? 1 : l.size >= body * 1.35 ? 2 : 3 }, text: t }
+      start = l
+    } else if (marker) {
       flush()
-      out.push({ type: /^\d/.test(bullet[1]!) ? 'orderedItem' : 'bulletItem', attrs: { indent: 0 }, delta: [{ insert: bullet[2]! }] })
+      pending = { type: ordered ? 'orderedItem' : 'bulletItem', attrs: { indent: 0 }, text: marker[2]! }
+      start = l
+    } else if (pending?.type === 'paragraph' && gap >= 0 && gap <= l.size * 1.9) {
+      pending.text = joinPdfLines(pending.text, t)
     } else {
-      const gap = prev && prev.page === l.page ? prev.y - l.y : Infinity
-      const newPara = !prev || gap > l.size * 1.9 || gap < 0 || (prev.page !== l.page && /[。.!?！？”"]$/.test(buf.trim()))
-      if (newPara) flush()
-      const cjk = /[　-鿿]$/.test(buf) || /^[　-鿿]/.test(t)
-      buf += (buf && !cjk && !buf.endsWith('-') ? ' ' : '') + t
+      flush()
+      pending = { type: 'paragraph', attrs: {}, text: t }
+      start = l
     }
     prev = l
   }

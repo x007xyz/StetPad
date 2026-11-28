@@ -5,6 +5,7 @@ import { Button } from '../components/ui/button'
 import { Dialog, DialogContent } from '../components/ui/dialog'
 import { Switch } from '../components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
+import { isImeComposing } from '../lib/keyboard'
 import { AddProvider, type AddDraft, type CatalogEntry } from './AddProvider'
 import { CapsPicker, DEFAULT_CAPS, normalizeCaps, type Capability } from './caps'
 
@@ -437,7 +438,7 @@ export function Providers({ onClose, onChanged }: { onClose: () => void; onChang
                   <TabsContent value="models">
                     <div className="row wrap">
                       <Button size="sm" disabled={discovering || !current.baseURL && !current.builtin} onClick={() => void discover()}>{discovering ? '获取中…' : '从接口获取模型'}</Button>
-                      <input aria-label="添加模型" placeholder="手动添加模型 ID" value={customModel} onChange={(e) => setCustomModel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addModel()} />
+                      <input aria-label="添加模型" placeholder="手动添加模型 ID" value={customModel} onChange={(e) => setCustomModel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !isImeComposing(e.nativeEvent) && addModel()} />
                       <Button size="sm" onClick={addModel}>添加</Button>
                       <input aria-label="筛选模型" placeholder="筛选…" value={filter} onChange={(e) => setFilter(e.target.value)} />
                     </div>

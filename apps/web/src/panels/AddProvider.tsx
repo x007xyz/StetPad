@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { post } from '../api'
 import { Button } from '../components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs'
+import { isImeComposing } from '../lib/keyboard'
 import { CapsPicker, DEFAULT_CAPS, normalizeCaps, type Capability } from './caps'
 
 /** One entry of the provider catalog (GET /providers/catalog). */
@@ -283,7 +284,7 @@ function ConfigureProvider({ entry, rows, onBack, onCancel, onDone }: ConfigureP
           ))}
         </div>
         <div className="row wrap">
-          <input aria-label="手动添加模型 ID" placeholder="手动添加模型 ID" value={manualId} onChange={(e) => setManualId(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addManual()} />
+          <input aria-label="手动添加模型 ID" placeholder="手动添加模型 ID" value={manualId} onChange={(e) => setManualId(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !isImeComposing(e.nativeEvent) && addManual()} />
           <Button size="sm" onClick={addManual}>添加</Button>
         </div>
         <label>

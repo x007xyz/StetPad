@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Tip, TooltipProvider } from './components/ui/tooltip'
 import { Settings } from './panels/Settings'
 import { useMedia } from './lib/useMedia'
+import { isImeComposing } from './lib/keyboard'
 import { cn } from './lib/utils'
 import { SearchDialog } from './SearchDialog'
 
@@ -341,7 +342,7 @@ function SidebarBody({ ctx, activeId, activeFolderId, trashActive, onNavigate }:
                   {renaming === f.id ? (
                     <input autoFocus className="min-w-0 flex-1 rounded border border-ring bg-background px-1 py-0.5 text-[13px] outline-none" aria-label="文件夹名称" defaultValue={f.name}
                       onBlur={(e) => { setRenaming(null); void renameFolder(f, e.target.value) }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(null) }} />
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !isImeComposing(e.nativeEvent)) e.currentTarget.blur(); if (e.key === 'Escape') setRenaming(null) }} />
                   ) : (
                     <button className="flex min-w-0 flex-1 items-center gap-2 py-1 pr-2 text-left text-[13px] font-medium" aria-current={f.id === activeFolderId ? 'page' : undefined} onClick={() => { go({ page: 'folder', id: f.id }); onNavigate() }}>
                       <FolderIcon className="size-4 shrink-0 text-muted-foreground" />

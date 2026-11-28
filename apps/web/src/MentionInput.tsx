@@ -1,5 +1,6 @@
 import { Sparkles } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { isImeComposing } from './lib/keyboard'
 
 /** The text being typed after an `@` at the start of a word, if the caret is in one. */
 function triggerAt(value: string, caret: number): { start: number; query: string } | null {
@@ -60,6 +61,7 @@ export function MentionInput({ value, onChange, onKeyDown, onBlur, onSelect, cla
   }
 
   const handleKey = (e: KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Enter' && isImeComposing(e.nativeEvent)) return
     if (open) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault()

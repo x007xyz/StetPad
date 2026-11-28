@@ -15,6 +15,7 @@ import { Switch } from './components/ui/switch'
 import { Tip, TooltipProvider } from './components/ui/tooltip'
 import { getLang } from './i18n'
 import { useMedia } from './lib/useMedia'
+import { isImeComposing } from './lib/keyboard'
 import { cn } from './lib/utils'
 import { ChangesPanel, RunChanges } from './panels/Changes'
 import { SidebarToggle, useWorkspaceOptional } from './Shell'
@@ -162,7 +163,7 @@ export function FolderPage({ id }: { id: string }) {
         <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-background px-3 py-1.5">
           <SidebarToggle />
           <input className="min-w-0 flex-1 basis-40 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-semibold outline-none hover:bg-accent focus:border-ring focus:bg-background" aria-label="文件夹名称"
-            defaultValue={info?.name ?? ''} key={info?.name} onBlur={(e) => rename(e.currentTarget)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
+            defaultValue={info?.name ?? ''} key={info?.name} onBlur={(e) => rename(e.currentTarget)} onKeyDown={(e) => e.key === 'Enter' && !isImeComposing(e.nativeEvent) && e.currentTarget.blur()} />
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span aria-hidden className={cn('size-1.5 rounded-full', status === 'connected' ? 'bg-emerald-500' : status === 'connecting' ? 'bg-amber-400' : 'bg-orange-500')} />
             <span role="status" className="max-sm:sr-only">{status === 'connected' ? '已同步' : status === 'connecting' ? '连接中…' : '离线，修改已保存在本机'}</span>
@@ -333,7 +334,7 @@ function DocSection({ doc, first, author, trackingRef, force, onState, onRenamed
       <hr className="mb-4 mt-8 border-border" />
       <div className="flex items-center gap-2">
         <input id={`doc-title-${id}`} className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-2xl font-bold tracking-tight outline-none hover:bg-accent focus:border-ring focus:bg-background" aria-label={`文档标题：${doc.title}`}
-          defaultValue={doc.title} key={doc.title} onBlur={(e) => rename(e.currentTarget)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
+          defaultValue={doc.title} key={doc.title} onBlur={(e) => rename(e.currentTarget)} onKeyDown={(e) => e.key === 'Enter' && !isImeComposing(e.nativeEvent) && e.currentTarget.blur()} />
         <Tip text="在单独页面中打开"><Button variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground" aria-label={`单独打开 ${doc.title}`} onClick={() => go({ page: 'doc', id })}><ExternalLink /></Button></Tip>
       </div>
       {!visible && <p className="muted py-6">滚动到这里时加载内容…</p>}

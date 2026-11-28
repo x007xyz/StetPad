@@ -5,6 +5,7 @@ import { Button } from '../components/ui/button'
 import { Dialog, DialogContent } from '../components/ui/dialog'
 import { Select } from '../components/ui/select'
 import { cn } from '../lib/utils'
+import { isImeComposing } from '../lib/keyboard'
 import { useImageModelCatalog } from './useImageModelCatalog'
 
 interface EditResponse { url: string; id: string; mime: string; modelId: string }
@@ -144,7 +145,7 @@ export function AiImageEditDialog({ docId, src, open, onClose, onReplace, onInse
               disabled={busy}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !isImeComposing(e.nativeEvent)) {
                   e.preventDefault()
                   void edit()
                 }

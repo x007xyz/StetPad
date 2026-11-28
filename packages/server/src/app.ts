@@ -807,7 +807,9 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   api.put('/docs/:id/folder', async (c) => {
     const d = await docFor(c, c.req.param('id'))
     if (!d) return notFound(c)
-    const { folderId } = await c.req.json<{ folderId?: unknown }>()
+    const body = await c.req.json<{ folderId?: unknown }>().catch(() => null)
+    if (!body || typeof body !== 'object') return c.json({ error: 'bad request' }, 400)
+    const { folderId } = body
     if (folderId !== undefined && folderId !== null && typeof folderId !== 'string') return c.json({ error: '文件夹 ID 必须是字符串或 null' }, 400)
     if (folderId && !(await folderFor(c, folderId))) return notFound(c)
     if (d.doc.folder_id && agent.activeRun(AgentRuntime.folderKey(d.doc.folder_id))) return c.json({ error: 'AI 任务运行中，暂不能移动文档' }, 409)
@@ -1329,7 +1331,8 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     return c.json({ preferences: (await store.getSetting(uid, 'preferences')) ?? '', imageModel: (await store.getSetting(uid, 'imageModel')) ?? '' })
   })
   api.put('/settings', async (c) => {
-    const body = await c.req.json<{ preferences?: string; model?: string; imageModel?: string; keys?: Record<string, string>; customProviders?: unknown; externalAgents?: unknown; disabledProviders?: unknown; disabledModels?: unknown; extraModels?: unknown; modelPrices?: unknown; modelCaps?: unknown; roles?: unknown }>()
+    const body = await c.req.json<{ preferences?: string; model?: string; imageModel?: string; keys?: Record<string, string>; customProviders?: unknown; externalAgents?: unknown; disabledProviders?: unknown; disabledModels?: unknown; extraModels?: unknown; modelPrices?: unknown; modelCaps?: unknown; roles?: unknown }>().catch(() => null)
+    if (!body || typeof body !== 'object') return c.json({ error: 'bad request' }, 400)
     const uid = c.get('user').id
     // Validate everything before writing anything.
     let custom: CustomProviderInput[] | null = null
@@ -1941,7 +1944,9 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   api.post('/docs/:id/external-runs', async (c) => {
     const d = await docFor(c, c.req.param('id'))
     if (!d) return notFound(c)
-    const { agent: agentId, prompt } = await c.req.json<{ agent: string; prompt: string }>()
+    const body = await c.req.json<{ agent: string; prompt: string }>().catch(() => null)
+    if (!body || typeof body !== 'object') return c.json({ error: 'bad request' }, 400)
+    const { agent: agentId, prompt } = body
     if (!config.mcpCommand) return c.json({ error: '这个安装没有配置外部 Agent 的桥接程序' }, 501)
     if (!prompt?.trim()) return c.json({ error: '请输入指令' }, 400)
     const userAgents = parseStoredAgents(await store.getSetting(c.get('user').id, 'external-agents'))

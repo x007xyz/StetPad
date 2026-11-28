@@ -35,6 +35,16 @@ describe('document input types', () => {
     expect(await call(`/api/docs/${docId}/folder`, 'PUT', { folderId })).toEqual({ status: 400, body: { error: expect.any(String) } })
   })
 
+  it.each([
+    ['PUT', '/api/docs/:id/folder'],
+    ['PUT', '/api/settings'],
+    ['POST', '/api/docs/:id/external-runs'],
+  ])('%s %s rejects invalid JSON bodies', async (method, path) => {
+    for (const body of ['not json', 'null', '5']) {
+      expect(await send(path.replace(':id', docId), method, body)).toEqual({ status: 400, body: { error: 'bad request' } })
+    }
+  })
+
   it.each([5, {}, false, []])('rejects non-string version labels (%j)', async (label) => {
     expect(await call(`/api/docs/${docId}/versions`, 'POST', { label })).toEqual({ status: 400, body: { error: expect.any(String) } })
   })

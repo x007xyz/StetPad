@@ -299,7 +299,17 @@ export async function fileToBlocks(name: string, data: Uint8Array, opts: { ocr?:
     if (title && blocks[0]?.type !== 'heading') blocks.unshift({ type: 'heading', attrs: { level: 1 }, delta: [{ insert: title.trim() }] })
     return blocks
   }
-  if (ext === 'txt') return str.split(/\n\s*\n/).map((s) => para(s.replace(/\s*\n\s*/g, ' ').trim())).filter((b) => b.delta.length)
+  if (ext === 'txt') {
+    const hanOrKana = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ーｰ]/u
+    const cjkPunctuation = /(?=[\u3000-\u303f\uff01-\uff60])\p{P}/u
+    const joinLines = (_: string, last = '', next = ''): string => {
+      const noSpace = cjkPunctuation.test(last) || (hanOrKana.test(last) && (hanOrKana.test(next) || cjkPunctuation.test(next)))
+      return last + (noSpace ? '' : ' ')
+    }
+    return str.split(/\n\s*\n/)
+      .map((s) => para(s.replace(/(\S)?\s*\n\s*(?=(\S)?)/gu, joinLines).trim()))
+      .filter((b) => b.delta.length)
+  }
   throw new Error(`不支持的文件类型：.${ext}`)
 }
 

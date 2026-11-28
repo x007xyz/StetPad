@@ -171,6 +171,30 @@ describe('server', () => {
     expect(md).toContain('| a | b |')
   })
 
+  it('joins TXT lines after CJK text or full-width punctuation without changing English spacing', async () => {
+    const form = new FormData()
+    form.append('file', new File([
+      [
+        '今天我们讨论了三件事，\n第一件是发布计划。',
+        '发布计划：\n详见 README\n先准备测试环境；\n然后我们\n再检查日志！\n准备好了吗？\n可以发布。',
+        'これはテスト\nです。',
+        '안녕하세요\n반갑습니다',
+        'the term 中文\nis used',
+        'The release is ready.\nIt ships today.',
+      ].join('\n\n'),
+    ], 'note.txt'))
+    const preview = await call('/api/import/preview', { method: 'POST', body: form })
+    expect(preview.status).toBe(200)
+    expect(preview.body.blocks).toEqual([
+      { type: 'paragraph', attrs: {}, delta: [{ insert: '今天我们讨论了三件事，第一件是发布计划。' }] },
+      { type: 'paragraph', attrs: {}, delta: [{ insert: '发布计划：详见 README 先准备测试环境；然后我们再检查日志！准备好了吗？可以发布。' }] },
+      { type: 'paragraph', attrs: {}, delta: [{ insert: 'これはテストです。' }] },
+      { type: 'paragraph', attrs: {}, delta: [{ insert: '안녕하세요 반갑습니다' }] },
+      { type: 'paragraph', attrs: {}, delta: [{ insert: 'the term 中文 is used' }] },
+      { type: 'paragraph', attrs: {}, delta: [{ insert: 'The release is ready. It ships today.' }] },
+    ])
+  })
+
   it.each([500, 501, 503])('reports omitted PDF pages for %i pages before creating a document', async (pages) => {
     const form = new FormData()
     form.append('file', new File([Buffer.from(textPdf(pages))], 'long.pdf'))

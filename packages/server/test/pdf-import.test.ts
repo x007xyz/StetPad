@@ -75,4 +75,11 @@ describe('tightly spaced lines in text-layer PDFs', () => {
       { type: 'bulletItem', attrs: { indent: 0 }, text: 'This same-margin list item is long enough that it wraps naturally onto another line.' },
     ])
   })
+
+  it('only joins without a space after a word-ending hyphen', () => {
+    expect(blocks.slice(-2)).toEqual([
+      { type: 'paragraph', attrs: {}, text: 'A - B' },
+      { type: 'paragraph', attrs: {}, text: 'A well-known example.' },
+    ])
+  })
 })

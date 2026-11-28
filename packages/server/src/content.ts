@@ -212,8 +212,10 @@ const cjkRadicalIdeographs: Record<string, string> = {
 }
 
 function joinPdfLines(left: string, right: string): string {
-  const cjk = /[　-鿿\p{Script=Han}]$/u.test(left) || /^[　-鿿\p{Script=Han}]/u.test(right)
-  return left + (left && !cjk && !left.endsWith('-') ? ' ' : '') + right
+  const noSpace = left.endsWith('-')
+    ? /\p{L}-$/u.test(left)
+    : /[　-鿿\p{Script=Han}]$/u.test(left) || /^[　-鿿\p{Script=Han}]/u.test(right)
+  return left + (left && !noSpace ? ' ' : '') + right
 }
 
 async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count: number) => void, onSkippedPages?: (pages: number[], reason: SkippedPageReason) => void): Promise<Block[]> {

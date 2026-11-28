@@ -486,12 +486,15 @@ export function decideAndLog(
   pending: PendingChange[],
   ids: string[],
   decision: Decision,
-  blockText: (blockId: string) => string,
 ): void {
   const byId = new Map(pending.map((c) => [c.id, c]))
+  let lookup: ReturnType<typeof indexPhysicalBlockText> | undefined
+  const blockText = (blockId: string): string => (lookup ??= indexPhysicalBlockText(doc)).text(blockId) ?? ''
   doc.transact(() => {
     for (const id of ids) {
       if (!decide(doc, id, decision)) continue
+      // Decisions change visibility immediately, but do not change the indexed ranges or blocks.
+      if (lookup) lookup.idx.status.set(id, statusOf(changes(doc).get(id)!, false))
       const c = byId.get(id)
       if (!c) continue
       const entry: DecidedChange = {
@@ -572,34 +575,60 @@ export interface RichBlock {
 
 export type Projection = 'revised' | 'original' | 'physical'
 
+function projectDelta(doc: Y.Doc, el: Y.XmlElement, idx: Index, keep: (c: Classified) => boolean): RichBlock['delta'] {
+  const delta: RichBlock['delta'] = []
+  for (const t of blockTexts(el)) {
+    const view = viewText(doc, t, idx)
+    let i = 0
+    for (const op of t.toDelta() as { insert: unknown; attributes?: Record<string, unknown> }[]) {
+      if (typeof op.insert !== 'string') continue
+      let run = ''
+      for (const ch of op.insert) {
+        for (let k = 0; k < ch.length; k++) {
+          const c = view[i++]
+          if (c && keep(c)) run += ch[k]
+        }
+      }
+      if (!run) continue
+      const last = delta[delta.length - 1]
+      if (last && JSON.stringify(last.attributes ?? {}) === JSON.stringify(op.attributes ?? {})) last.insert += run
+      else delta.push(op.attributes ? { insert: run, attributes: op.attributes } : { insert: run })
+    }
+  }
+  return delta
+}
+
+const inPhysical = (c: Classified): boolean => !c.removed
+
+function indexPhysicalBlockText(doc: Y.Doc) {
+  const idx = buildIndex(doc)
+  const byId = new Map<string, Y.XmlElement[]>()
+  for (const el of blocks(doc)) {
+    const id = blockIdOf(el)
+    const matches = byId.get(id)
+    if (matches) matches.push(el)
+    else byId.set(id, [el])
+  }
+  const text = (id: string): string | undefined => {
+    const el = byId.get(id)?.find((candidate) => inPhysical(classify(idx, elementId(candidate))))
+    return el && projectDelta(doc, el, idx, inPhysical).map((d) => d.insert).join('')
+  }
+  return { idx, text }
+}
+
+/** Physical text by block ID, valid until the next document mutation. */
+export const physicalBlockTextLookup = (doc: Y.Doc): ((id: string) => string | undefined) =>
+  indexPhysicalBlockText(doc).text
+
 /** Blocks of one projection, with type, attributes and formatting. */
 export function projectBlocks(doc: Y.Doc, mode: Projection): RichBlock[] {
   const idx = buildIndex(doc)
-  const keep = (c: Classified): boolean =>
-    mode === 'revised' ? inRevised(c) : mode === 'original' ? inOriginal(c) : !c.removed
+  const keep = mode === 'revised' ? inRevised : mode === 'original' ? inOriginal : inPhysical
   const out: RichBlock[] = []
   for (const el of blocks(doc)) {
     const bc = classify(idx, elementId(el))
     if (!keep(bc)) continue
-    const delta: RichBlock['delta'] = []
-    for (const t of blockTexts(el)) {
-      const view = viewText(doc, t, idx)
-      let i = 0
-      for (const op of t.toDelta() as { insert: unknown; attributes?: Record<string, unknown> }[]) {
-        if (typeof op.insert !== 'string') continue
-        let run = ''
-        for (const ch of op.insert) {
-          for (let k = 0; k < ch.length; k++) {
-            const c = view[i++]
-            if (c && keep(c)) run += ch[k]
-          }
-        }
-        if (!run) continue
-        const last = delta[delta.length - 1]
-        if (last && JSON.stringify(last.attributes ?? {}) === JSON.stringify(op.attributes ?? {})) last.insert += run
-        else delta.push(op.attributes ? { insert: run, attributes: op.attributes } : { insert: run })
-      }
-    }
+    const delta = projectDelta(doc, el, idx, keep)
     const { blockId: _b, ...attrs } = el.getAttributes() as Record<string, unknown>
     out.push({
       blockId: blockIdOf(el),

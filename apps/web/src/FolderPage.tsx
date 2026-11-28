@@ -1,4 +1,4 @@
-import { changesInBlock, decideAndLog, findBlock, listChanges, listDecided, projectBlocks, type DecidedChange, type PendingChange } from '@stetpad/crdt'
+import { changesInBlock, decideAndLog, findBlock, listChanges, listDecided, type DecidedChange, type PendingChange } from '@stetpad/crdt'
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import { Editor } from '@tiptap/core'
 import { editorExtensions, type EditorExtensionOptions } from './editor/extensions'
@@ -14,6 +14,7 @@ import { Select } from './components/ui/select'
 import { Switch } from './components/ui/switch'
 import { Tip, TooltipProvider } from './components/ui/tooltip'
 import { getLang } from './i18n'
+import { useBlockPreview } from './lib/useBlockPreview'
 import { useMedia } from './lib/useMedia'
 import { cn } from './lib/utils'
 import { ChangesPanel, RunChanges } from './panels/Changes'
@@ -21,7 +22,13 @@ import { SidebarToggle, useWorkspaceOptional } from './Shell'
 
 const COLORS = ['#d9480f', '#2b8a3e', '#1971c2', '#9c36b5', '#c2255c', '#087f5b']
 type FolderInfo = Folder & { docs: DocMeta[] }
-interface SectionState { ydoc: Y.Doc; changes: PendingChange[]; decided: DecidedChange[]; status: 'connecting' | 'connected' | 'offline' }
+interface SectionState {
+  ydoc: Y.Doc
+  changes: PendingChange[]
+  decided: DecidedChange[]
+  blockText: (id: string) => string | undefined
+  status: 'connecting' | 'connected' | 'offline'
+}
 type Tab = 'changes' | 'ai'
 
 /** The editor extensions for each document shown in a folder page. */
@@ -81,14 +88,13 @@ export function FolderPage({ id }: { id: string }) {
     for (const s of all) {
       const mine = cids.filter((c) => s.changes.some((x) => x.id === c))
       if (!mine.length) continue
-      const text = (bid: string): string => projectBlocks(s.ydoc, 'physical').find((b) => b.blockId === bid)?.text ?? ''
-      decideAndLog(s.ydoc, listChanges(s.ydoc), mine, d, text)
+      decideAndLog(s.ydoc, listChanges(s.ydoc), mine, d)
     }
   }, [all])
   const blockText = useCallback((bid: string): string => {
     for (const s of all) {
-      const t = projectBlocks(s.ydoc, 'physical').find((b) => b.blockId === bid)
-      if (t) return t.text
+      const text = s.blockText(bid)
+      if (text !== undefined) return text
     }
     return ''
   }, [all])
@@ -241,6 +247,7 @@ function DocSection({ doc, first, author, trackingRef, force, onState, onRenamed
   const id = doc.id
   const workspace = useWorkspaceOptional()
   const ydoc = useMemo(() => new Y.Doc(), [id])
+  const blockText = useBlockPreview(ydoc)
   const [ready, setReady] = useState(false)
   const [near, setNear] = useState(false)
   const root = useRef<HTMLElement>(null)
@@ -256,7 +263,7 @@ function DocSection({ doc, first, author, trackingRef, force, onState, onRenamed
   useEffect(() => {
     const local = new IndexeddbPersistence(`aiw-${id}`, ydoc)
     let timer: ReturnType<typeof setTimeout> | null = null
-    const push = (): void => onStateRef.current(id, { ydoc, changes: listChanges(ydoc), decided: listDecided(ydoc), status: status.current })
+    const push = (): void => onStateRef.current(id, { ydoc, changes: listChanges(ydoc), decided: listDecided(ydoc), blockText, status: status.current })
     report.current = push
     const provider = new HocuspocusProvider({
       url: collabUrl(),
@@ -280,7 +287,7 @@ function DocSection({ doc, first, author, trackingRef, force, onState, onRenamed
       void local.destroy()
       ydoc.destroy()
     }
-  }, [id, ydoc])
+  }, [id, ydoc, blockText])
 
   useEffect(() => {
     const el = root.current

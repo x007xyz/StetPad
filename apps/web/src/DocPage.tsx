@@ -16,6 +16,7 @@ import { confirmAction } from './components/confirm'
 import { Dialog, SheetContent } from './components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './components/ui/dropdown-menu'
 import { Tip, TooltipProvider } from './components/ui/tooltip'
+import { useBlockPreview } from './lib/useBlockPreview'
 import { useMedia } from './lib/useMedia'
 import { clampPanelWidth } from './lib/panelWidth'
 import { cn } from './lib/utils'
@@ -204,6 +205,7 @@ export function DocPage({ id }: { id: string }) {
   }, [slash?.index, slash?.query])
   const author = '我'
   const ydoc = useMemo(() => new Y.Doc(), [id])
+  const blockPreview = useBlockPreview(ydoc)
 
   const unassignedRefsDraft = useRef({ key: draftKey(id, null) })
   const moveRefs = useCallback((from: string, to: string): void => {
@@ -661,8 +663,7 @@ export function DocPage({ id }: { id: string }) {
   }
   // --- actions
   const decideMany = useCallback((ids: string[], d: 'accept' | 'reject') => {
-    const text = (bid: string): string => projectBlocks(ydoc, 'physical').find((b) => b.blockId === bid)?.text ?? ''
-    decideAndLog(ydoc, listChanges(ydoc), ids, d, text)
+    decideAndLog(ydoc, listChanges(ydoc), ids, d)
   }, [ydoc])
 
   // When the last pending change is handled, keep that state as a version.
@@ -1139,7 +1140,7 @@ export function DocPage({ id }: { id: string }) {
     )
   }
 
-  const blockTextOf = (bid: string): string => projectBlocks(ydoc, 'physical').find((b) => b.blockId === bid)?.text ?? ''
+  const blockTextOf = (bid: string): string => blockPreview(bid) ?? ''
   const presets = runs.models?.presets ?? []
   const items = slash ? slashItems(slash.query) : []
   const unresolved = commentList.filter((c) => !c.resolved).length

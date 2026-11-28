@@ -1,4 +1,4 @@
-import { blocksToMarkdown, domToBlocks, embedPlayerUrl, isSafeSrc, type Block } from '@stetpad/clip'
+import { blocksToMarkdown, domToBlocks, embedPlayerUrl, isSafeSrc, safeImageSrc, type Block } from '@stetpad/clip'
 import {
   blockIdOf,
   blocks as yBlocks,
@@ -271,11 +271,24 @@ async function pdfToBlocks(data: Uint8Array, ocr?: Ocr, onOmittedPages?: (count:
   return out
 }
 
-export async function fileToBlocks(name: string, data: Uint8Array, opts: { ocr?: Ocr; onOmittedPages?: (count: number) => void; onSkippedPages?: (pages: number[], reason: SkippedPageReason) => void } = {}): Promise<Block[]> {
+export async function fileToBlocks(name: string, data: Uint8Array, opts: {
+  ocr?: Ocr
+  onOmittedPages?: (count: number) => void
+  onSkippedPages?: (pages: number[], reason: SkippedPageReason) => void
+  docxImageSrc?: (data: Buffer, mime: string) => string
+} = {}): Promise<Block[]> {
   const ext = name.toLowerCase().split('.').pop() ?? ''
   if (data.byteLength > 30 * 1024 * 1024) throw new Error('文件超过 30MB')
   if (ext === 'docx') {
-    const { value } = await mammoth.convertToHtml({ buffer: Buffer.from(data) })
+    const assetSrc = opts.docxImageSrc
+    const convertImage = assetSrc && mammoth.images.imgElement(async (image) => {
+      const prefix = `data:${image.contentType};base64,`
+      if (!safeImageSrc(prefix)) return { src: '' }
+      const bytes = await image.readAsBuffer()
+      const inline = prefix + bytes.toString('base64')
+      return { src: safeImageSrc(inline) ?? assetSrc(bytes, image.contentType) }
+    })
+    const { value } = await mammoth.convertToHtml({ buffer: Buffer.from(data) }, { convertImage })
     return htmlToBlocks(value)
   }
   if (ext === 'pdf') return pdfToBlocks(data, opts.ocr, opts.onOmittedPages, opts.onSkippedPages)

@@ -233,3 +233,66 @@ it.each(['http', 'network', 'success'] as const)('handles a folder rename in the
     vi.unstubAllGlobals()
   }
 })
+
+it.each([
+  { method: 'DELETE', path: '/api/folders/f1', error: 'AI 任务运行中，暂不能删除', fallback: '删除文件夹失败，请重试。' },
+  { method: 'PUT', path: '/api/docs/d1/folder', error: 'AI 任务运行中，暂不能移动文档', fallback: '移动文档失败，请重试。' },
+  { method: 'POST', path: '/api/folders', error: '创建发生冲突', fallback: '新建文件夹失败，请重试。' },
+])('handles $method $path', async ({ method, path, error, fallback }) => {
+  vi.mocked(go).mockClear()
+  const folder: Folder = { id: 'f1', name: 'Saved folder', created_at: 0 }
+  const cases = [
+    () => Response.json({ error }, { status: 409 }),
+    () => Response.json({}, { status: 500 }),
+    () => { throw new TypeError('Failed to fetch') },
+    () => Response.json({ id: 'new-folder' }),
+  ]
+  const fetchMock = vi.fn(async (_url: string, init?: RequestInit) =>
+    init?.method === method ? cases.shift()!() : Response.json([]),
+  )
+  vi.stubGlobal('fetch', fetchMock)
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  let workspace!: ReturnType<typeof useWorkspace>
+  function Consumer() {
+    workspace = useWorkspace()
+    return null
+  }
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<Shell session={{ user: { id: 'me', email: '' } }} activeFolderId={folder.id}><Consumer /></Shell>))
+    for (const message of [error, '请求失败（500）', fallback, null]) {
+      fetchMock.mockClear()
+      const run = () => method === 'DELETE' ? workspace.removeFolder(folder)
+        : method === 'PUT' ? workspace.moveDoc('d1', null) : workspace.createFolder()
+      let pending!: Promise<unknown>
+      await act(async () => { pending = run().catch((err: unknown) => err) })
+      if (method === 'DELETE') {
+        const buttons = document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')
+        await act(async () => [...buttons].find((button) => button.textContent === '删除')!.click())
+      }
+      expect(fetchMock).toHaveBeenCalledWith(path, expect.objectContaining(
+        method === 'PUT' ? { method, body: JSON.stringify({ folderId: null }) } : { method },
+      ))
+      const alert = container.querySelector('[role="alert"]')
+      if (message !== null) {
+        expect(alert?.textContent ?? '').toContain(message)
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+        expect(go).not.toHaveBeenCalled()
+        await act(async () => alert!.querySelector('button')!.click())
+      } else {
+        expect(alert).toBeNull()
+        expect(fetchMock).toHaveBeenCalledTimes(3)
+        if (method === 'DELETE') expect(go).toHaveBeenCalledWith({ page: 'home' })
+        if (method === 'PUT') expect(go).not.toHaveBeenCalled()
+        if (method === 'POST') expect(go).toHaveBeenCalledWith({ page: 'folder', id: 'new-folder' })
+      }
+      await expect(pending).resolves.toBeUndefined()
+    }
+  } finally {
+    act(() => root.unmount())
+    container.remove()
+    vi.unstubAllGlobals()
+  }
+})
